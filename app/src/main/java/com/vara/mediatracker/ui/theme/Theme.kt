@@ -7,8 +7,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.googlefonts.Font
+import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vara.mediatracker.R
 
 object AppColors {
     // Deep Cinematic Dark Palette
@@ -28,42 +31,103 @@ object AppColors {
     val Stroke = Color(0xFF2E3240)
 }
 
+// Google Fonts Provider Setup
+val provider = GoogleFont.Provider(
+    providerAuthority = "com.google.android.gms.fonts",
+    providerPackage = "com.google.android.gms",
+    certificates = R.array.com_google_android_gms_fonts_certs
+)
+
+// Premium Typography: Plus Jakarta Sans / Google Sans style with clean fallback
+val PlusJakartaFont = GoogleFont("Plus Jakarta Sans")
+
+val AppFontFamily = FontFamily(
+    Font(googleFont = PlusJakartaFont, fontProvider = provider, weight = FontWeight.Normal),
+    Font(googleFont = PlusJakartaFont, fontProvider = provider, weight = FontWeight.Medium),
+    Font(googleFont = PlusJakartaFont, fontProvider = provider, weight = FontWeight.SemiBold),
+    Font(googleFont = PlusJakartaFont, fontProvider = provider, weight = FontWeight.Bold),
+    Font(googleFont = PlusJakartaFont, fontProvider = provider, weight = FontWeight.ExtraBold)
+)
+
 val AppTypography = Typography(
+    displayLarge = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 32.sp,
+        letterSpacing = (-0.6).sp,
+        color = AppColors.TextPrimary
+    ),
     headlineLarge = TextStyle(
-        fontFamily = FontFamily.Default,
+        fontFamily = AppFontFamily,
         fontWeight = FontWeight.ExtraBold,
         fontSize = 28.sp,
         letterSpacing = (-0.5).sp,
         color = AppColors.TextPrimary
     ),
     headlineMedium = TextStyle(
-        fontFamily = FontFamily.Default,
+        fontFamily = AppFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 22.sp,
         letterSpacing = (-0.2).sp,
         color = AppColors.TextPrimary
     ),
     titleLarge = TextStyle(
-        fontFamily = FontFamily.Default,
+        fontFamily = AppFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 18.sp,
+        letterSpacing = (-0.2).sp,
         color = AppColors.TextPrimary
     ),
     titleMedium = TextStyle(
-        fontFamily = FontFamily.Default,
+        fontFamily = AppFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 15.sp,
+        letterSpacing = (-0.1).sp,
+        color = AppColors.TextPrimary
+    ),
+    titleSmall = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 13.5.sp,
+        color = AppColors.TextPrimary
+    ),
+    bodyLarge = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 15.sp,
+        lineHeight = 22.sp,
         color = AppColors.TextPrimary
     ),
     bodyMedium = TextStyle(
-        fontFamily = FontFamily.Default,
+        fontFamily = AppFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 13.5.sp,
         lineHeight = 20.sp,
         color = AppColors.TextSecondary
     ),
+    bodySmall = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        color = AppColors.TextTertiary
+    ),
+    labelLarge = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 13.sp,
+        letterSpacing = 0.2.sp,
+        color = AppColors.TextPrimary
+    ),
+    labelMedium = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 12.sp,
+        letterSpacing = 0.3.sp,
+        color = AppColors.TextSecondary
+    ),
     labelSmall = TextStyle(
-        fontFamily = FontFamily.Default,
+        fontFamily = AppFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 10.5.sp,
         letterSpacing = 0.5.sp,
