@@ -37,6 +37,7 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.ui.common.parseTargetAirDateTime
 import com.vara.mediatracker.ui.common.rememberCountdownText
+import com.vara.mediatracker.ui.common.rememberTodayDateString
 import com.vara.mediatracker.ui.theme.AppColors
 import java.text.SimpleDateFormat
 import java.util.*
@@ -76,7 +77,7 @@ fun HomeScreen(
         allEpisodes.groupBy { it.showId }
     }
 
-    val todayDateStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+    val todayDateStr = rememberTodayDateString()
 
     // Title logo URL cache: mediaId -> logoUrl
     val logoMap = remember { mutableStateMapOf<String, String?>() }
@@ -155,7 +156,7 @@ fun HomeScreen(
 
     // 1. CONTINUE WATCHING: Strictly READY NOW items (next unwatched episode airDate <= today or null)
     val continueWatching = remember(continueWatchingPool, showProgressMap, smartBadgesMap, todayDateStr) {
-        continueWatchingPool.filter { item ->
+        val readyNow = continueWatchingPool.filter { item ->
             if (!item.type.contains("TV", ignoreCase = true)) {
                 // For movies: already released (releaseDate <= todayDateStr or null)
                 item.releaseDate == null || item.releaseDate <= todayDateStr
@@ -170,25 +171,26 @@ fun HomeScreen(
                     item.releaseDate != null && item.releaseDate <= todayDateStr
                 }
             }
-        }.sortedWith(
-            compareByDescending<MediaItemEntity> { item ->
-                when (smartBadgesMap[item.id]?.badge) {
-                    SmartBadge.PREMIERE -> 110
-                    SmartBadge.NEW -> 100
-                    SmartBadge.FINALE -> 95
-                    SmartBadge.BINGE_DROP -> 90
-                    SmartBadge.HOOKED -> 85
-                    SmartBadge.BEHIND -> 80
-                    SmartBadge.BINGE -> 75
-                    SmartBadge.SOON -> 70
-                    null -> 60
-                }
-            }.thenByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
-        ).take(20)
+        }
+        HomeRanking.rank(readyNow, smartBadgesMap)
     }
 
     val continueWatchingIds = remember(continueWatching) {
         continueWatching.map { it.id }.toSet()
+    }
+
+    // Every actively-watching title, including ones whose next episode has not aired
+    // yet. Anything not claimed by Continue Watching or New lands in In Progress.
+    val allInProgress = remember(items) {
+        items.filter { HomeRanking.isActivelyInProgress(it) && !it.isSoftDeleted }
+    }
+
+    val sections = remember(continueWatching, allInProgress, smartBadgesMap) {
+        HomeSectionsBuilder.build(
+            readyNow = continueWatching,
+            inProgressAll = allInProgress,
+            badges = smartBadgesMap
+        )
     }
 
     // Pre-fetch logos for visible continue watching items
@@ -331,20 +333,30 @@ fun HomeScreen(
         return
     }
 
+    // Hero row is the freshest things worth acting on: premieres and new releases,
+    // then anything else ready to resume. Both derive from one partition, so a title
+    // never shows up in two rails.
+    val heroSource = remember(sections) {
+        (sections.newReleases + sections.continueWatching).take(HomeRanking.TOP_ROW_SIZE)
+    }
+    val remainingCW = remember(sections, heroSource) {
+        val placed = heroSource.mapTo(HashSet()) { it.id }
+        (sections.newReleases + sections.continueWatching).filter { it.id !in placed }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
         // 1. Top Continue Watching: First 5 cards scrollable at the top (or spotlight if CW empty)
-        val topCW = continueWatching.take(5)
-        if (topCW.isNotEmpty()) {
+        if (heroSource.isNotEmpty()) {
             item {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    items(topCW, key = { "top_${it.id}" }) { item ->
+                    items(heroSource, key = { "top_${it.id}" }) { item ->
                         val progress = showProgressMap[item.id]
                         ContinueWatchingBackdropCard(
                             item = item,
@@ -543,17 +555,20 @@ fun HomeScreen(
         }
 
         // 3. ROW 1: CONTINUE WATCHING (Remaining items below top 5)
-        val remainingCW = continueWatching.drop(5)
         if (remainingCW.isNotEmpty()) {
             item {
                 Column {
-                    SectionHeader(title = "Continue Watching")
+                    SectionHeader(
+                        title = "Continue Watching",
+                        count = remainingCW.size,
+                        accent = AppColors.Gold
+                    )
                     Spacer(modifier = Modifier.height(10.dp))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        items(remainingCW, key = { it.id }) { item ->
+                        items(remainingCW, key = { "rest_${it.id}" }) { item ->
                             val progress = showProgressMap[item.id]
                             ContinueWatchingBackdropCard(
                                 item = item,
@@ -572,7 +587,11 @@ fun HomeScreen(
         if (comingSoonItems.isNotEmpty()) {
             item {
                 Column {
-                    SectionHeader(title = "Coming Soon")
+                    SectionHeader(
+                        title = "Coming Soon",
+                        count = comingSoonItems.size,
+                        accent = AppColors.AccentLuminous
+                    )
                     Spacer(modifier = Modifier.height(10.dp))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -592,11 +611,57 @@ fun HomeScreen(
             }
         }
 
+        // New: premieres and brand new releases, lifted out of Continue Watching so a
+        // time-sensitive title always has somewhere prominent to live.
+        if (sections.newReleases.isNotEmpty()) {
+            item {
+                Column {
+                    SectionHeader(
+                        title = "New",
+                        count = sections.newReleases.size,
+                        accent = AppColors.Liked
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    PosterRail(
+                        items = sections.newReleases,
+                        badges = smartBadgesMap,
+                        progress = showProgressMap,
+                        onSelectMedia = onSelectMedia
+                    )
+                }
+            }
+        }
+
+        // In Progress: everything unfinished that is neither ready now nor new. This
+        // previously had no home at all.
+        if (sections.inProgress.isNotEmpty()) {
+            item {
+                Column {
+                    SectionHeader(
+                        title = "In Progress",
+                        count = sections.inProgress.size,
+                        accent = AppColors.Accent
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    PosterRail(
+                        items = sections.inProgress,
+                        badges = smartBadgesMap,
+                        progress = showProgressMap,
+                        onSelectMedia = onSelectMedia
+                    )
+                }
+            }
+        }
+
         // 5. ROW 3: RECENTLY ADDED (max 15, no count beside title)
         if (recentlyAddedItems.isNotEmpty()) {
             item {
                 Column {
-                    SectionHeader(title = "Recently Added")
+                    SectionHeader(
+                        title = "Recently Added",
+                        count = recentlyAddedItems.size,
+                        accent = AppColors.TextSecondary
+                    )
                     Spacer(modifier = Modifier.height(10.dp))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -823,17 +888,81 @@ fun ContinueWatchingBackdropCard(
     }
 }
 
+/**
+ * Rail heading with an optional count chip and accent dot.
+ *
+ * The count is deliberately hidden past a handful: a rail showing "24" reads as an
+ * inventory problem rather than a curation, which is the opposite of the intent.
+ */
 @Composable
-fun SectionHeader(title: String) {
+fun SectionHeader(
+    title: String,
+    count: Int? = null,
+    accent: Color? = null,
+    modifier: Modifier = Modifier
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(horizontal = 16.dp)
+        modifier = modifier.padding(horizontal = 16.dp)
     ) {
+        if (accent != null) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(accent)
+            )
+            Spacer(modifier = Modifier.width(7.dp))
+        }
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
         )
+        if (count != null && count > 0) {
+            Spacer(modifier = Modifier.width(7.dp))
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+            ) {
+                Text(
+                    text = if (count > 99) "99+" else count.toString(),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+/** Poster rail used by the New and In Progress sections. */
+@Composable
+private fun PosterRail(
+    items: List<MediaItemEntity>,
+    badges: Map<String, BadgeResult?>,
+    progress: Map<String, TVShowProgress>,
+    onSelectMedia: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (items.isEmpty()) return
+
+    LazyRow(
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(items, key = { it.id }) { item ->
+            val info = progress[item.id]
+            HomePosterCard(
+                item = item,
+                nextAirDate = info?.nextAiringDate,
+                smartBadge = badges[item.id],
+                onClick = { onSelectMedia(item.id) }
+            )
+        }
     }
 }
 

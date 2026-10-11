@@ -85,6 +85,7 @@ data class TMDBEpisodeItem(
     val season_number: Int,
     val episode_number: Int,
     val air_date: String? = null,
+    val air_time: String? = null,
     val runtime: Int? = null,
     val still_path: String? = null
 )

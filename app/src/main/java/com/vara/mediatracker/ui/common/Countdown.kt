@@ -146,3 +146,31 @@ fun formatCountdownTimer(targetDate: Date, nowMillis: Long = System.currentTimeM
     }
     return SimpleDateFormat("MMM d", Locale.getDefault()).format(targetDate)
 }
+/**
+ * Today's date as `yyyy-MM-dd`, recomputed when the calendar day rolls over.
+ *
+ * An unkeyed `remember { today }` snapshots the date at first composition and keeps
+ * it until the composable leaves the tree. That silently freezes every ranking keyed
+ * on it — "ready now", release windows, and sort tie-breaks — for the whole time the
+ * screen stays alive, including across midnight.
+ *
+ * The string is memoized on the day index, so this does not reformat on every tick.
+ */
+@Composable
+fun rememberTodayDateString(): String {
+    val nowMillis = LocalNowMillis.current
+    val dayIndex = Math.floorDiv(nowMillis, DAY_MILLIS)
+    return remember(dayIndex) {
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowMillis))
+    }
+}
+
+/** A [Calendar] pinned to now, for date arithmetic that needs year/month fields. */
+@Composable
+fun rememberTodayCalendar(): Calendar {
+    val nowMillis = LocalNowMillis.current
+    val dayIndex = Math.floorDiv(nowMillis, DAY_MILLIS)
+    return remember(dayIndex) { Calendar.getInstance().apply { timeInMillis = nowMillis } }
+}
+
+private const val DAY_MILLIS = 86_400_000L

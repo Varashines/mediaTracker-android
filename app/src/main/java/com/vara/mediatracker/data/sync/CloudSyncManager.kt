@@ -1,9 +1,11 @@
 package com.vara.mediatracker.data.sync
 
+import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.data.db.MediaDao
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.TVSeasonEntity
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.*
@@ -53,6 +55,7 @@ data class RemoteEpisode(
 )
 
 class CloudSyncManager(
+    private val db: AppDatabase,
     private val mediaDao: MediaDao,
     private val supabaseUrl: String,
     private val anonKey: String,
@@ -82,22 +85,52 @@ class CloudSyncManager(
         }
     }
 
-    /** Fetches TMDB metadata for a single item, or null if it has no resolvable TMDB id. */
+    /** Media row plus any season metadata recovered from the same response. */
+    private data class Enriched(val media: MediaItemEntity, val seasons: List<TVSeasonEntity>)
+
+    /**
+     * Fetches TMDB metadata for a single item, or null if it has no resolvable TMDB id.
+     *
+     * Season lengths come out of the TV details payload we already paid for, so
+     * recording them during sync costs no extra requests and means FINALE badges are
+     * correct without ever opening a detail screen.
+     */
     private suspend fun enrichItem(
         tmdbClient: TMDBClient,
         item: MediaItemEntity
-    ): MediaItemEntity? {
+    ): Enriched? {
         val tmdbId = MediaIds.tmdbIdOf(item.id)
         if (tmdbId <= 0) return null
         val isMovie = item.type.contains("Movie", ignoreCase = true)
         val details = (if (isMovie) tmdbClient.getMovieDetails(tmdbId) else tmdbClient.getTVDetails(tmdbId))
             .getOrNull()
+
+        val showId = MediaIds.tvShowKey(item.id)
+        val seasons = if (isMovie) {
+            emptyList()
+        } else {
+            details?.seasons.orEmpty()
+                .filter { it.season_number >= 1 }
+                .map { season ->
+                    TVSeasonEntity(
+                        showId = showId,
+                        seasonNumber = season.season_number,
+                        episodeCount = season.episode_count ?: 0,
+                        name = season.name,
+                        airDate = season.air_date
+                    )
+                }
+        }
+
         val poster = TMDBClient.buildPosterUrl(details?.poster_path) ?: item.posterUrl
-        return item.copy(
-            title = details?.title ?: details?.name ?: item.title,
-            overview = details?.overview ?: item.overview,
-            posterUrl = poster,
-            releaseDate = details?.release_date ?: details?.first_air_date ?: item.releaseDate
+        return Enriched(
+            media = item.copy(
+                title = details?.title ?: details?.name ?: item.title,
+                overview = details?.overview ?: item.overview,
+                posterUrl = poster,
+                releaseDate = details?.release_date ?: details?.first_air_date ?: item.releaseDate
+            ),
+            seasons = seasons
         )
     }
 
@@ -162,7 +195,7 @@ class CloudSyncManager(
             // flushed in small batches so the UI fills in progressively instead of all
             // at once at the end.
             val gate = Semaphore(MAX_CONCURRENT_TMDB_FETCHES)
-            val pending = Channel<MediaItemEntity>(Channel.UNLIMITED)
+            val pending = Channel<Enriched>(Channel.UNLIMITED)
 
             coroutineScope {
                 val workers = itemsNeedingMetadata.map { item ->
@@ -172,15 +205,20 @@ class CloudSyncManager(
                     }
                 }
                 val flusher = launch(Dispatchers.IO) {
-                    val batch = ArrayList<MediaItemEntity>(ENRICHMENT_FLUSH_SIZE)
+                    val mediaBatch = ArrayList<MediaItemEntity>(ENRICHMENT_FLUSH_SIZE)
+                    val seasonBatch = ArrayList<TVSeasonEntity>()
                     for (enriched in pending) {
-                        batch.add(enriched)
-                        if (batch.size >= ENRICHMENT_FLUSH_SIZE) {
-                            mediaDao.upsertMedia(batch.toList())
-                            batch.clear()
+                        mediaBatch.add(enriched.media)
+                        seasonBatch.addAll(enriched.seasons)
+                        if (mediaBatch.size >= ENRICHMENT_FLUSH_SIZE) {
+                            mediaDao.upsertMedia(mediaBatch.toList())
+                            mediaBatch.clear()
                         }
                     }
-                    if (batch.isNotEmpty()) mediaDao.upsertMedia(batch.toList())
+                    if (mediaBatch.isNotEmpty()) mediaDao.upsertMedia(mediaBatch.toList())
+                    if (seasonBatch.isNotEmpty()) {
+                        db.seasonDao().upsertSeasons(seasonBatch)
+                    }
                 }
                 workers.awaitAll()
                 pending.close()

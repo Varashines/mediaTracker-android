@@ -33,6 +33,7 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.ui.common.parseTargetAirDateTime
 import com.vara.mediatracker.ui.common.rememberCountdownText
+import com.vara.mediatracker.ui.common.rememberTodayDateString
 import com.vara.mediatracker.ui.home.SmartBadgePill
 import com.vara.mediatracker.ui.theme.AppColors
 import java.text.SimpleDateFormat
@@ -71,8 +72,7 @@ fun ReleaseCalendarScreen(
 ) {
     val allEpisodes by container.mediaDao.getAllEpisodesFlow().collectAsState(initial = emptyList())
 
-    val todayCalendar = remember { Calendar.getInstance() }
-    val todayString = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+    val todayString = rememberTodayDateString()
 
     var selectedYearMonth by remember {
         mutableStateOf(Calendar.getInstance().apply {

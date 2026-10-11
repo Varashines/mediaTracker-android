@@ -4,6 +4,7 @@ import androidx.room.*
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaBadgeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.TVSeasonEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -59,6 +60,22 @@ interface MediaDao {
     suspend fun deleteEpisodesByIds(uniqueIds: List<String>)
 }
 
+@Dao
+interface SeasonDao {
+    @Query("SELECT * FROM tv_seasons WHERE showId = :showId")
+    suspend fun getSeasonsForShow(showId: String): List<TVSeasonEntity>
+
+    @Query("SELECT * FROM tv_seasons")
+    suspend fun getAllSeasons(): List<TVSeasonEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSeasons(seasons: List<TVSeasonEntity>)
+
+    /** Season numbers that actually declare an episode count, keyed by season number. */
+    @Query("SELECT * FROM tv_seasons WHERE showId = :showId AND episodeCount > 0")
+    suspend fun getDeclaredCountsForShow(showId: String): List<TVSeasonEntity>
+}
+
 /**
  * Persisted badge state.
  *
@@ -94,11 +111,17 @@ interface BadgeDao {
 }
 
 @Database(
-    entities = [MediaItemEntity::class, EpisodeEntity::class, MediaBadgeEntity::class],
-    version = 3,
+    entities = [
+        MediaItemEntity::class,
+        EpisodeEntity::class,
+        MediaBadgeEntity::class,
+        TVSeasonEntity::class
+    ],
+    version = 5,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun mediaDao(): MediaDao
     abstract fun badgeDao(): BadgeDao
+    abstract fun seasonDao(): SeasonDao
 }

@@ -28,6 +28,7 @@ import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.TVSeasonEntity
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import kotlinx.coroutines.launch
@@ -111,11 +112,26 @@ fun DetailScreen(
                                 }
 
                                 val newEpisodesList = mutableListOf<EpisodeEntity>()
+                                val seasonRows = mutableListOf<TVSeasonEntity>()
                                 for (season in seasons) {
                                     if (season.season_number < 1) continue
                                     val seasonDetailsRes = tmdbClient.getSeasonDetails(tmdbId, season.season_number)
                                     val seasonDetails = seasonDetailsRes.getOrNull()
                                     val eps = seasonDetails?.episodes ?: emptyList()
+
+                                    // Recorded from the season payload we already fetched,
+                                    // so this costs no extra request. BadgeEngine's FINALE
+                                    // rule reads episodeCount instead of counting local rows.
+                                    seasonRows.add(
+                                        TVSeasonEntity(
+                                            showId = showIdKey,
+                                            seasonNumber = season.season_number,
+                                            episodeCount = season.episode_count?.takeIf { it > 0 }
+                                                ?: eps.size,
+                                            name = season.name,
+                                            airDate = season.air_date
+                                        )
+                                    )
 
                                     for (ep in eps) {
                                         val key = "${ep.season_number}_${ep.episode_number}"
@@ -133,6 +149,7 @@ fun DetailScreen(
                                                 isWatched = existing?.isWatched ?: false,
                                                 watchedDate = existing?.watchedDate,
                                                 airDate = ep.air_date ?: existing?.airDate,
+                                                airTime = ep.air_time ?: existing?.airTime,
                                                 runtime = ep.runtime ?: existing?.runtime,
                                                 updatedAt = existing?.updatedAt
                                             )
@@ -141,6 +158,9 @@ fun DetailScreen(
                                 }
                                 if (newEpisodesList.isNotEmpty()) {
                                     db.mediaDao().upsertEpisodes(newEpisodesList)
+                                }
+                                if (seasonRows.isNotEmpty()) {
+                                    db.seasonDao().upsertSeasons(seasonRows)
                                 }
                             }
                         } catch (e: Exception) {

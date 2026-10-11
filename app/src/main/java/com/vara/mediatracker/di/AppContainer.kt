@@ -66,6 +66,7 @@ class AppContainer(context: Context) {
      * it would leave it pointing at stale keys after an edit.
      */
     fun syncManager(): CloudSyncManager = CloudSyncManager(
+        db = database,
         mediaDao = database.mediaDao(),
         supabaseUrl = preferences.supabaseUrl,
         anonKey = preferences.supabaseAnonKey,

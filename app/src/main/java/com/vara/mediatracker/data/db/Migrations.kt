@@ -42,5 +42,34 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_2_3)
+    /** v3 -> v4: per-season metadata so FINALE can use TMDB's declared season length. */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `tv_seasons` (
+                    `showId` TEXT NOT NULL,
+                    `seasonNumber` INTEGER NOT NULL,
+                    `episodeCount` INTEGER NOT NULL,
+                    `name` TEXT,
+                    `airDate` TEXT,
+                    `updatedAt` TEXT,
+                    PRIMARY KEY(`showId`, `seasonNumber`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_tv_seasons_showId` ON `tv_seasons` (`showId`)"
+            )
+        }
+    }
+
+    /** v4 -> v5: episode air time of day, so air dates resolve to real instants. */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `tv_episodes` ADD COLUMN `airTime` TEXT")
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

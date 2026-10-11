@@ -40,8 +40,17 @@ object BadgeComputer {
         val episodes = mediaDao.getAllEpisodesList()
         val byShow = episodes.groupBy { it.showId }
 
+        // TMDB's declared season lengths, so FINALE does not depend on how many
+        // episode rows happen to be stored locally.
+        val declaredByShow = db.seasonDao().getAllSeasons()
+            .filter { it.episodeCount > 0 }
+            .groupBy { it.showId }
+            .mapValues { (_, rows) -> rows.associate { it.seasonNumber to it.episodeCount } }
+
         val computedAt = now.time
-        val badges = media.mapNotNull { item -> badgeFor(item, byShow, now, computedAt) }
+        val badges = media.mapNotNull { item ->
+            badgeFor(item, byShow, declaredByShow, now, computedAt)
+        }
 
         badgeDao.upsertBadges(badges)
         // Titles that stopped qualifying, or vanished from the library, must not keep
@@ -54,14 +63,16 @@ object BadgeComputer {
     private fun badgeFor(
         item: MediaItemEntity,
         byShow: Map<String, List<EpisodeEntity>>,
+        declaredByShow: Map<String, Map<Int, Int>>,
         now: Date,
         computedAt: Long
     ): MediaBadgeEntity? {
         val isTv = item.type.contains("TV", ignoreCase = true)
         val showKey = if (isTv) MediaIds.tvShowKey(item.id) else null
         val showEpisodes = showKey?.let { byShow[it].orEmpty() }.orEmpty()
+        val declared = showKey?.let { declaredByShow[it] }.orEmpty()
 
-        val result = BadgeEngine.calculateBadge(item, showEpisodes, now) ?: return null
+        val result = BadgeEngine.calculateBadge(item, showEpisodes, now, declared) ?: return null
 
         return MediaBadgeEntity(
             mediaId = item.id,

@@ -4,8 +4,10 @@ import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -487,5 +489,228 @@ class BadgeEngineMacParityTest {
             state = "Watching", releaseDate = day(45)
         )
         assertNull(BadgeEngine.calculateBadge(tv, emptyList(), now))
+    }
+}
+
+/**
+ * FINALE must use TMDB's declared season length, matching macOS's
+ * `scan.nextEpisodeNumber == season.episodeCount`.
+ *
+ * Counting local rows instead turns any mid-season episode into a false finale as
+ * soon as a show's seasons are only partially fetched.
+ */
+class BadgeEngineFinaleParityTest {
+
+    private val now = Date()
+    private val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+
+    private fun day(offset: Long): String {
+        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, offset.toInt()) }
+        return sdf.format(cal.time)
+    }
+
+    private fun show(taste: String = "None") =
+        MediaItemEntity(id = "tv_1399", title = "Show", type = "TV Show", state = "Watching", taste = taste)
+
+    private fun ep(season: Int, number: Int, watched: Boolean = false, airDate: String? = null) =
+        EpisodeEntity(
+            uniqueId = MediaIds.buildEpisodeUniqueId("tv_1399", season, number),
+            showId = "tv_1399",
+            seasonNumber = season,
+            episodeNumber = number,
+            isWatched = watched,
+            airDate = airDate
+        )
+
+    @Test
+    fun `partially fetched season does not fake a finale`() {
+        // Only 3 of 10 episodes are stored. The next unwatched is E3, which is NOT the
+        // season's last episode.
+        val episodes = listOf(
+            ep(1, 1, watched = true, airDate = day(-40)),
+            ep(1, 2, watched = true, airDate = day(-40)),
+            ep(1, 3, airDate = day(3))
+        )
+
+        val badge = BadgeEngine.calculateBadge(
+            item = show(),
+            episodes = episodes,
+            now = now,
+            declaredSeasonCounts = mapOf(1 to 10)
+        )?.badge
+
+        // Falls through to the release window: SOON (airing in 3 days... >2, so NEW/SOON
+        // depending on window) — never FINALE.
+        assertNotEquals(SmartBadge.FINALE, badge)
+    }
+
+    @Test
+    fun `declared count still produces a finale on the real last episode`() {
+        val episodes = listOf(
+            ep(1, 1, watched = true, airDate = day(-40)),
+            ep(1, 2, watched = true, airDate = day(-40)),
+            ep(1, 3, airDate = day(5))
+        )
+
+        val badge = BadgeEngine.calculateBadge(
+            item = show(),
+            episodes = episodes,
+            now = now,
+            declaredSeasonCounts = mapOf(1 to 3)
+        )?.badge
+
+        assertEquals(SmartBadge.FINALE, badge)
+    }
+
+    @Test
+    fun `falls back to local row count when no declared count is known`() {
+        // Nothing persisted for the season: the previous behaviour is the only option,
+        // and it must still resolve the genuine last episode.
+        val episodes = listOf(
+            ep(1, 1, watched = true, airDate = day(-40)),
+            ep(1, 2, airDate = day(5))
+        )
+
+        val badge = BadgeEngine.calculateBadge(item = show(), episodes = episodes, now = now)?.badge
+
+        assertEquals(SmartBadge.FINALE, badge)
+    }
+
+    @Test
+    fun `a mid season premiere is still a premiere not a finale`() {
+        // Season 2 episode 1 of 8, next unwatched. premiereDaysWindow has no lower
+        // bound, so this resolves to PREMIERE before FINALE is ever considered.
+        val episodes = listOf(
+            ep(2, 1, watched = true, airDate = day(-40)),
+            ep(2, 1, airDate = day(6))
+        ).distinctBy { it.uniqueId }
+
+        val badge = BadgeEngine.calculateBadge(
+            item = show(),
+            episodes = listOf(ep(1, 1, watched = true, airDate = day(-40)), ep(2, 1, airDate = day(6))),
+            now = now,
+            declaredSeasonCounts = mapOf(1 to 8, 2 to 8)
+        )?.badge
+
+        assertEquals(SmartBadge.PREMIERE, badge)
+    }
+
+    @Test
+    fun `season counts do not leak across shows`() {
+        // Declared counts are keyed by season number and scoped per-show by the caller;
+        // the engine only sees one show's map, so nothing to assert beyond isolation.
+        val scan = BadgeEngine.scanEpisodes(
+            episodes = listOf(ep(1, 3, airDate = day(3))),
+            now = now,
+            declaredSeasonCounts = mapOf(1 to 8)
+        )
+        assertEquals(8, scan.nextSeasonEpisodeCount)
+    }
+}
+
+/**
+ * Air-time precision, pinned against a real divergence.
+ *
+ * "Doctor X: Mafia in White" premiered 2026-10-09 and Android showed NEW while macOS
+ * showed PREMIERE. Its air date is a bare `2026-10-09`, which parses to midnight —
+ * 5.5 hours before the episode actually airs. That pushed `daysSinceAir` to 3.013,
+ * just past the `premiereDaysWindow` upper bound of 3, and the badge fell through to
+ * the release window.
+ */
+class BadgeEngineAirTimeTest {
+
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+
+    private fun at(text: String): Date = dateFormat.parse(text)!!
+
+    @Test
+    fun `air time shifts the episode to its real instant`() {
+        val dateOnly = BadgeEngine.parseAirInstant("2026-10-09", null)!!
+        val withTime = BadgeEngine.parseAirInstant("2026-10-09", "20:30")!!
+
+        assertEquals("2026-10-09 00:00", dateFormat.format(dateOnly))
+        assertEquals("2026-10-09 20:30", dateFormat.format(withTime))
+    }
+
+    @Test
+    fun `bare air date lands before the real instant`() {
+        val dateOnly = BadgeEngine.parseAirInstant("2026-10-09", null)!!
+        val withTime = BadgeEngine.parseAirInstant("2026-10-09", "20:30")!!
+
+        assertTrue(dateOnly.before(withTime))
+    }
+
+    @Test
+    fun `doctor x keeps PREMIERE when the air time is known`() {
+        // Evaluated at 2026-10-12 00:18 local, exactly when the bad badge was stored.
+        val now = at("2026-10-12 00:18")
+
+        val episodes = listOf(
+            EpisodeEntity(
+                uniqueId = MediaIds.buildEpisodeUniqueId("tv_293610", 1, 1),
+                showId = "tv_293610",
+                seasonNumber = 1,
+                episodeNumber = 1,
+                airDate = "2026-10-09",
+                airTime = "20:30"
+            )
+        )
+        val show = MediaItemEntity(
+            id = "tv_293610", title = "Doctor X", type = "TV Show", state = "Wishlist"
+        )
+
+        assertEquals(SmartBadge.PREMIERE, BadgeEngine.calculateBadge(show, episodes, now)?.badge)
+    }
+
+    @Test
+    fun `doctor x loses PREMIERE without the air time`() {
+        // The exact regression: same data, air time omitted.
+        val now = at("2026-10-12 00:18")
+
+        // Twelve episodes as in the real library, otherwise E1 would look like the
+        // season's last episode and resolve as FINALE instead of falling through.
+        val episodes = listOf(
+            EpisodeEntity(
+                uniqueId = MediaIds.buildEpisodeUniqueId("tv_293610", 1, 1),
+                showId = "tv_293610",
+                seasonNumber = 1,
+                episodeNumber = 1,
+                airDate = "2026-10-09"
+            )
+        ) + (2..12).map {
+            EpisodeEntity(
+                uniqueId = MediaIds.buildEpisodeUniqueId("tv_293610", 1, it),
+                showId = "tv_293610",
+                seasonNumber = 1,
+                episodeNumber = it,
+                airDate = "2026-11-${(it - 2).toString().padStart(2, '0')}"
+            )
+        }
+        val show = MediaItemEntity(
+            id = "tv_293610", title = "Doctor X", type = "TV Show", state = "Wishlist"
+        )
+
+        assertEquals(SmartBadge.NEW, BadgeEngine.calculateBadge(show, episodes, now)?.badge)
+    }
+
+    @Test
+    fun `malformed air times fall back to the date`() {
+        val expected = BadgeEngine.parseAirInstant("2026-10-09", null)!!
+        listOf("", "  ", "8pm", "25:99", "ab:cd", "8:5").forEach { bad ->
+            assertEquals("airTime '$bad' must be ignored", expected, BadgeEngine.parseAirInstant("2026-10-09", bad))
+        }
+    }
+
+    @Test
+    fun `null air date yields no instant`() {
+        assertNull(BadgeEngine.parseAirInstant(null, "20:30"))
+        assertNull(BadgeEngine.parseAirInstant("", "20:30"))
+        assertNull(BadgeEngine.parseAirInstant("2026", "20:30"))
+    }
+
+    @Test
+    fun `midnight air time is accepted`() {
+        assertEquals("2026-10-09 00:00", dateFormat.format(BadgeEngine.parseAirInstant("2026-10-09", "00:00")!!))
+        assertEquals("2026-10-09 23:59", dateFormat.format(BadgeEngine.parseAirInstant("2026-10-09", "23:59")!!))
     }
 }

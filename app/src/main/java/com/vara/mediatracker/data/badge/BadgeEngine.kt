@@ -68,6 +68,36 @@ object BadgeEngine {
         }
     }
 
+    private val instantFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+
+    /**
+     * Resolves an episode's real airing instant.
+     *
+     * A bare `airDate` parses to midnight, which places the episode up to a day
+     * before it actually airs. Against the 3-day PREMIERE boundary that is enough to
+     * flip the badge: one title measured 3.013 days on Android against 1.76 on macOS,
+     * and lost its PREMIERE. macOS stores the true instant because TMDB also returns
+     * `air_time`, so compose the two when the time is known and fall back to the
+     * date-only parse when it is not.
+     *
+     * Interpreted in the device's local zone, matching how TMDB's local air date and
+     * air time pair up.
+     */
+    fun parseAirInstant(airDate: String?, airTime: String?): Date? {
+        if (airDate.isNullOrBlank()) return null
+        val day = airDate.trim().take(10)
+        if (day.length < 10) return null
+        val time = airTime?.trim()?.take(5)?.takeIf { AIR_TIME_PATTERN.matches(it) }
+        if (time == null) return parseDate(day)
+        return try {
+            instantFormat.parse("$day $time")
+        } catch (_: Exception) {
+            parseDate(day)
+        }
+    }
+
+    private val AIR_TIME_PATTERN = Regex("^([01]\\d|2[0-3]):[0-5]\\d$")
+
     data class EpisodeScan(
         val nextEpisodeNumber: Int,
         val nextSeasonEpisodeCount: Int,
@@ -84,13 +114,14 @@ object BadgeEngine {
     fun calculateBadge(
         item: MediaItemEntity,
         episodes: List<EpisodeEntity> = emptyList(),
-        now: Date = Date()
+        now: Date = Date(),
+        declaredSeasonCounts: Map<Int, Int> = emptyMap()
     ): BadgeResult? {
         // Dropped items do not get smart badges
         if (item.state.equals("Dropped", ignoreCase = true)) return null
 
         val isTv = item.type.contains("TV", ignoreCase = true)
-        val scan = if (isTv) scanEpisodes(episodes, now) else null
+        val scan = if (isTv) scanEpisodes(episodes, now, declaredSeasonCounts) else null
 
         // Pipeline stage 1: Milestone Badges (Premiere, Finale, Binge Drop)
         if (scan != null) {
@@ -108,7 +139,17 @@ object BadgeEngine {
         return null
     }
 
-    fun scanEpisodes(episodes: List<EpisodeEntity>, now: Date): EpisodeScan {
+    /**
+     * @param declaredSeasonCounts season number -> TMDB's declared episode count.
+     *   macOS reads this from `TVSeason.episodeCount` when evaluating FINALE; without
+     *   it a partially-fetched season makes a mid-season episode look like a finale.
+     *   Falls back to local row counts for seasons that have never been fetched.
+     */
+    fun scanEpisodes(
+        episodes: List<EpisodeEntity>,
+        now: Date,
+        declaredSeasonCounts: Map<Int, Int> = emptyMap()
+    ): EpisodeScan {
         val cutoff = now.time - RECENT_WATCH_CUTOFF_MS
 
         // macOS excludes Specials (season 0) from the badge scan entirely — both
@@ -134,7 +175,7 @@ object BadgeEngine {
         val seasonCounts = sorted.groupBy { it.seasonNumber }.mapValues { it.value.size }
 
         for (ep in sorted) {
-            val epDate = parseDate(ep.airDate)
+            val epDate = parseAirInstant(ep.airDate, ep.airTime)
             val isAired = epDate != null && epDate <= now
 
             if (ep.isWatched) {
@@ -149,7 +190,10 @@ object BadgeEngine {
             } else {
                 if (!foundNext) {
                     nextEpNum = ep.episodeNumber
-                    nextSeasonEpCount = seasonCounts[ep.seasonNumber] ?: 0
+                    // Prefer TMDB's declared length; fall back to rows we actually hold.
+                    nextSeasonEpCount = declaredSeasonCounts[ep.seasonNumber]
+                        ?: seasonCounts[ep.seasonNumber]
+                        ?: 0
                     nextAir = epDate
                     foundNext = true
                     sameDayCount = 1

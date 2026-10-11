@@ -34,6 +34,15 @@ data class EpisodeEntity(
     val isWatched: Boolean = false,
     val watchedDate: String? = null,
     val airDate: String? = null,
+    /**
+     * Local air time of day, "HH:mm", as returned by TMDB.
+     *
+     * `airDate` alone is not enough for badge parity: it parses to midnight, which
+     * places an episode up to a day before it actually airs. That is enough to push
+     * `daysSinceAir` across the 3-day PREMIERE boundary and turn PREMIERE into NEW.
+     * macOS avoids this because it stores the real instant.
+     */
+    val airTime: String? = null,
     val runtime: Int? = null,
     val updatedAt: String? = null
 )
@@ -60,4 +69,27 @@ data class MediaBadgeEntity(
     val isSparkle: Boolean,
     val targetDate: String?,
     val computedAt: Long
+)
+
+/**
+ * Per-season metadata, chiefly TMDB's declared `episodeCount`.
+ *
+ * BadgeEngine's FINALE rule compares the next unwatched episode against the season's
+ * real length. Counting local episode rows only works when a show's seasons have been
+ * fully fetched; on a partial fetch a mid-season episode would be mistaken for a
+ * finale. macOS avoids this by reading `TVSeason.episodeCount` from the season
+ * record, so this table is the equivalent source of truth.
+ */
+@Entity(
+    tableName = "tv_seasons",
+    primaryKeys = ["showId", "seasonNumber"],
+    indices = [Index(value = ["showId"])]
+)
+data class TVSeasonEntity(
+    val showId: String,
+    val seasonNumber: Int,
+    val episodeCount: Int,
+    val name: String? = null,
+    val airDate: String? = null,
+    val updatedAt: String? = null
 )
