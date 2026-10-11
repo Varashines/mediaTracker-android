@@ -75,6 +75,9 @@ fun HomeScreen(
 
     val todayDateStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
 
+    // Title logo URL cache: mediaId -> logoUrl
+    val logoMap = remember { mutableStateMapOf<String, String?>() }
+
     // Precalculate progress and next episode per show
     val showProgressMap = remember(items, episodesByShow, todayDateStr) {
         items.filter { it.type.contains("TV", ignoreCase = true) }.associate { item ->
@@ -179,6 +182,32 @@ fun HomeScreen(
 
     val continueWatchingIds = remember(continueWatching) {
         continueWatching.map { it.id }.toSet()
+    }
+
+    // Pre-fetch logos for visible continue watching items
+    LaunchedEffect(continueWatching, prefs?.tmdbApiKey) {
+        val apiKey = prefs?.tmdbApiKey
+        if (!apiKey.isNullOrBlank()) {
+            val tmdbClient = TMDBClient(apiKey)
+            for (item in continueWatching) {
+                if (logoMap.containsKey(item.id)) continue
+                val tmdbId = item.id.substringAfterLast("_").toIntOrNull() ?: continue
+                val isMovie = item.type.contains("Movie", ignoreCase = true)
+                val imagesRes = if (isMovie) tmdbClient.getMovieImages(tmdbId) else tmdbClient.getTVImages(tmdbId)
+                val bestLogo = imagesRes.getOrNull()?.logos?.let { logos ->
+                    logos.sortedWith(
+                        compareBy<com.vara.mediatracker.data.api.TMDBImageItem> { logo ->
+                            when (logo.iso_639_1) {
+                                "en" -> 0
+                                null -> 1
+                                else -> 2
+                            }
+                        }.thenByDescending { it.width }
+                    ).firstOrNull()?.file_path?.let { TMDBClient.buildLogoUrl(it) }
+                }
+                logoMap[item.id] = bestLogo
+            }
+        }
     }
 
     // 2. COMING SOON: Strictly UPCOMING titles.
@@ -313,6 +342,9 @@ fun HomeScreen(
                             item = item,
                             progress = progress,
                             smartBadge = smartBadgesMap[item.id],
+                            cardWidth = 270.dp,
+                            cardHeight = 152.dp,
+                            logoUrl = logoMap[item.id],
                             onClick = { onSelectMedia(item.id) }
                         )
                     }
@@ -519,6 +551,7 @@ fun HomeScreen(
                                 item = item,
                                 progress = progress,
                                 smartBadge = smartBadgesMap[item.id],
+                                logoUrl = logoMap[item.id],
                                 onClick = { onSelectMedia(item.id) }
                             )
                         }
@@ -612,13 +645,16 @@ fun SmartBadgePill(
 
 /**
  * Landscape Backdrop Card for Continue Watching matching macOS Apple TV style:
- * 16:9 ratio (236dp x 140dp), ambient overlay, next episode indicator, and progress bar.
+ * 16:9 ratio, ambient overlay, next episode indicator, title logo (with text fallback), and progress bar.
  */
 @Composable
 fun ContinueWatchingBackdropCard(
     item: MediaItemEntity,
     progress: TVShowProgress?,
     smartBadge: BadgeResult? = null,
+    cardWidth: androidx.compose.ui.unit.Dp = 236.dp,
+    cardHeight: androidx.compose.ui.unit.Dp = 140.dp,
+    logoUrl: String? = null,
     onClick: () -> Unit
 ) {
     // Art priority: backdrop -> next episode still path -> center-cropped poster
@@ -628,13 +664,15 @@ fun ContinueWatchingBackdropCard(
             ?: item.posterUrl
     }
 
+    var isLogoFailed by remember(logoUrl) { mutableStateOf(false) }
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         modifier = Modifier
-            .width(236.dp)
-            .height(140.dp)
+            .width(cardWidth)
+            .height(cardHeight)
             .clickable(onClick = onClick)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -712,14 +750,28 @@ fun ContinueWatchingBackdropCard(
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
-                Text(
-                    text = item.title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                // Title Logo with plain text as fallback
+                if (!logoUrl.isNullOrBlank() && !isLogoFailed) {
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Fit,
+                        onError = { isLogoFailed = true },
+                        modifier = Modifier
+                            .heightIn(max = 34.dp)
+                            .widthIn(max = 180.dp)
+                            .padding(bottom = 2.dp)
+                    )
+                } else {
+                    Text(
+                        text = item.title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
 
                 // Subtitle: Next Episode label or Progress Count
                 val subText = when {
