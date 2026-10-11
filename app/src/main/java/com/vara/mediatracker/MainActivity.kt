@@ -84,7 +84,8 @@ fun MainAppScreen(db: AppDatabase, prefs: PreferencesManager) {
                     Text(
                         text = when (selectedTab) {
                             0 -> "Dashboard"
-                            1 -> "Library"
+                            1 -> "Calendar"
+                            2 -> "Library"
                             else -> "Settings"
                         },
                         fontWeight = FontWeight.Bold,
@@ -105,8 +106,9 @@ fun MainAppScreen(db: AppDatabase, prefs: PreferencesManager) {
             // Main Screen Content
             when (selectedTab) {
                 0 -> HomeScreen(items = mediaItems, db = db, prefs = prefs, onSelectMedia = { activeDetailMediaId = it })
-                1 -> LibraryScreen(items = mediaItems, prefs = prefs, db = db, onSelectMedia = { activeDetailMediaId = it })
-                2 -> SettingsScreen(prefs = prefs, db = db)
+                1 -> com.vara.mediatracker.ui.calendar.ReleaseCalendarScreen(items = mediaItems, db = db, onSelectMedia = { activeDetailMediaId = it })
+                2 -> LibraryScreen(items = mediaItems, prefs = prefs, db = db, onSelectMedia = { activeDetailMediaId = it })
+                3 -> SettingsScreen(prefs = prefs, db = db)
             }
 
             // Floating Bottom Bar Pill
@@ -122,21 +124,22 @@ fun MainAppScreen(db: AppDatabase, prefs: PreferencesManager) {
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
+                    .padding(horizontal = 16.dp)
                     .navigationBarsPadding()
                     .padding(bottom = 12.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val items = listOf(
                         Triple(0, Icons.Default.Home, "Home"),
-                        Triple(1, Icons.Default.VideoLibrary, "Library"),
-                        Triple(2, Icons.Default.Settings, "Settings")
+                        Triple(1, Icons.Default.CalendarMonth, "Calendar"),
+                        Triple(2, Icons.Default.VideoLibrary, "Library"),
+                        Triple(3, Icons.Default.Settings, "Settings")
                     )
 
                     items.forEach { (tabIndex, icon, label) ->

@@ -107,30 +107,53 @@ fun HomeScreen(
         }
     }
 
-    // Base Active / In Progress items
-    val activeItems = remember(items) {
-        items.filter {
-            !it.isSoftDeleted && (
-                it.state.equals("Watching", ignoreCase = true) ||
-                it.state.equals("Active", ignoreCase = true) ||
-                it.state.equals("In Progress", ignoreCase = true)
+    // Continue Watching Candidate Pool matching macOS HomeCategoryProcessor.isHomeEligible:
+    // 1. Active / In Progress items (Watching, Active, In Progress)
+    // 2. Titles with fresh PREMIERE / NEW / BINGE_DROP radar badges released in the past 3 days (even if in Wishlist)
+    val continueWatchingPool = remember(items, smartBadgesMap, todayDateStr) {
+        items.filter { item ->
+            if (item.isSoftDeleted) return@filter false
+            if (item.state.equals("Completed", ignoreCase = true) || item.state.equals("Dropped", ignoreCase = true)) return@filter false
+
+            val isActive = item.state.equals("Watching", ignoreCase = true) ||
+                item.state.equals("Active", ignoreCase = true) ||
+                item.state.equals("In Progress", ignoreCase = true)
+
+            val badge = smartBadgesMap[item.id]?.badge
+            val isRadarBadge = badge != null && (
+                badge == SmartBadge.PREMIERE ||
+                badge == SmartBadge.NEW ||
+                badge == SmartBadge.BINGE_DROP ||
+                badge == SmartBadge.FINALE
             )
+
+            if (isActive) {
+                true
+            } else if (isRadarBadge) {
+                // Must be already released (releaseDate <= today) and within 3 days
+                val relDate = item.releaseDate
+                relDate != null && relDate <= todayDateStr
+            } else {
+                false
+            }
         }
     }
 
     // 1. CONTINUE WATCHING: Strictly READY NOW items (next unwatched episode airDate <= today or null)
-    val continueWatching = remember(activeItems, showProgressMap, smartBadgesMap, todayDateStr) {
-        activeItems.filter { item ->
+    val continueWatching = remember(continueWatchingPool, showProgressMap, smartBadgesMap, todayDateStr) {
+        continueWatchingPool.filter { item ->
             if (!item.type.contains("TV", ignoreCase = true)) {
-                true // Movie in progress
+                // For movies: already released (releaseDate <= todayDateStr or null)
+                item.releaseDate == null || item.releaseDate <= todayDateStr
             } else {
                 val progress = showProgressMap[item.id]
                 val nextEp = progress?.nextEpisode
-                if (nextEp == null) {
-                    false
-                } else {
+                if (nextEp != null) {
                     // Ready now if next episode is already released (airDate <= today) or unannounced
                     nextEp.airDate == null || nextEp.airDate <= todayDateStr
+                } else {
+                    // If episodes are not synced locally yet, check show releaseDate <= today
+                    item.releaseDate != null && item.releaseDate <= todayDateStr
                 }
             }
         }.sortedWith(

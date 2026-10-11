@@ -206,10 +206,11 @@ object BadgeEngine {
         val airDate = nextAir ?: parseDate(item.releaseDate) ?: return null
         val timeToAir = airDate.time - now.time
 
-        // Movies stay on PREMIERE window up until 3 days after release
-        // (matches macOS: moviePremiereWindow = -3 days ... future)
+        // Movies: PREMIERE badge when released within the past 3 days (matches macOS premiere window -3 days..0)
+        // or upcoming premiere if releasing in future
         if (!item.type.contains("TV", ignoreCase = true)) {
-            if (timeToAir >= -THREE_DAYS_MS) {
+            val daysSinceRelease = (now.time - airDate.time).toDouble() / MS_PER_DAY.toDouble()
+            if (daysSinceRelease in 0.0..3.0) {
                 return BadgeResult(SmartBadge.PREMIERE, isSparkle = true)
             }
         }
