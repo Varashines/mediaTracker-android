@@ -158,147 +158,48 @@ fun ReleaseCalendarScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 88.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        // Clears the floating nav bar plus the gesture inset. At 24dp the last card
+        // rendered underneath it.
+        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 108.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // 1. Month Header & Navigation
+        // 1. Month grid
         item {
             Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = {
-                            selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
-                                add(Calendar.MONTH, -1)
-                            }
-                            selectedDateString = null
-                        }) {
-                            Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Month")
+                MonthCalendarGrid(
+                    month = selectedYearMonth,
+                    todayString = todayString,
+                    eventsByDate = monthEventsMap,
+                    selectedDate = selectedDateString,
+                    onSelectDate = { selectedDateString = it },
+                    onPreviousMonth = {
+                        selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
+                            add(Calendar.MONTH, -1)
                         }
-
-                        Text(
-                            text = monthFormat.format(selectedYearMonth.time),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        IconButton(onClick = {
-                            selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
-                                add(Calendar.MONTH, 1)
-                            }
-                            selectedDateString = null
-                        }) {
-                            Icon(Icons.Default.ChevronRight, contentDescription = "Next Month")
+                        selectedDateString = null
+                    },
+                    onNextMonth = {
+                        selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
+                            add(Calendar.MONTH, 1)
                         }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Days of week header (Mon - Sun)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
-                    ) {
-                        listOf("M", "T", "W", "T", "F", "S", "S").forEach { dayLabel ->
-                            Text(
-                                text = dayLabel,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                modifier = Modifier.width(36.dp),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Month grid.
-                    //
-                    // Event days carry a small dot only. The previous version tinted every
-                    // day that had an event with a large filled circle, and since most days
-                    // in an actively-watched library do, the grid read as a wall of blobs with
-                    // a redundant second dot on top — the opposite of scannable.
-                    val chunkedWeeks = daysInMonth.chunked(7)
-                    chunkedWeeks.forEach { week ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            week.forEach { dateStr ->
-                                if (dateStr == null) {
-                                    Spacer(modifier = Modifier.size(38.dp))
-                                } else {
-                                    val isSelected = selectedDateString == dateStr
-                                    val isToday = dateStr == todayString
-                                    val dayNum = dateStr.takeLast(2).toIntOrNull()?.toString() ?: ""
-                                    val eventCount = monthEventsMap[dateStr]?.size ?: 0
-
-                                    Box(
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                when {
-                                                    // Today is the only filled cell.
-                                                    isToday -> MaterialTheme.colorScheme.primary
-                                                    isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-                                                    else -> Color.Transparent
-                                                }
-                                            )
-                                            .clickable {
-                                                selectedDateString = if (isSelected) null else dateStr
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Text(
-                                                text = dayNum,
-                                                fontSize = 13.sp,
-                                                fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                color = when {
-                                                    isToday -> Color.White
-                                                    isSelected -> MaterialTheme.colorScheme.primary
-                                                    else -> MaterialTheme.colorScheme.onSurface
-                                                }
-                                            )
-                                            // A single dot, slightly larger for a busier day.
-                                            if (eventCount > 0) {
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(if (eventCount > 2) 5.dp else 4.dp)
-                                                        .clip(CircleShape)
-                                                        .background(
-                                                            if (isToday) Color.White else AppColors.Gold
-                                                        )
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                        selectedDateString = null
+                    },
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)
+                )
             }
         }
 
-        // 2. Filter chips & Section summary
+        // 2. Filters
         item {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -307,14 +208,19 @@ fun ReleaseCalendarScreen(
                         FilterChip(
                             selected = selectedFilter == filter,
                             onClick = { selectedFilter = filter },
-                            label = { Text(filter, fontSize = 11.sp) }
+                            shape = RoundedCornerShape(12.dp),
+                            label = { Text(filter, fontSize = 12.sp) }
                         )
                     }
                 }
-
                 if (selectedDateString != null) {
                     TextButton(onClick = { selectedDateString = null }) {
-                        Text("Show all", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            "Show all",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
@@ -323,7 +229,7 @@ fun ReleaseCalendarScreen(
         // 3. Release Items Header
         item {
             val titleText = if (selectedDateString != null) {
-                if (selectedDateString == todayString) "Releases Today" else "Releases on $selectedDateString"
+                "Releases on ${formatReleaseDay(selectedDateString)}"
             } else {
                 "All Releases for ${monthFormat.format(selectedYearMonth.time)}"
             }
@@ -334,6 +240,7 @@ fun ReleaseCalendarScreen(
                 horizontalPadding = 0.dp
             )
         }
+
 
         // 4. Release Cards
         if (displayedEvents.isEmpty()) {
@@ -391,8 +298,8 @@ fun CalendarReleaseCard(
             // Poster Artwork Thumbnail
             Box(
                 modifier = Modifier
-                    .width(60.dp)
-                    .height(90.dp)
+                    .width(58.dp)
+                    .height(84.dp)
                     .clip(RoundedCornerShape(10.dp))
             ) {
                 if (item.posterUrl != null) {

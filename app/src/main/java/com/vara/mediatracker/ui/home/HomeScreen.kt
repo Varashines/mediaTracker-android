@@ -336,7 +336,7 @@ fun HomeScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 88.dp),
+        contentPadding = PaddingValues(bottom = 108.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
         // 1. Top Continue Watching: First 5 cards scrollable at the top (or spotlight if CW empty)
@@ -1061,9 +1061,9 @@ fun HomePosterCard(
             // Bottom Overlay: Countdown Timer Chip for Upcoming / CS items (matching macOS hourglass pill)
             if (!countdownLabel.isNullOrBlank()) {
                 Surface(
-                    color = Color.Black.copy(alpha = 0.78f),
-                    shape = RoundedCornerShape(8.dp),
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color.White.copy(alpha = 0.2f)),
+                    color = Color.Black.copy(alpha = 0.88f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color.White.copy(alpha = 0.25f)),
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 8.dp)

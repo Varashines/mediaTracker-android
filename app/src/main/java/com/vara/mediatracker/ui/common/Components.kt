@@ -121,7 +121,9 @@ fun ExpressiveNavigationBar(
 
     Surface(
         shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
+        // Effectively opaque: at 0.95 poster artwork still bled through the bar and
+        // collided with the labels.
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 6.dp,
         shadowElevation = 10.dp,
         border = BorderStroke(
