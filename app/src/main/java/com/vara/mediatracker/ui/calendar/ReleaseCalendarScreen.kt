@@ -33,8 +33,10 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.ui.common.parseTargetAirDateTime
 import com.vara.mediatracker.ui.common.ExpressiveCard
+import com.vara.mediatracker.ui.common.formatReleaseDay
 import com.vara.mediatracker.ui.common.rememberCountdownText
 import com.vara.mediatracker.ui.common.rememberTodayDateString
+import com.vara.mediatracker.ui.home.SectionHeader
 import com.vara.mediatracker.ui.home.SmartBadgePill
 import com.vara.mediatracker.ui.theme.AppColors
 import java.text.SimpleDateFormat
@@ -217,18 +219,23 @@ fun ReleaseCalendarScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                    // Month Calendar Grid (7 columns)
+                    // Month grid.
+                    //
+                    // Event days carry a small dot only. The previous version tinted every
+                    // day that had an event with a large filled circle, and since most days
+                    // in an actively-watched library do, the grid read as a wall of blobs with
+                    // a redundant second dot on top — the opposite of scannable.
                     val chunkedWeeks = daysInMonth.chunked(7)
                     chunkedWeeks.forEach { week ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceAround
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             week.forEach { dateStr ->
                                 if (dateStr == null) {
-                                    Spacer(modifier = Modifier.size(36.dp))
+                                    Spacer(modifier = Modifier.size(38.dp))
                                 } else {
                                     val isSelected = selectedDateString == dateStr
                                     val isToday = dateStr == todayString
@@ -237,13 +244,13 @@ fun ReleaseCalendarScreen(
 
                                     Box(
                                         modifier = Modifier
-                                            .size(36.dp)
+                                            .size(38.dp)
                                             .clip(CircleShape)
                                             .background(
                                                 when {
-                                                    isSelected -> AppColors.Accent
-                                                    isToday -> AppColors.Accent.copy(alpha = 0.25f)
-                                                    eventCount > 0 -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                                    // Today is the only filled cell.
+                                                    isToday -> MaterialTheme.colorScheme.primary
+                                                    isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
                                                     else -> Color.Transparent
                                                 }
                                             )
@@ -258,20 +265,24 @@ fun ReleaseCalendarScreen(
                                         ) {
                                             Text(
                                                 text = dayNum,
-                                                fontSize = 12.sp,
-                                                fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = 13.sp,
+                                                fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Medium,
                                                 color = when {
-                                                    isSelected -> Color.White
-                                                    isToday -> AppColors.Accent
+                                                    isToday -> Color.White
+                                                    isSelected -> MaterialTheme.colorScheme.primary
                                                     else -> MaterialTheme.colorScheme.onSurface
                                                 }
                                             )
+                                            // A single dot, slightly larger for a busier day.
                                             if (eventCount > 0) {
+                                                Spacer(modifier = Modifier.height(2.dp))
                                                 Box(
                                                     modifier = Modifier
-                                                        .size(4.dp)
+                                                        .size(if (eventCount > 2) 5.dp else 4.dp)
                                                         .clip(CircleShape)
-                                                        .background(if (isSelected) Color.White else AppColors.Gold)
+                                                        .background(
+                                                            if (isToday) Color.White else AppColors.Gold
+                                                        )
                                                 )
                                             }
                                         }
@@ -279,7 +290,6 @@ fun ReleaseCalendarScreen(
                                 }
                             }
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
             }
@@ -304,7 +314,7 @@ fun ReleaseCalendarScreen(
 
                 if (selectedDateString != null) {
                     TextButton(onClick = { selectedDateString = null }) {
-                        Text("Show All Month", fontSize = 11.sp, color = AppColors.Accent)
+                        Text("Show all", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
@@ -317,10 +327,11 @@ fun ReleaseCalendarScreen(
             } else {
                 "All Releases for ${monthFormat.format(selectedYearMonth.time)}"
             }
-            Text(
-                text = titleText,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+            SectionHeader(
+                title = titleText,
+                count = displayedEvents.size,
+                accent = AppColors.Gold,
+                horizontalPadding = 0.dp
             )
         }
 
@@ -498,14 +509,34 @@ fun CalendarReleaseCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
-                Text(
-                    text = "Airs on " + event.dateString,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = AppColors.Gold
-                )
+                // Was "Airs on 2026-10-12" — a raw ISO value that reads like a database
+                // dump. Now "Today" / "Tomorrow" / "Wed 15 Oct".
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Schedule,
+                        contentDescription = null,
+                        tint = AppColors.Gold.copy(alpha = 0.9f),
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = formatReleaseDay(event.dateString),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AppColors.Gold
+                    )
+                    if (event.isEpisode && event.episodeCount > 1) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "• ${event.episodeCount} episodes",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
     }

@@ -889,11 +889,14 @@ fun SectionHeader(
     title: String,
     count: Int? = null,
     accent: Color? = null,
+    // Exposed because the Calendar already pads its own LazyColumn; hardcoding 16dp
+    // here silently double-padded it.
+    horizontalPadding: androidx.compose.ui.unit.Dp = 16.dp,
     modifier: Modifier = Modifier
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.padding(horizontal = 16.dp)
+        modifier = modifier.padding(horizontal = horizontalPadding)
     ) {
         if (accent != null) {
             Box(

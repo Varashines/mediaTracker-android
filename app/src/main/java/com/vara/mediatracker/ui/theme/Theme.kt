@@ -316,7 +316,12 @@ private fun resolveColorScheme(dark: Boolean, dynamic: Boolean): ColorScheme {
 @Composable
 fun MediaTrackerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    // Off by default. Material You derives the whole scheme from the user's wallpaper,
+    // which on this device produced a muddy taupe with a pink accent that fought the
+    // cinematic palette and the artwork. Available as a Settings toggle for users who
+    // want their system colours, and the default on Android 12+ for new installs once
+    // that is validated.
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = resolveColorScheme(darkTheme, dynamicColor)

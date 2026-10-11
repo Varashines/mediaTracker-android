@@ -174,3 +174,39 @@ fun rememberTodayCalendar(): Calendar {
 }
 
 private const val DAY_MILLIS = 86_400_000L
+
+/**
+ * Human-readable day for a `yyyy-MM-dd` string.
+ *
+ * The release list previously printed the raw ISO value ("Airs on 2026-10-12"),
+ * which reads like a database dump rather than a schedule. Relative labels are only
+ * used for today and tomorrow; everything further out is spelled out, because
+ * "in 4 days" becomes actively unhelpful as a date approaches.
+ */
+fun formatReleaseDay(dateString: String?, todayMillis: Long = System.currentTimeMillis()): String {
+    if (dateString.isNullOrBlank() || dateString.length < 10) return ""
+    val parsed = runCatching {
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateString.take(10))
+    }.getOrNull() ?: return dateString
+
+    val cal = Calendar.getInstance().apply { time = parsed }
+    val todayCal = Calendar.getInstance().apply { timeInMillis = todayMillis }
+
+    fun daysBetween(): Long {
+        val a = cal.clone() as Calendar
+        val b = todayCal.clone() as Calendar
+        listOf(a, b).forEach {
+            it.set(Calendar.HOUR_OF_DAY, 0)
+            it.set(Calendar.MINUTE, 0)
+            it.set(Calendar.SECOND, 0)
+            it.set(Calendar.MILLISECOND, 0)
+        }
+        return (a.timeInMillis - b.timeInMillis) / 86_400_000L
+    }
+
+    return when (daysBetween()) {
+        0L -> "Today"
+        1L -> "Tomorrow"
+        else -> SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(parsed)
+    }
+}
