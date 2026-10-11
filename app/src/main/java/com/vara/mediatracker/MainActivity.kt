@@ -16,6 +16,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import com.vara.mediatracker.ui.common.AppDestinations
 import com.vara.mediatracker.ui.common.ExpressiveNavigationBar
@@ -50,8 +51,11 @@ import com.vara.mediatracker.ui.calendar.ReleaseCalendarScreen
 import com.vara.mediatracker.ui.detail.DetailScreen
 import com.vara.mediatracker.ui.home.HomeScreen
 import com.vara.mediatracker.ui.library.LibraryScreen
+import com.vara.mediatracker.ui.search.SearchScreen
 import com.vara.mediatracker.ui.settings.SettingsScreen
 import com.vara.mediatracker.ui.theme.MediaTrackerTheme
+
+private const val CalendarTab = 4
 
 class MainActivity : ComponentActivity() {
 
@@ -103,18 +107,28 @@ fun MainAppScreen(container: AppContainer) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = AppDestinations[selectedTab].label,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
+            // Home draws its own collapsing large title driven by its own scroll state.
+            // Every other screen gets a compact bar here, since nothing else owns one.
+            if (selectedTab != 0) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = when (selectedTab) {
+                                CalendarTab -> "Calendar"
+                                1 -> "Search"
+                                2 -> "Library"
+                                else -> "Settings"
+                            },
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.statusBarsPadding()
                 )
-            )
+            }
         },
         bottomBar = {
             ExpressiveNavigationBar(
@@ -123,7 +137,7 @@ fun MainAppScreen(container: AppContainer) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
             )
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -152,9 +166,26 @@ fun MainAppScreen(container: AppContainer) {
                 label = "tabTransition"
             ) { tab ->
                 when (tab) {
-                    0 -> HomeScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
-                    1 -> ReleaseCalendarScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
-                    2 -> LibraryScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
+                    0 -> HomeScreen(
+                        items = mediaItems,
+                        container = container,
+                        onSelectMedia = { activeDetailMediaId = it },
+                        onOpenCalendar = { selectedTab = CalendarTab }
+                    )
+                    // Calendar is a view of upcoming releases, not a place you live, so
+                    // it is reached from Home rather than holding a nav slot.
+                    CalendarTab -> ReleaseCalendarScreen(
+                        items = mediaItems, container = container,
+                        onSelectMedia = { activeDetailMediaId = it }
+                    )
+                    1 -> SearchScreen(
+                        items = mediaItems, container = container,
+                        onSelectMedia = { activeDetailMediaId = it }
+                    )
+                    2 -> LibraryScreen(
+                        items = mediaItems, container = container,
+                        onSelectMedia = { activeDetailMediaId = it }
+                    )
                     else -> SettingsScreen(container = container)
                 }
             }

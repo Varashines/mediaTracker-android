@@ -5,6 +5,19 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.ripple
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Icon
@@ -94,22 +108,34 @@ data class NavDestination(
     val icon: ImageVector
 )
 
+/**
+ * Bottom navigation destinations.
+ *
+ * Reordered away from Home/Calendar/Library/Settings. Calendar is a *view* of upcoming
+ * releases rather than a place you live, so it does not deserve a permanent slot; it is
+ * reached from the Home header. Search took its place because for a tracker the primary
+ * job is adding and finding content, not just looking at what is already there.
+ */
 val AppDestinations = listOf(
     NavDestination("Home", Icons.Filled.Home),
-    NavDestination("Calendar", Icons.Filled.CalendarMonth),
+    NavDestination("Search", Icons.Filled.Search),
     NavDestination("Library", Icons.Filled.VideoLibrary),
     NavDestination("Settings", Icons.Filled.Settings)
 )
 
-private val NavItemWidth = 84.dp
+private val NavItemWidth = 78.dp
 
 /**
- * Floating navigation bar with an animated selection pill.
+ * Icon-only bottom navigation with a sliding active indicator.
  *
- * The selected item is marked by a pill that fades and scales in rather than the
- * highlight snapping between slots, and the active label fades alongside it. The pill
- * sits behind the icons in a parallel row so it never shifts the content when the
- * label appears — otherwise the bar would jitter on every tap.
+ * Labels were previously shown for the selected destination only. That is worse than
+ * either extreme on a phone: the bar changes width and the whole row reflows on every
+ * tap, and the shifting text draws the eye away from the icons it is labelling. Icon-only
+ * is now the rule, matching how most media apps do it.
+ *
+ * Each destination gets an equal slice of the width so the bar reads as evenly divided
+ * regardless of icon size, and the indicator is a pill behind the active icon — the
+ * current Material 3 pattern — rather than a colour change on the icon itself.
  */
 @Composable
 fun ExpressiveNavigationBar(
@@ -120,105 +146,82 @@ fun ExpressiveNavigationBar(
     val motion = LocalMotion.current
 
     Surface(
-        shape = RoundedCornerShape(28.dp),
-        // Effectively opaque: at 0.95 poster artwork still bled through the bar and
-        // collided with the labels.
+        shape = RoundedCornerShape(26.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 6.dp,
-        shadowElevation = 10.dp,
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-        ),
-        modifier = modifier
+        tonalElevation = 3.dp,
+        shadowElevation = 12.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+        modifier = modifier.fillMaxWidth()
     ) {
-        Box {
-            // Indicator layer, drawn first so icons render above it.
-            Row(
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                AppDestinations.indices.forEach { index ->
-                    val selected = index == selectedIndex
-                    // Named distinctly: inside graphicsLayer { } a bare `alpha` would
-                    // resolve to the layer's own property, not the animated value.
-                    val pillAlpha by animateFloatAsState(
-                        targetValue = if (selected) 1f else 0f,
-                        animationSpec = motion.gentle,
-                        label = "pillAlpha"
-                    )
-                    val pillScale by animateFloatAsState(
-                        targetValue = if (selected) 1f else 0.82f,
-                        animationSpec = motion.gentle,
-                        label = "pillScale"
-                    )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AppDestinations.forEachIndexed { index, destination ->
+                val selected = index == selectedIndex
+                val indicatorAlpha by animateFloatAsState(
+                    targetValue = if (selected) 1f else 0f,
+                    animationSpec = motion.gentle,
+                    label = "navIndicatorAlpha"
+                )
+                val indicatorScale by animateFloatAsState(
+                    targetValue = if (selected) 1f else 0.6f,
+                    animationSpec = motion.gentle,
+                    label = "navIndicatorScale"
+                )
+                val iconScale by animateFloatAsState(
+                    targetValue = if (selected) 1f else 0.94f,
+                    animationSpec = motion.snappy,
+                    label = "navIconScale"
+                )
+
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Active indicator sits behind the icon.
                     Box(
                         modifier = Modifier
-                            .width(NavItemWidth)
-                            .height(44.dp)
+                            .width(64.dp)
+                            .height(32.dp)
                             .graphicsLayer {
-                                alpha = pillAlpha
-                                scaleX = pillScale
-                                scaleY = pillScale
+                                alpha = indicatorAlpha
+                                scaleX = indicatorScale
+                                scaleY = indicatorScale
                             }
-                            .clip(RoundedCornerShape(22.dp))
+                            .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.20f))
                     )
-                }
-            }
-
-            Row(
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                AppDestinations.forEachIndexed { index, destination ->
-                    val selected = index == selectedIndex
-                    val iconScale by animateFloatAsState(
-                        targetValue = if (selected) 1.1f else 1f,
-                        animationSpec = motion.snappy,
-                        label = "navIconScale"
-                    )
-                    Surface(
-                        onClick = { onSelect(index) },
-                        shape = RoundedCornerShape(22.dp),
-                        color = Color.Transparent,
-                        modifier = Modifier
-                            .height(44.dp)
-                            .width(NavItemWidth)
+                    Box(
+                        modifier = Modifier.size(44.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.graphicsLayer {
-                                scaleX = iconScale
-                                scaleY = iconScale
-                            }
-                        ) {
-                            Icon(
-                                imageVector = destination.icon,
-                                contentDescription = destination.label,
-                                tint = if (selected) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(21.dp)
-                            )
-                            AnimatedVisibility(
-                                visible = selected,
-                                enter = fadeIn(animationSpec = tween(motion.STANDARD)),
-                                exit = fadeOut(animationSpec = tween(motion.FAST))
-                            ) {
-                                Row {
-                                    Spacer(Modifier.width(7.dp))
-                                    Text(
-                                        text = destination.label,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        maxLines = 1
-                                    )
+                        Icon(
+                            imageVector = destination.icon,
+                            contentDescription = destination.label,
+                            tint = if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .size(23.dp)
+                                .graphicsLayer {
+                                    scaleX = iconScale
+                                    scaleY = iconScale
                                 }
-                            }
-                        }
+                        )
                     }
+                    // Full-row tap target; the icon alone is a small target on a phone.
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clip(CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = ripple(),
+                                onClick = { onSelect(index) }
+                            )
+                    )
                 }
             }
         }
@@ -274,4 +277,99 @@ fun EmptyState(
             )
         }
     }
+}
+/**
+ * Collapsing large-title header, the standard mobile pattern.
+ *
+ * The previous shell spent a full ~120dp showing the single word "Home" and kept that
+ * space forever. On a phone that is a fifth of the viewport spent on a label. This
+ * starts large and shrinks to a compact bar as the content scrolls, with the bar
+ * background fading in only once it would otherwise sit over artwork.
+ *
+ * Driven by the LazyListState of the screen's own scroll container.
+ */
+@Composable
+fun CollapsingHeader(
+    title: String,
+    scrollState: LazyListState,
+    modifier: Modifier = Modifier,
+    actions: @Composable (() -> Unit)? = null
+) {
+    val motion = LocalMotion.current
+    val density = LocalDensity.current
+    val collapsePx = with(density) { 64.dp.toPx() }
+
+    // Read inside derivedStateOf so only this composable recomposes while scrolling,
+    // rather than the whole screen behind it.
+    val fraction by remember(scrollState) {
+        derivedStateOf {
+            val raw = scrollState.firstVisibleItemIndex * 200f + scrollState.firstVisibleItemScrollOffset
+            (raw / collapsePx).coerceIn(0f, 1f)
+        }
+    }
+    val barAlpha by animateFloatAsState(fraction, motion.gentle, label = "headerAlpha")
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        Surface(
+            color = MaterialTheme.colorScheme.background.copy(alpha = barAlpha * 0.95f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = barAlpha)
+                )
+                Spacer(Modifier.weight(1f))
+                actions?.invoke()
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(top = 12.dp, bottom = 10.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 1f - fraction)
+            )
+        }
+    }
+}
+
+/**
+ * Horizontal rail that snaps between items.
+ *
+ * A plain LazyRow stops wherever the finger lifts, which on a poster rail leaves one
+ * card half off-screen. Snapping means every card is either fully visible or fully
+ * out of the way.
+ */
+@Composable
+fun SnapRail(
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
+    itemSpacing: Dp = 12.dp,
+    content: LazyListScope.() -> Unit
+) {
+    val listState = rememberLazyListState()
+    LazyRow(
+        state = listState,
+        modifier = modifier,
+        contentPadding = contentPadding,
+        horizontalArrangement = Arrangement.spacedBy(itemSpacing),
+        flingBehavior = rememberSnapFlingBehavior(lazyListState = listState),
+        content = content
+    )
 }

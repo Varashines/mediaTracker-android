@@ -8,6 +8,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.vara.mediatracker.ui.common.CollapsingHeader
+import com.vara.mediatracker.ui.common.SnapRail
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -66,7 +69,8 @@ data class TVShowProgress(
 fun HomeScreen(
     items: List<MediaItemEntity>,
     container: AppContainer,
-    onSelectMedia: (String) -> Unit
+    onSelectMedia: (String) -> Unit,
+    onOpenCalendar: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val allEpisodes by container.mediaDao.getAllEpisodesFlow()
@@ -187,6 +191,9 @@ fun HomeScreen(
         items.filter { HomeRanking.isActivelyInProgress(it) && !it.isSoftDeleted }
     }
 
+    // Everything the hero can page through: the freshest things worth resuming.
+    val heroItems = remember(continueWatching) { continueWatching.take(5) }
+
     val sections = remember(continueWatching, allInProgress, smartBadgesMap) {
         HomeSectionsBuilder.build(
             readyNow = continueWatching,
@@ -251,6 +258,11 @@ fun HomeScreen(
             }
         ).take(15)
     }
+
+    // Time-sensitive strip. Sourced from Coming Soon rather than releaseDate: a show's
+    // releaseDate is its premiere, often a year old, while what matters is when the
+    // next episode actually lands.
+    val thisWeekItems = remember(comingSoonItems) { comingSoonItems.take(15) }
 
     // 3. RECENTLY ADDED: Sorted by last added / interacted, max 15
     val recentlyAddedItems = remember(items) {
@@ -334,236 +346,58 @@ fun HomeScreen(
         (sections.newReleases + sections.continueWatching).filter { it.id !in placed }
     }
 
+    // Fixed hint rather than reading the header's own animation state, which is
+    // internal to CollapsingHeader.
+    val barAlphaHint = 1f
+    val listState = rememberLazyListState()
+
+    Column(modifier = Modifier.fillMaxSize()) {
+    CollapsingHeader(
+        title = "Home",
+        scrollState = listState,
+        actions = {
+            IconButton(onClick = onOpenCalendar) {
+                Icon(
+                    Icons.Default.CalendarMonth,
+                    contentDescription = "Release calendar",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = barAlphaHint)
+                )
+            }
+        }
+    )
+
+    // Resume is an action, not browsing, so it gets a compact strip rather than a rail.
+    val resumeItems = remember(continueWatching) {
+        HomeFeed.resumeCandidates(continueWatching, smartBadgesMap, limit = 5)
+    }
+
+    val feedDays = remember(items, episodesByShow, smartBadgesMap) {
+        HomeFeed.build(items, episodesByShow, smartBadgesMap)
+    }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 108.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp)
+        contentPadding = PaddingValues(top = 4.dp, bottom = 112.dp)
     ) {
-        // 1. Top Continue Watching: First 5 cards scrollable at the top (or spotlight if CW empty)
-        if (heroSource.isNotEmpty()) {
+        // Continue watching — small, horizontal, purely so a resume is one tap away.
+        if (resumeItems.isNotEmpty()) {
             item {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    items(heroSource, key = { "top_${it.id}" }) { item ->
-                        val progress = showProgressMap[item.id]
-                        ContinueWatchingBackdropCard(
-                            item = item,
-                            progress = progress,
-                            smartBadge = smartBadgesMap[item.id],
-                            cardWidth = 270.dp,
-                            cardHeight = 152.dp,
-                            logoUrl = logoMap[item.id],
-                            onClick = { onSelectMedia(item.id) }
-                        )
-                    }
-                }
-            }
-        } else if (spotlightItem != null) {
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                        .height(230.dp)
-                        .clickable { onSelectMedia(spotlightItem.id) },
-                    shape = RoundedCornerShape(20.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        AsyncImage(
-                            model = spotlightItem.backdropUrl ?: spotlightItem.posterUrl,
-                            contentDescription = spotlightItem.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.4f),
-                                            Color.Black.copy(alpha = 0.95f)
-                                        )
-                                    )
-                                )
-                        )
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(18.dp)
-                        ) {
-                            val heroBadge = smartBadgesMap[spotlightItem.id]
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (heroBadge != null) {
-                                    SmartBadgePill(badge = heroBadge.badge, isSparkle = heroBadge.isSparkle)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (heroBadge != null) Color.Black.copy(alpha = 0.6f) else AppColors.Accent
-                                ) {
-                                    Text(
-                                        text = if (spotlightItem.state.equals("Watching", ignoreCase = true) || spotlightItem.state.equals("Active", ignoreCase = true)) "NOW WATCHING" else "FEATURED",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = spotlightItem.title,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (spotlightItem.overview.isNotBlank()) {
-                                Text(
-                                    text = spotlightItem.overview,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 2. macOS Top Focus Section Bar (For You [Watchlist Only] / Recently Watched / Pick of the Day)
-        item {
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    HomeFocusSection.values().forEach { section ->
-                        val isSelected = activeFocusSection == section
-                        Surface(
-                            onClick = {
-                                activeFocusSection = if (isSelected) null else section
-                            },
-                            shape = RoundedCornerShape(20.dp),
-                            color = if (isSelected) AppColors.Accent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(vertical = 9.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = when (section) {
-                                        HomeFocusSection.FOR_YOU -> Icons.Default.AutoAwesome
-                                        HomeFocusSection.RECENTLY_WATCHED -> Icons.Default.History
-                                        HomeFocusSection.PICK_OF_THE_DAY -> Icons.Default.Star
-                                    },
-                                    contentDescription = null,
-                                    tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Text(
-                                    text = section.title,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Expanded Focus Tray
-                AnimatedVisibility(
-                    visible = activeFocusSection != null,
-                    enter = fadeIn(),
-                    exit = fadeOut()
-                ) {
-                    if (activeFocusSection != null) {
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = AppColors.Accent.copy(alpha = 0.08f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Accent.copy(alpha = 0.25f)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 10.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(vertical = 12.dp)) {
-                                val focusList = when (activeFocusSection) {
-                                    HomeFocusSection.FOR_YOU -> forYouItems
-                                    HomeFocusSection.RECENTLY_WATCHED -> recentlyWatchedItems
-                                    HomeFocusSection.PICK_OF_THE_DAY -> pickOfTheDay
-                                    null -> emptyList()
-                                }
-                                if (activeFocusSection == HomeFocusSection.FOR_YOU) {
-                                    Text(
-                                        text = "Top picks from your Watchlist queue",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                }
-                                if (focusList.isEmpty()) {
-                                    Text(
-                                        text = if (activeFocusSection == HomeFocusSection.FOR_YOU) "No titles in your Watchlist yet." else "No items found.",
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                                    )
-                                } else {
-                                    LazyRow(
-                                        contentPadding = PaddingValues(horizontal = 12.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        items(focusList, key = { it.id }) { item ->
-                                            HomePosterCard(
-                                                item = item,
-                                                smartBadge = smartBadgesMap[item.id],
-                                                onClick = { onSelectMedia(item.id) }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. ROW 1: CONTINUE WATCHING (Remaining items below top 5)
-        if (remainingCW.isNotEmpty()) {
-            item {
-                Column {
+                Column(modifier = Modifier.padding(bottom = 6.dp)) {
                     SectionHeader(
-                        title = "Continue Watching",
-                        count = remainingCW.size,
-                        accent = AppColors.Gold
+                        title = "Continue watching",
+                        count = resumeItems.size,
+                        accent = AppColors.Accent
                     )
                     Spacer(modifier = Modifier.height(10.dp))
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        items(remainingCW, key = { "rest_${it.id}" }) { item ->
-                            val progress = showProgressMap[item.id]
+                    SnapRail {
+                        items(resumeItems, key = { it.id }) { item ->
                             ContinueWatchingBackdropCard(
                                 item = item,
-                                progress = progress,
+                                progress = showProgressMap[item.id],
                                 smartBadge = smartBadgesMap[item.id],
+                                cardWidth = 210.dp,
+                                cardHeight = 118.dp,
                                 logoUrl = logoMap[item.id],
                                 onClick = { onSelectMedia(item.id) }
                             )
@@ -573,101 +407,23 @@ fun HomeScreen(
             }
         }
 
-        // 4. ROW 2: COMING SOON (Upcoming Releases + Airing Soon Next Episodes, max 15, no count beside title)
-        if (comingSoonItems.isNotEmpty()) {
-            item {
-                Column {
-                    SectionHeader(
-                        title = "Coming Soon",
-                        count = comingSoonItems.size,
-                        accent = AppColors.AccentLuminous
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        items(comingSoonItems, key = { it.id }) { item ->
-                            val progress = showProgressMap[item.id]
-                            HomePosterCard(
-                                item = item,
-                                nextAirDate = progress?.nextAiringDate ?: (if (item.releaseDate != null && item.releaseDate > todayDateStr) item.releaseDate else null),
-                                smartBadge = smartBadgesMap[item.id],
-                                onClick = { onSelectMedia(item.id) }
-                            )
-                        }
-                    }
-                }
-            }
+        // Everything else is one chronological feed.
+        item {
+            SectionHeader(
+                title = "Coming up",
+                count = feedDays.sumOf { it.entries.size },
+                accent = AppColors.Gold,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            HomeTimeline(
+                days = feedDays,
+                badges = smartBadgesMap,
+                onSelectMedia = onSelectMedia
+            )
         }
+    }
 
-        // New: premieres and brand new releases, lifted out of Continue Watching so a
-        // time-sensitive title always has somewhere prominent to live.
-        if (sections.newReleases.isNotEmpty()) {
-            item {
-                Column {
-                    SectionHeader(
-                        title = "New",
-                        count = sections.newReleases.size,
-                        accent = AppColors.Liked
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    PosterRail(
-                        items = sections.newReleases,
-                        badges = smartBadgesMap,
-                        progress = showProgressMap,
-                        onSelectMedia = onSelectMedia
-                    )
-                }
-            }
-        }
-
-        // In Progress: everything unfinished that is neither ready now nor new. This
-        // previously had no home at all.
-        if (sections.inProgress.isNotEmpty()) {
-            item {
-                Column {
-                    SectionHeader(
-                        title = "In Progress",
-                        count = sections.inProgress.size,
-                        accent = AppColors.Accent
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    PosterRail(
-                        items = sections.inProgress,
-                        badges = smartBadgesMap,
-                        progress = showProgressMap,
-                        onSelectMedia = onSelectMedia
-                    )
-                }
-            }
-        }
-
-        // 5. ROW 3: RECENTLY ADDED (max 15, no count beside title)
-        if (recentlyAddedItems.isNotEmpty()) {
-            item {
-                Column {
-                    SectionHeader(
-                        title = "Recently Added",
-                        count = recentlyAddedItems.size,
-                        accent = AppColors.TextSecondary
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        items(recentlyAddedItems, key = { it.id }) { item ->
-                            HomePosterCard(
-                                item = item,
-                                smartBadge = smartBadgesMap[item.id],
-                                onClick = { onSelectMedia(item.id) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -984,8 +740,8 @@ fun HomePosterCard(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f),
         tonalElevation = 2.dp,
         modifier = Modifier
-            .width(140.dp)
-            .height(206.dp)
+            .width(118.dp)
+            .height(172.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (item.posterUrl != null) {

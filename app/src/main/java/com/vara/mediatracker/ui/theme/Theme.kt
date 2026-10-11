@@ -9,14 +9,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -293,38 +290,12 @@ private val CinematicLight = lightColorScheme(
     onError = Color.White
 )
 
-/**
- * Picks the wallpaper-derived scheme when the platform supports it.
- *
- * Material You is the point of the redesign on Android 12+, but the app's chrome has to
- * stay legible against poster artwork, so the cinematic fallback remains for older
- * devices and for anyone who turns dynamic colour off.
- */
-@Composable
-private fun resolveColorScheme(dark: Boolean, dynamic: Boolean): ColorScheme {
-    if (dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        val context = LocalContext.current
-        return if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-    }
-    return if (dark) CinematicDark else CinematicLight
-}
-
-/**
- * @param dynamicColor use Material You colours derived from the user's wallpaper.
- *   Requires a theme carrying the wallpaper colours to be set on the Activity.
- */
 @Composable
 fun MediaTrackerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Off by default. Material You derives the whole scheme from the user's wallpaper,
-    // which on this device produced a muddy taupe with a pink accent that fought the
-    // cinematic palette and the artwork. Available as a Settings toggle for users who
-    // want their system colours, and the default on Android 12+ for new installs once
-    // that is validated.
-    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = resolveColorScheme(darkTheme, dynamicColor)
+    val colorScheme = if (darkTheme) CinematicDark else CinematicLight
 
     CompositionLocalProvider(LocalMotion provides AppMotion) {
         MaterialTheme(
