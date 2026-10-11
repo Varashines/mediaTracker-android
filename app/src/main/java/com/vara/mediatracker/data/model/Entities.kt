@@ -1,6 +1,7 @@
 package com.vara.mediatracker.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "media_items")
@@ -35,4 +36,28 @@ data class EpisodeEntity(
     val airDate: String? = null,
     val runtime: Int? = null,
     val updatedAt: String? = null
+)
+
+/**
+ * Persisted smart-badge state for one title.
+ *
+ * Badges used to be derived inside `remember {}` on every Home composition, which
+ * meant they were only ever as fresh as the last time a screen recomposed. Persisting
+ * them lets a background worker keep them current while the app is closed, and means
+ * the UI reads a small indexed table instead of running BadgeEngine across every
+ * title and every episode on the main thread.
+ *
+ * `targetDate` is the air/release date the badge was computed against. It makes the
+ * badge's window explicit and lets notifications tell "newly SOON" from "still SOON".
+ */
+@Entity(
+    tableName = "media_badges",
+    indices = [Index(value = ["badgeLabel"]), Index(value = ["targetDate"])]
+)
+data class MediaBadgeEntity(
+    @PrimaryKey val mediaId: String,
+    val badgeLabel: String,
+    val isSparkle: Boolean,
+    val targetDate: String?,
+    val computedAt: Long
 )

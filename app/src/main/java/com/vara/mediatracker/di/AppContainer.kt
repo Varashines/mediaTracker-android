@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.vara.mediatracker.BuildConfig
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.db.AppDatabase
+import com.vara.mediatracker.data.db.Migrations
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import io.ktor.client.HttpClient
@@ -30,7 +31,9 @@ class AppContainer(context: Context) {
 
     val database: AppDatabase by lazy {
         Room.databaseBuilder(appContext, AppDatabase::class.java, "mediatracker.db")
-            // Destructive fallback is a development convenience only; see MainActivity.
+            .addMigrations(*Migrations.ALL)
+            // Destructive fallback is a development convenience only, so a missing
+            // Migration fails loudly in release rather than discarding a synced library.
             .apply { if (BuildConfig.DEBUG) fallbackToDestructiveMigration() }
             .build()
     }

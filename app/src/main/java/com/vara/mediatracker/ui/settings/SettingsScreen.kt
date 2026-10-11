@@ -23,8 +23,16 @@ import androidx.compose.ui.unit.sp
 import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.data.prefs.PreferencesManager
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -84,6 +92,40 @@ fun SettingsScreen(
     }
 
     val current = draft.value
+
+    // --- Background sync / notification permission ---
+    var backgroundSyncEnabled by remember { mutableStateOf(SyncScheduler.isEnabled(context)) }
+    var notificationsAllowed by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationsAllowed = granted
+        if (granted) SyncScheduler.syncNow(context)
+    }
+
+    // Reflects background runs, not just the manual button. Polled only while this
+    // screen is on the back stack, so it costs nothing once the user leaves Settings.
+    var lastSyncAt by remember { mutableLongStateOf(SyncScheduler.lastSyncTimestamp(context)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val ts = SyncScheduler.lastSyncTimestamp(context)
+            if (ts != lastSyncAt) lastSyncAt = ts
+            delay(10_000)
+        }
+    }
+
+    val syncStatusLabel = remember(lastSyncAt, current) {
+        val base = if (lastSyncAt == 0L) "Not synced yet"
+        else "Last synced " + SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(lastSyncAt))
+        if (current.supabaseUrl.isBlank() || current.syncKey.isBlank()) "$base — add credentials above"
+        else base
+    }
 
     Column(
         modifier = Modifier
@@ -182,6 +224,7 @@ fun SettingsScreen(
                             val result = manager.pullFromCloud()
                             isSyncing = false
                             if (result.isSuccess) {
+                                SyncScheduler.recordSyncCompletion(context)
                                 val count = result.getOrNull() ?: 0
                                 val now = System.currentTimeMillis()
                                 prefs.lastSyncTimestamp = now
@@ -255,6 +298,87 @@ fun SettingsScreen(
                     placeholder = { Text("Enter v3 key or v4 Bearer token (ey...)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        // Background sync + notifications card
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CloudSync,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Automatic Updates",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Text(
+                    text = "Keeps your library and smart badges current on a schedule, " +
+                        "so there's nothing to refresh by hand.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Background Sync", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = if (SyncScheduler.isEnabled(context)) "Every 30 minutes while on Wi-Fi or mobile data"
+                            else "Paused",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = backgroundSyncEnabled,
+                        onCheckedChange = {
+                            backgroundSyncEnabled = it
+                            SyncScheduler.setEnabled(context, it)
+                            if (it) SyncScheduler.syncNow(context)
+                        }
+                    )
+                }
+
+                if (backgroundSyncEnabled && !notificationsAllowed) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Text(
+                        text = "Allow notifications to hear about premieres and upcoming episodes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Allow Notifications")
+                    }
+                }
+
+                Text(
+                    text = syncStatusLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
             }
         }

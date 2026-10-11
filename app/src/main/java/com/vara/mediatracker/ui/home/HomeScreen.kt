@@ -103,13 +103,17 @@ fun HomeScreen(
         }
     }
 
-    // Precalculate Smart Badges across all items using BadgeEngine
-    val smartBadgesMap = remember(items, episodesByShow) {
-        val now = Date()
-        items.associate { item ->
-            val showKey = MediaIds.tvShowKey(item.id)
-            val showEps = episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList()
-            item.id to BadgeEngine.calculateBadge(item, showEps, now)
+    // Badges are read from Room rather than recomputed here. A background worker
+    // keeps this table current, so the UI never runs BadgeEngine across the whole
+    // library on the main thread — and badges are already correct on first paint.
+    val badgeRows by container.database.badgeDao().observeBadges()
+        .collectAsState(initial = emptyList())
+    val smartBadgesMap = remember(badgeRows) {
+        badgeRows.associate { row ->
+            row.mediaId to BadgeResult(
+                SmartBadge.fromLabel(row.badgeLabel) ?: SmartBadge.NEW,
+                isSparkle = row.isSparkle
+            )
         }
     }
 

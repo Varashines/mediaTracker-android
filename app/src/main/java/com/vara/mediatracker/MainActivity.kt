@@ -32,6 +32,7 @@ import com.vara.mediatracker.data.db.EpisodeKeyReconciler
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.common.LocalNowMillis
 import com.vara.mediatracker.ui.common.rememberNowMillis
+import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.calendar.ReleaseCalendarScreen
 import com.vara.mediatracker.ui.detail.DetailScreen
@@ -44,12 +45,16 @@ class MainActivity : ComponentActivity() {
 
     private val container: AppContainer by lazy { AppContainer(applicationContext) }
 
-    private val prefs get() = container.preferences
+    override fun onStart() {
+        super.onStart()
+        // Background sync keeps the library fresh while the app is closed; this covers
+        // the gap when the periodic run has not landed yet.
+        SyncScheduler.syncOnForeground(this)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        repairLegacyEpisodeKeys()
         setContent {
             MediaTrackerTheme {
                 // Single app-wide clock so countdown labels stay live without each
@@ -61,24 +66,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Rewrites pre-canonical episode primary keys once per install. Idempotent, so a
-     * crash mid-migration simply retries on the next launch.
-     */
-    private fun repairLegacyEpisodeKeys() {
-        if (prefs.episodeKeyMigrationDone) return
-        lifecycleScope.launch {
-            val migrated = EpisodeKeyReconciler(container.database).reconcile()
-            prefs.episodeKeyMigrationDone = true
-            if (migrated > 0) {
-                Log.i(TAG, "Normalized $migrated legacy episode id(s) to canonical form")
-            }
-        }
-    }
-
-    companion object {
-        private const val TAG = "MediaTracker"
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

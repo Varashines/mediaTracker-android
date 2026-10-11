@@ -2,6 +2,7 @@ package com.vara.mediatracker.data.db
 
 import androidx.room.*
 import com.vara.mediatracker.data.model.EpisodeEntity
+import com.vara.mediatracker.data.model.MediaBadgeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -58,11 +59,46 @@ interface MediaDao {
     suspend fun deleteEpisodesByIds(uniqueIds: List<String>)
 }
 
+/**
+ * Persisted badge state.
+ *
+ * Reads are Flows so a background recompute pushes straight into any open screen
+ * without the UI having to recompute anything.
+ */
+@Dao
+interface BadgeDao {
+    @Query("SELECT * FROM media_badges")
+    fun observeBadges(): Flow<List<MediaBadgeEntity>>
+
+    @Query("SELECT * FROM media_badges WHERE mediaId = :mediaId LIMIT 1")
+    suspend fun getBadge(mediaId: String): MediaBadgeEntity?
+
+    @Query("SELECT * FROM media_badges")
+    suspend fun getAllBadges(): List<MediaBadgeEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertBadges(badges: List<MediaBadgeEntity>)
+
+    @Query("DELETE FROM media_badges")
+    suspend fun deleteAllBadges()
+
+    /** Drops rows for titles that no longer exist or were soft deleted. */
+    @Query(
+        "DELETE FROM media_badges WHERE mediaId NOT IN " +
+            "(SELECT id FROM media_items WHERE isSoftDeleted = 0)"
+    )
+    suspend fun pruneOrphanedBadges()
+
+    @Query("SELECT COUNT(*) FROM media_badges")
+    suspend fun badgeCount(): Int
+}
+
 @Database(
-    entities = [MediaItemEntity::class, EpisodeEntity::class],
-    version = 2,
+    entities = [MediaItemEntity::class, EpisodeEntity::class, MediaBadgeEntity::class],
+    version = 3,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun mediaDao(): MediaDao
+    abstract fun badgeDao(): BadgeDao
 }
