@@ -98,6 +98,23 @@ data class TMDBSeasonDetailsResponse(
     val episodes: List<TMDBEpisodeItem> = emptyList()
 )
 
+@Serializable
+data class TMDBImageItem(
+    val file_path: String,
+    val iso_639_1: String? = null,
+    val width: Int = 0,
+    val height: Int = 0,
+    val vote_average: Double? = null
+)
+
+@Serializable
+data class TMDBImagesResponse(
+    val id: Int? = null,
+    val logos: List<TMDBImageItem> = emptyList(),
+    val backdrops: List<TMDBImageItem> = emptyList(),
+    val posters: List<TMDBImageItem> = emptyList()
+)
+
 class TMDBClient(private val apiKey: String) {
     private val client = HttpClient(OkHttp) {
         install(ContentNegotiation) {
@@ -132,6 +149,20 @@ class TMDBClient(private val apiKey: String) {
         }.body()
     }
 
+    suspend fun getMovieImages(id: Int): Result<TMDBImagesResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/movie/$id/images") {
+            applyAuth()
+            parameter("include_image_language", "en,null")
+        }.body()
+    }
+
+    suspend fun getTVImages(id: Int): Result<TMDBImagesResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/tv/$id/images") {
+            applyAuth()
+            parameter("include_image_language", "en,null")
+        }.body()
+    }
+
     suspend fun getSeasonDetails(tvId: Int, seasonNumber: Int): Result<TMDBSeasonDetailsResponse> = runCatching {
         client.get("https://api.themoviedb.org/3/tv/$tvId/season/$seasonNumber") {
             applyAuth()
@@ -160,6 +191,11 @@ class TMDBClient(private val apiKey: String) {
 
     companion object {
         fun buildPosterUrl(path: String?): String? {
+            if (path.isNullOrBlank()) return null
+            return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w500$path"
+        }
+
+        fun buildLogoUrl(path: String?): String? {
             if (path.isNullOrBlank()) return null
             return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w500$path"
         }

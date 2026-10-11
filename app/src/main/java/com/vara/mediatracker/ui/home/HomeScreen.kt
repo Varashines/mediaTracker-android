@@ -174,7 +174,7 @@ fun HomeScreen(
                     null -> 60
                 }
             }.thenByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
-        ).take(15)
+        ).take(20)
     }
 
     val continueWatchingIds = remember(continueWatching) {
@@ -299,8 +299,26 @@ fun HomeScreen(
         contentPadding = PaddingValues(bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
-        // 1. Cinematic Hero Spotlight
-        if (spotlightItem != null) {
+        // 1. Top Continue Watching: First 5 cards scrollable at the top (or spotlight if CW empty)
+        val topCW = continueWatching.take(5)
+        if (topCW.isNotEmpty()) {
+            item {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(topCW, key = { "top_${it.id}" }) { item ->
+                        val progress = showProgressMap[item.id]
+                        ContinueWatchingBackdropCard(
+                            item = item,
+                            progress = progress,
+                            smartBadge = smartBadgesMap[item.id],
+                            onClick = { onSelectMedia(item.id) }
+                        )
+                    }
+                }
+            }
+        } else if (spotlightItem != null) {
             item {
                 Card(
                     modifier = Modifier
@@ -484,8 +502,9 @@ fun HomeScreen(
             }
         }
 
-        // 3. ROW 1: CONTINUE WATCHING (Ready Now Only — Landscape Backdrop Cards with Smart Badges, max 15, no count beside title)
-        if (continueWatching.isNotEmpty()) {
+        // 3. ROW 1: CONTINUE WATCHING (Remaining items below top 5)
+        val remainingCW = continueWatching.drop(5)
+        if (remainingCW.isNotEmpty()) {
             item {
                 Column {
                     SectionHeader(title = "Continue Watching")
@@ -494,7 +513,7 @@ fun HomeScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        items(continueWatching, key = { it.id }) { item ->
+                        items(remainingCW, key = { it.id }) { item ->
                             val progress = showProgressMap[item.id]
                             ContinueWatchingBackdropCard(
                                 item = item,
