@@ -115,16 +115,14 @@ data class TMDBImagesResponse(
     val posters: List<TMDBImageItem> = emptyList()
 )
 
-class TMDBClient(private val apiKey: String) {
-    private val client = HttpClient(OkHttp) {
-        install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true
-                isLenient = true
-            })
-        }
-    }
-
+/**
+ * @param client shared HTTP client. Injecting it keeps one OkHttp connection pool
+ *   for the whole app and lets tests drive the client through Ktor's MockEngine.
+ */
+class TMDBClient(
+    private val apiKey: String,
+    private val client: HttpClient = defaultClient()
+) {
     private val isBearerToken: Boolean
         get() = apiKey.trim().length > 40 && apiKey.trim().startsWith("ey")
 
@@ -190,6 +188,19 @@ class TMDBClient(private val apiKey: String) {
     }
 
     companion object {
+        /**
+         * Fallback client for call sites outside the DI graph. Production code should
+         * inject a shared client instead so connections are pooled across instances.
+         */
+        fun defaultClient(): HttpClient = HttpClient(OkHttp) {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    isLenient = true
+                })
+            }
+        }
+
         fun buildPosterUrl(path: String?): String? {
             if (path.isNullOrBlank()) return null
             return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w500$path"

@@ -37,13 +37,29 @@ import com.vara.mediatracker.ui.theme.AppColors
 import java.text.SimpleDateFormat
 import java.util.*
 
+/**
+ * One row in the release calendar.
+ *
+ * A show that drops several episodes on the same day is represented by a single
+ * event rather than one card per episode — that is how streaming drops actually
+ * look, and one card per episode buried everything else under a wall of repeats.
+ * Movies are always their own event, since they never share a date with anything.
+ */
 data class CalendarReleaseEvent(
     val mediaItem: MediaItemEntity,
     val dateString: String,      // "yyyy-MM-dd"
-    val releaseContext: String,  // e.g. "S2 E4" or "Movie Premiere"
     val isEpisode: Boolean,
-    val episodeEntity: EpisodeEntity? = null
-)
+    val episodeCount: Int = 0,
+    val episodeLabels: List<String> = emptyList()   // ["S2 E4", "S2 E5", ...]
+) {
+    /** Compact secondary line: "Movie Premiere", "S2 E4", or "S2 E4 +2 more". */
+    val contextLabel: String
+        get() = when {
+            !isEpisode -> "Movie Premiere"
+            episodeCount <= 1 -> episodeLabels.firstOrNull().orEmpty()
+            else -> "${episodeLabels.first()} +${episodeCount - 1} more"
+        }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,70 +104,12 @@ fun ReleaseCalendarScreen(
     val monthEventsMap = remember(items, allEpisodes, selectedYearMonth) {
         val cal = selectedYearMonth.clone() as Calendar
         cal.set(Calendar.DAY_OF_MONTH, 1)
-        val year = cal.get(Calendar.YEAR)
-        val month = cal.get(Calendar.MONTH)
-
-        val monthEvents = mutableListOf<CalendarReleaseEvent>()
-
-        // 1. Movie releases
-        for (item in items) {
-            if (item.isSoftDeleted) continue
-            val rel = item.releaseDate ?: continue
-            if (rel.length >= 10) {
-                val datePart = rel.take(10)
-                try {
-                    val d = dayOfMonthFormat.parse(datePart)
-                    if (d != null) {
-                        val c = Calendar.getInstance().apply { time = d }
-                        if (c.get(Calendar.YEAR) == year && c.get(Calendar.MONTH) == month) {
-                            if (!item.type.contains("TV", ignoreCase = true)) {
-                                monthEvents.add(
-                                    CalendarReleaseEvent(
-                                        mediaItem = item,
-                                        dateString = datePart,
-                                        releaseContext = "Movie Premiere",
-                                        isEpisode = false
-                                    )
-                                )
-                            }
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-        }
-
-        // 2. TV Episodes releases
-        val itemsMap = items.associateBy { it.id }
-        for (ep in allEpisodes) {
-            val air = ep.airDate ?: continue
-            if (air.length >= 10) {
-                val datePart = air.take(10)
-                try {
-                    val d = dayOfMonthFormat.parse(datePart)
-                    if (d != null) {
-                        val c = Calendar.getInstance().apply { time = d }
-                        if (c.get(Calendar.YEAR) == year && c.get(Calendar.MONTH) == month) {
-                            val show = itemsMap[ep.showId]
-                                ?: itemsMap[MediaIds.tvShowKey(ep.showId)]
-                                ?: items.firstOrNull { it.id.endsWith(ep.showId) }
-                            if (show != null && !show.isSoftDeleted) {
-                                monthEvents.add(
-                                    CalendarReleaseEvent(
-                                        mediaItem = show,
-                                        dateString = datePart,
-                                        releaseContext = "S${ep.seasonNumber} E${ep.episodeNumber}${if (ep.name.isNotBlank()) " • " + ep.name else ""}",
-                                        isEpisode = true,
-                                        episodeEntity = ep
-                                    )
-                                )
-                            }
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-        }
-
-        monthEvents.groupBy { it.dateString }
+        buildMonthReleaseEvents(
+            items = items,
+            episodes = allEpisodes,
+            year = cal.get(Calendar.YEAR),
+            month = cal.get(Calendar.MONTH)
+        ).groupBy { it.dateString }
     }
 
     // Days in current month grid
@@ -386,7 +344,7 @@ fun ReleaseCalendarScreen(
                 }
             }
         } else {
-            items(displayedEvents, key = { "${it.mediaItem.id}_${it.dateString}_${it.releaseContext}" }) { event ->
+            items(displayedEvents, key = { "${it.mediaItem.id}_${it.dateString}_${it.isEpisode}" }) { event ->
                 CalendarReleaseCard(
                     event = event,
                     smartBadge = smartBadgesMap[event.mediaItem.id],
@@ -505,6 +463,23 @@ fun CalendarReleaseCard(
                             }
                         }
                     }
+
+                    // Multi-episode drop: surfaces how many episodes land today,
+                    // which the single context label can only hint at.
+                    if (event.isEpisode && event.episodeCount > 1) {
+                        Surface(
+                            color = AppColors.Accent.copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "${event.episodeCount} EP",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -518,7 +493,7 @@ fun CalendarReleaseCard(
                 )
 
                 Text(
-                    text = event.releaseContext,
+                    text = event.contextLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

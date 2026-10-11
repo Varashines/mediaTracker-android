@@ -15,9 +15,14 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import com.vara.mediatracker.data.api.TMDBClient
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -52,15 +57,48 @@ class CloudSyncManager(
     private val supabaseUrl: String,
     private val anonKey: String,
     private val syncKey: String,
-    private val tmdbApiKey: String = ""
+    private val tmdbApiKey: String = "",
+    private val client: HttpClient = defaultClient()
 ) {
-    private val client = HttpClient(OkHttp) {
-        install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true
-                isLenient = true
-            })
+    companion object {
+        /**
+         * TMDB allows a generous rate, but a small in-flight cap keeps the sync well
+         * inside it and leaves headroom on constrained connections. Raising this
+         * dramatically is the first thing to try if enrichment is still slow.
+         */
+        private const val MAX_CONCURRENT_TMDB_FETCHES = 16
+
+        /** Rows written per upsert while enrichment streams in. */
+        private const val ENRICHMENT_FLUSH_SIZE = 25
+
+        /** Fallback for call sites outside the DI graph; prefer injecting a shared client. */
+        fun defaultClient(): HttpClient = HttpClient(OkHttp) {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    isLenient = true
+                })
+            }
         }
+    }
+
+    /** Fetches TMDB metadata for a single item, or null if it has no resolvable TMDB id. */
+    private suspend fun enrichItem(
+        tmdbClient: TMDBClient,
+        item: MediaItemEntity
+    ): MediaItemEntity? {
+        val tmdbId = MediaIds.tmdbIdOf(item.id)
+        if (tmdbId <= 0) return null
+        val isMovie = item.type.contains("Movie", ignoreCase = true)
+        val details = (if (isMovie) tmdbClient.getMovieDetails(tmdbId) else tmdbClient.getTVDetails(tmdbId))
+            .getOrNull()
+        val poster = TMDBClient.buildPosterUrl(details?.poster_path) ?: item.posterUrl
+        return item.copy(
+            title = details?.title ?: details?.name ?: item.title,
+            overview = details?.overview ?: item.overview,
+            posterUrl = poster,
+            releaseDate = details?.release_date ?: details?.first_air_date ?: item.releaseDate
+        )
     }
 
     private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
@@ -85,7 +123,7 @@ class CloudSyncManager(
         }
 
         val remoteMediaList: List<RemoteMedia> = mediaResponse.body()
-        val tmdbClient = if (tmdbApiKey.isNotBlank()) TMDBClient(tmdbApiKey) else null
+        val tmdbClient = if (tmdbApiKey.isNotBlank()) TMDBClient(tmdbApiKey, client) else null
 
         // Fetch existing database cache to preserve already-fetched titles & posters
         val existingMap = mediaDao.getAllMediaList().associateBy { it.id }
@@ -118,30 +156,35 @@ class CloudSyncManager(
         } else emptyList()
 
         if (itemsNeedingMetadata.isNotEmpty() && tmdbClient != null) {
+            // Previously this walked `chunked(10)` sequentially, so an 800-item library
+            // took 80 fully serialized rounds and each round blocked the next. A shared
+            // semaphore lets every item be in flight up to the cap, and results are
+            // flushed in small batches so the UI fills in progressively instead of all
+            // at once at the end.
+            val gate = Semaphore(MAX_CONCURRENT_TMDB_FETCHES)
+            val pending = Channel<MediaItemEntity>(Channel.UNLIMITED)
+
             coroutineScope {
-                itemsNeedingMetadata.chunked(10).forEach { chunk ->
-                    val enriched = chunk.map { item ->
-                        async {
-                            val isMovie = item.type.contains("Movie", ignoreCase = true)
-                            val tmdbId = item.id.substringAfterLast("_").toIntOrNull() ?: 0
-                            if (tmdbId > 0) {
-                                val detailsRes = if (isMovie) tmdbClient.getMovieDetails(tmdbId) else tmdbClient.getTVDetails(tmdbId)
-                                val details = detailsRes.getOrNull()
-                                val title = details?.title ?: details?.name ?: item.title
-                                val poster = TMDBClient.buildPosterUrl(details?.poster_path) ?: item.posterUrl
-                                item.copy(
-                                    title = title,
-                                    overview = details?.overview ?: item.overview,
-                                    posterUrl = poster,
-                                    releaseDate = details?.release_date ?: details?.first_air_date ?: item.releaseDate
-                                )
-                            } else null
-                        }
-                    }.awaitAll().filterNotNull()
-                    if (enriched.isNotEmpty()) {
-                        mediaDao.upsertMedia(enriched)
+                val workers = itemsNeedingMetadata.map { item ->
+                    async(Dispatchers.IO) {
+                        gate.withPermit { enrichItem(tmdbClient, item) }
+                            ?.let { pending.send(it) }
                     }
                 }
+                val flusher = launch(Dispatchers.IO) {
+                    val batch = ArrayList<MediaItemEntity>(ENRICHMENT_FLUSH_SIZE)
+                    for (enriched in pending) {
+                        batch.add(enriched)
+                        if (batch.size >= ENRICHMENT_FLUSH_SIZE) {
+                            mediaDao.upsertMedia(batch.toList())
+                            batch.clear()
+                        }
+                    }
+                    if (batch.isNotEmpty()) mediaDao.upsertMedia(batch.toList())
+                }
+                workers.awaitAll()
+                pending.close()
+                flusher.join()
             }
         }
 
