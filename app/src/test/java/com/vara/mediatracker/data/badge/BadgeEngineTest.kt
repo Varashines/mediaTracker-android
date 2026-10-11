@@ -343,3 +343,149 @@ class BadgeEngineTest {
         assertNull(SmartBadge.fromLabel(null))
     }
 }
+/**
+ * Parity with the macOS BadgeEngine, which is the source of truth.
+ *
+ * Each test here corresponds to a specific divergence found while diffing
+ * `Sources/MediaTracker/Services/BadgeEngine.swift` against this engine.
+ */
+class BadgeEngineMacParityTest {
+
+    private val now = Date()
+    private val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+
+    private fun day(offset: Long): String {
+        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, offset.toInt()) }
+        return sdf.format(cal.time)
+    }
+
+    private fun show(state: String = "Watching", taste: String = "None") =
+        MediaItemEntity(id = "tv_1399", title = "Show", type = "TV Show", state = state, taste = taste)
+
+    private fun ep(
+        season: Int,
+        number: Int,
+        watched: Boolean = false,
+        airDate: String? = null,
+        watchedDate: String? = null,
+        updatedAt: String? = null
+    ) = EpisodeEntity(
+        uniqueId = MediaIds.buildEpisodeUniqueId("tv_1399", season, number),
+        showId = "tv_1399",
+        seasonNumber = season,
+        episodeNumber = number,
+        isWatched = watched,
+        airDate = airDate,
+        watchedDate = watchedDate,
+        updatedAt = updatedAt
+    )
+
+    @Test
+    fun `specials season 0 is excluded from the scan`() {
+        // macOS filters `seasonNumber > 0` in both batchScan and relationshipScan.
+        val episodes = listOf(
+            ep(0, 1, watched = false, airDate = day(-5)),
+            ep(0, 2, watched = false, airDate = day(-5))
+        )
+
+        val scan = BadgeEngine.scanEpisodes(episodes, now)
+
+        assertEquals("specials must not count toward totals", 0, scan.totalEpisodes)
+        assertEquals(0, scan.nextEpisodeNumber)
+        assertNull(scan.nextAirDate)
+    }
+
+    @Test
+    fun `specials cannot satisfy the premiere rule`() {
+        val episodes = listOf(ep(0, 1, watched = false, airDate = day(1)))
+
+        assertNull(BadgeEngine.calculateBadge(show(), episodes, now))
+    }
+
+    @Test
+    fun `watched specials do not dilute binge progress`() {
+        // 1 of 2 non-special episodes watched = 50%, which clears the 20% threshold.
+        // Counting two watched specials would have dragged it to 25% of four.
+        val episodes = listOf(
+            ep(1, 1, watched = true, airDate = day(-30), watchedDate = day(-30)),
+            ep(1, 2, watched = false, airDate = day(-30)),
+            ep(0, 1, watched = true, airDate = day(-30), watchedDate = day(-30)),
+            ep(0, 2, watched = true, airDate = day(-30), watchedDate = day(-30))
+        )
+
+        val scan = BadgeEngine.scanEpisodes(episodes, now)
+
+        assertEquals(2, scan.totalEpisodes)
+        assertEquals(1, scan.watchedEpisodes)
+        assertEquals(0.5, scan.watchedEpisodes.toDouble() / scan.totalEpisodes, 0.001)
+    }
+
+    @Test
+    fun `updatedAt is not treated as a watch date`() {
+        // A metadata sync bumps updatedAt on every row. Using it as a fallback made
+        // long-finished shows look "recently watched" and fabricated HOOKED.
+        val episodes = listOf(
+            ep(1, 1, watched = true, airDate = day(-90), watchedDate = day(-90), updatedAt = day(0)),
+            ep(1, 2, watched = true, airDate = day(-90), watchedDate = day(-90), updatedAt = day(0)),
+            ep(1, 3, watched = true, airDate = day(-90), watchedDate = day(-90), updatedAt = day(0)),
+            ep(1, 4, watched = false, airDate = day(-40)),
+            ep(1, 5, watched = false, airDate = day(30))
+        )
+
+        val scan = BadgeEngine.scanEpisodes(episodes, now)
+
+        assertEquals("updatedAt must not count as a recent watch", 0, scan.recentlyWatchedCount)
+        assertNull(BadgeEngine.calculateBadge(show(), episodes, now))
+    }
+
+    @Test
+    fun `watchedDate within two days still counts toward HOOKED`() {
+        val episodes = listOf(
+            ep(1, 1, watched = true, airDate = day(-90), watchedDate = day(0)),
+            ep(1, 2, watched = true, airDate = day(-90), watchedDate = day(0)),
+            ep(1, 3, watched = true, airDate = day(-90), watchedDate = day(0)),
+            ep(1, 4, watched = false, airDate = day(-40)),
+            ep(1, 5, watched = false, airDate = day(30))
+        )
+
+        assertEquals(SmartBadge.HOOKED, BadgeEngine.calculateBadge(show(), episodes, now)?.badge)
+    }
+
+    @Test
+    fun `remaining count ignores specials`() {
+        // One aired unwatched regular episode plus a watched special. macOS computes
+        // remaining as aired - watched over non-special seasons only.
+        val episodes = listOf(
+            ep(1, 1, watched = true, airDate = day(-30), watchedDate = day(-30)),
+            ep(1, 2, watched = false, airDate = day(-30)),
+            ep(0, 1, watched = true, airDate = day(-30), watchedDate = day(-30))
+        )
+
+        val scan = BadgeEngine.scanEpisodes(episodes, now)
+
+        assertEquals(2, scan.airedEpisodesCount)
+        assertEquals(1, scan.watchedEpisodes)
+        assertEquals(1, scan.remainingAiredEpisodesCount)
+    }
+
+    @Test
+    fun `movie premiere window still covers future releases`() {
+        // Regression guard: the window is -3 days ... +infinity on macOS.
+        val movie = MediaItemEntity(
+            id = "movie_1", title = "Film", type = "Movie",
+            state = "Wishlist", releaseDate = day(45)
+        )
+        assertEquals(SmartBadge.PREMIERE, BadgeEngine.calculateBadge(movie, emptyList(), now)?.badge)
+    }
+
+    @Test
+    fun `tv item with movie-style release date does not take the movie branch`() {
+        // isTv is threaded from calculateBadge, so a TV show can never be treated as
+        // a movie even when it carries a releaseDate.
+        val tv = MediaItemEntity(
+            id = "tv_1399", title = "Show", type = "TV Show",
+            state = "Watching", releaseDate = day(45)
+        )
+        assertNull(BadgeEngine.calculateBadge(tv, emptyList(), now))
+    }
+}

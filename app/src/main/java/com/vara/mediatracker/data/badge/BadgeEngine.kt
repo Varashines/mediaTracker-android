@@ -98,7 +98,7 @@ object BadgeEngine {
         }
 
         // Pipeline stage 2: Release Window Badges (Premiere, New, Soon)
-        releaseWindowBadge(item, scan?.nextAirDate, now)?.let { return it }
+        releaseWindowBadge(item, isTv, scan?.nextAirDate, now)?.let { return it }
 
         // Pipeline stage 3: Engagement Badges (Hooked, Behind, Binge)
         if (scan != null) {
@@ -110,7 +110,15 @@ object BadgeEngine {
 
     fun scanEpisodes(episodes: List<EpisodeEntity>, now: Date): EpisodeScan {
         val cutoff = now.time - RECENT_WATCH_CUTOFF_MS
-        val sorted = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+
+        // macOS excludes Specials (season 0) from the badge scan entirely — both
+        // `batchScan` and `relationshipScan` filter `seasonNumber > 0` before building
+        // seasonSources. Counting specials here inflated `remainingAired` and diluted
+        // the BINGE progress ratio, since TVShowDetails.calculateProgress likewise
+        // excludes them from total/watched.
+        val sorted = episodes
+            .filter { it.seasonNumber > 0 }
+            .sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
 
         var nextEpNum = 0
         var nextSeasonEpCount = 0
@@ -131,7 +139,10 @@ object BadgeEngine {
 
             if (ep.isWatched) {
                 watchedCount++
-                val watchedDate = parseDate(ep.watchedDate) ?: parseDate(ep.updatedAt)
+                // macOS tests `ep.lastWatchedDate >= cutoff`. Falling back to updatedAt
+                // here counted any episode touched by a metadata sync as "recently
+                // watched", which could fabricate the HOOKED badge.
+                val watchedDate = parseDate(ep.watchedDate)
                 if (watchedDate != null && watchedDate.time >= cutoff) {
                     recentlyWatched++
                 }
@@ -202,7 +213,12 @@ object BadgeEngine {
         return null
     }
 
-    private fun releaseWindowBadge(item: MediaItemEntity, nextAir: Date?, now: Date): BadgeResult? {
+    private fun releaseWindowBadge(
+        item: MediaItemEntity,
+        isTv: Boolean,
+        nextAir: Date?,
+        now: Date
+    ): BadgeResult? {
         val airDate = nextAir ?: parseDate(item.releaseDate) ?: return null
         val timeToAir = airDate.time - now.time
 
@@ -213,7 +229,9 @@ object BadgeEngine {
         // negatives of each other, and checking `daysSinceRelease in 0..3` silently dropped the
         // entire future half of the range, so an upcoming movie in the Watchlist rendered no badge
         // at all. Compare timeToAir directly, as macOS does.
-        if (!item.type.contains("TV", ignoreCase = true)) {
+        // macOS guards on `item.type == .movie`. `isTv` is passed in rather than
+        // recomputed here so the two call sites cannot drift apart.
+        if (!isTv) {
             if (timeToAir >= -THREE_DAYS_MS) {
                 return BadgeResult(SmartBadge.PREMIERE, isSparkle = true)
             }
