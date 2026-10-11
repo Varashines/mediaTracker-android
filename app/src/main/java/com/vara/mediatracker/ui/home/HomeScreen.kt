@@ -27,6 +27,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.vara.mediatracker.data.badge.BadgeEngine
+import com.vara.mediatracker.data.badge.BadgeResult
+import com.vara.mediatracker.data.badge.SmartBadge
 import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
@@ -57,7 +60,6 @@ fun HomeScreen(
     val allEpisodes by db?.mediaDao()?.getAllEpisodesFlow()?.collectAsState(initial = emptyList())
         ?: remember { mutableStateOf(emptyList()) }
 
-    var selectedCategoryChip by remember { mutableStateOf("All") }
     var activeFocusSection by remember { mutableStateOf<HomeFocusSection?>(null) }
 
     // Map showId -> List<EpisodeEntity>
@@ -65,9 +67,9 @@ fun HomeScreen(
         allEpisodes.groupBy { it.showId }
     }
 
-    // Precalculate progress and next episode per show
     val todayDateStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
 
+    // Precalculate progress and next episode per show
     val showProgressMap = remember(items, episodesByShow, todayDateStr) {
         items.filter { it.type.contains("TV", ignoreCase = true) }.associate { item ->
             val showKey = if (item.id.startsWith("tv_")) item.id else "tv_" + item.id.substringAfterLast("_")
@@ -88,6 +90,16 @@ fun HomeScreen(
         }
     }
 
+    // Precalculate Smart Badges across all items using BadgeEngine
+    val smartBadgesMap = remember(items, episodesByShow) {
+        val now = Date()
+        items.associate { item ->
+            val showKey = if (item.id.startsWith("tv_")) item.id else "tv_" + item.id.substringAfterLast("_")
+            val showEps = episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList()
+            item.id to BadgeEngine.calculateBadge(item, showEps, now)
+        }
+    }
+
     // Base Active / In Progress items
     val activeItems = remember(items) {
         items.filter {
@@ -99,10 +111,9 @@ fun HomeScreen(
         }
     }
 
-    // 1. CONTINUE WATCHING: Strictly READY NOW stuff only (no future airing episodes).
-    // Movies in progress are ready now.
-    // TV Shows are ready now if they have an unwatched episode that has already aired (airDate <= today or null).
-    val continueWatching = remember(activeItems, showProgressMap, todayDateStr) {
+    // 1. CONTINUE WATCHING: Strictly READY NOW items, ranked by macOS badge priority
+    // macOS priority order: PREMIERE (110) > NEW (100) > FINALE (95) > BINGE_DROP (90) > HOOKED (85) > Active (80)
+    val continueWatching = remember(activeItems, showProgressMap, smartBadgesMap, todayDateStr) {
         activeItems.filter { item ->
             if (!item.type.contains("TV", ignoreCase = true)) {
                 true // Movie in progress
@@ -110,35 +121,70 @@ fun HomeScreen(
                 val progress = showProgressMap[item.id]
                 val nextEp = progress?.nextEpisode
                 if (nextEp == null) {
-                    false // All episodes watched, nothing ready to continue
+                    false
                 } else {
                     nextEp.airDate == null || nextEp.airDate <= todayDateStr
                 }
             }
-        }
+        }.sortedWith(
+            compareByDescending<MediaItemEntity> { item ->
+                when (smartBadgesMap[item.id]?.badge) {
+                    SmartBadge.PREMIERE -> 110
+                    SmartBadge.NEW -> 100
+                    SmartBadge.FINALE -> 95
+                    SmartBadge.BINGE_DROP -> 90
+                    SmartBadge.HOOKED -> 85
+                    SmartBadge.BEHIND -> 80
+                    SmartBadge.BINGE -> 75
+                    SmartBadge.SOON -> 70
+                    null -> 60
+                }
+            }.thenByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
+        ).take(15)
     }
 
-    // 2. COMING SOON: Both upcoming releases AND shows with future airing episodes
-    // - Movies / shows with releaseDate > today
-    // - TV shows where the next unwatched episode airs in the future (airDate > today)
-    val comingSoonItems = remember(items, showProgressMap, todayDateStr) {
+    // 2. COMING SOON: Upcoming Releases + Future Airing TV Episodes, ordered by earliest drop
+    val comingSoonItems = remember(items, showProgressMap, smartBadgesMap, todayDateStr) {
         val directUpcoming = items.filter { !it.isSoftDeleted && it.releaseDate != null && it.releaseDate > todayDateStr }
         val airingSoonShows = items.filter { item ->
             !item.isSoftDeleted && item.type.contains("TV", ignoreCase = true) &&
                 showProgressMap[item.id]?.nextAiringDate != null &&
                 showProgressMap[item.id]!!.nextAiringDate!! > todayDateStr
         }
-        (directUpcoming + airingSoonShows).distinctBy { it.id }.sortedBy { item ->
-            showProgressMap[item.id]?.nextAiringDate ?: item.releaseDate ?: "9999"
-        }
+        (directUpcoming + airingSoonShows).distinctBy { it.id }.sortedWith(
+            compareBy<MediaItemEntity> { item ->
+                // Sort by earliest next airdate or release date
+                showProgressMap[item.id]?.nextAiringDate ?: item.releaseDate ?: "9999"
+            }.thenByDescending { item ->
+                // Within date ties, prioritize PREMIERE, FINALE, SOON
+                when (smartBadgesMap[item.id]?.badge) {
+                    SmartBadge.PREMIERE -> 100
+                    SmartBadge.FINALE -> 90
+                    SmartBadge.SOON -> 80
+                    SmartBadge.BINGE_DROP -> 70
+                    else -> 0
+                }
+            }
+        ).take(15)
     }
 
-    // 3. WATCHLIST
+    // 3. RECENTLY ADDED: Sorted by last added / interacted, max 15
+    val recentlyAddedItems = remember(items) {
+        items.filter { !it.isSoftDeleted }
+            .sortedByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
+            .take(15)
+    }
+
+    // Watchlist for For You focus section
     val wishlistItems = remember(items) {
         items.filter { !it.isSoftDeleted && it.state.equals("Wishlist", ignoreCase = true) }
     }
 
-    // 4. FOR YOU: Recommendations from WATCHLIST ONLY (personalized picks from what's queued to watch)
+    val lovedItems = remember(items) {
+        items.filter { !it.isSoftDeleted && (it.taste.equals("Loved", ignoreCase = true) || it.taste.equals("Love", ignoreCase = true)) }
+    }
+
+    // For You focus tray (Watchlist only)
     val forYouItems = remember(wishlistItems) {
         if (wishlistItems.isNotEmpty()) {
             wishlistItems.shuffled(Random(Calendar.getInstance().get(Calendar.DAY_OF_YEAR).toLong())).take(15)
@@ -147,27 +193,14 @@ fun HomeScreen(
         }
     }
 
-    val lovedItems = remember(items) {
-        items.filter { !it.isSoftDeleted && (it.taste.equals("Loved", ignoreCase = true) || it.taste.equals("Love", ignoreCase = true)) }
-    }
-    val recentlyCompleted = remember(items) {
-        items.filter { !it.isSoftDeleted && it.state.equals("Completed", ignoreCase = true) }
-    }
-
-    // Recently Added (By last interaction or added date)
-    val recentlyAddedItems = remember(items) {
-        items.filter { !it.isSoftDeleted }
-            .sortedByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
-    }
-
-    // Recently Watched (Items with lastInteractionDate in past 30 days)
+    // Recently Watched focus tray
     val recentlyWatchedItems = remember(items) {
         items.filter { !it.isSoftDeleted && it.lastInteractionDate != null }
             .sortedByDescending { it.lastInteractionDate }
-            .take(20)
+            .take(15)
     }
 
-    // Pick of the Day (macOS deterministic pseudo-random formula based on day-of-year)
+    // Pick of the Day focus tray
     val pickOfTheDay = remember(items, lovedItems) {
         val calendar = Calendar.getInstance()
         val dayOfYear = calendar.get(Calendar.DAY_OF_YEAR)
@@ -189,9 +222,10 @@ fun HomeScreen(
         }
     }
 
-    // Hero Spotlight: top active or loved title with backdrop or poster
-    val spotlightItem = remember(continueWatching, lovedItems, items) {
+    // Hero Spotlight: highest priority title with backdrop or poster
+    val spotlightItem = remember(continueWatching, comingSoonItems, lovedItems, items) {
         continueWatching.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+            ?: comingSoonItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
             ?: lovedItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
             ?: items.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
     }
@@ -259,17 +293,24 @@ fun HomeScreen(
                                 .align(Alignment.BottomStart)
                                 .padding(18.dp)
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = AppColors.Accent
-                            ) {
-                                Text(
-                                    text = if (spotlightItem.state.equals("Watching", ignoreCase = true) || spotlightItem.state.equals("Active", ignoreCase = true)) "NOW WATCHING" else "FEATURED SPOTLIGHT",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
+                            val heroBadge = smartBadgesMap[spotlightItem.id]
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (heroBadge != null) {
+                                    SmartBadgePill(badge = heroBadge.badge, isSparkle = heroBadge.isSparkle)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (heroBadge != null) Color.Black.copy(alpha = 0.6f) else AppColors.Accent
+                                ) {
+                                    Text(
+                                        text = if (spotlightItem.state.equals("Watching", ignoreCase = true) || spotlightItem.state.equals("Active", ignoreCase = true)) "NOW WATCHING" else "FEATURED",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
@@ -295,7 +336,7 @@ fun HomeScreen(
             }
         }
 
-        // 2. macOS-Style Top Focus Section Bar (For You [Watchlist Only] / Recently Watched / Pick of the Day)
+        // 2. macOS Top Focus Section Bar (For You [Watchlist Only] / Recently Watched / Pick of the Day)
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Row(
@@ -385,7 +426,11 @@ fun HomeScreen(
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
                                         items(focusList, key = { it.id }) { item ->
-                                            HomePosterCard(item = item, onClick = { onSelectMedia(item.id) })
+                                            HomePosterCard(
+                                                item = item,
+                                                smartBadge = smartBadgesMap[item.id],
+                                                onClick = { onSelectMedia(item.id) }
+                                            )
                                         }
                                     }
                                 }
@@ -396,42 +441,11 @@ fun HomeScreen(
             }
         }
 
-        // 3. Quick Category Switcher Chips (All, Watching, Coming Soon, Recently Added, etc.)
-        item {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val categories = listOf(
-                    "All",
-                    "Watching (${continueWatching.size})",
-                    "Coming Soon (${comingSoonItems.size})",
-                    "Recently Added (${recentlyAddedItems.size})",
-                    "Favorites (${lovedItems.size})",
-                    "Watchlist (${wishlistItems.size})",
-                    "Completed (${recentlyCompleted.size})"
-                )
-                items(categories) { cat ->
-                    val cleanName = cat.substringBefore(" ")
-                    val isSelected = selectedCategoryChip == cleanName
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { selectedCategoryChip = cleanName },
-                        label = { Text(cat, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
-                    )
-                }
-            }
-        }
-
-        // 4. CONTINUE WATCHING (Ready Now Only — No Extra Sub-filters, Landscape Cards with Next Ep & Progress)
-        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Watching") && continueWatching.isNotEmpty()) {
+        // 3. ROW 1: CONTINUE WATCHING (Ready Now Only — Landscape Backdrop Cards with Smart Badges, max 15, no count beside title)
+        if (continueWatching.isNotEmpty()) {
             item {
                 Column {
-                    SectionHeader(
-                        title = "Continue Watching",
-                        count = continueWatching.size,
-                        badgeColor = AppColors.Liked
-                    )
+                    SectionHeader(title = "Continue Watching")
                     Spacer(modifier = Modifier.height(10.dp))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -442,6 +456,7 @@ fun HomeScreen(
                             ContinueWatchingBackdropCard(
                                 item = item,
                                 progress = progress,
+                                smartBadge = smartBadgesMap[item.id],
                                 onClick = { onSelectMedia(item.id) }
                             )
                         }
@@ -450,25 +465,22 @@ fun HomeScreen(
             }
         }
 
-        // 5. COMING SOON (Upcoming Releases + Airing Soon Next Episodes)
-        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Coming") && comingSoonItems.isNotEmpty()) {
+        // 4. ROW 2: COMING SOON (Upcoming Releases + Airing Soon Next Episodes, max 15, no count beside title)
+        if (comingSoonItems.isNotEmpty()) {
             item {
                 Column {
-                    SectionHeader(
-                        title = "Coming Soon",
-                        count = comingSoonItems.size,
-                        badgeColor = AppColors.Gold
-                    )
+                    SectionHeader(title = "Coming Soon")
                     Spacer(modifier = Modifier.height(10.dp))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        items(comingSoonItems.take(25), key = { it.id }) { item ->
+                        items(comingSoonItems, key = { it.id }) { item ->
                             val progress = showProgressMap[item.id]
                             HomePosterCard(
                                 item = item,
                                 nextAirDate = progress?.nextAiringDate ?: (if (item.releaseDate != null && item.releaseDate > todayDateStr) item.releaseDate else null),
+                                smartBadge = smartBadgesMap[item.id],
                                 onClick = { onSelectMedia(item.id) }
                             )
                         }
@@ -477,76 +489,61 @@ fun HomeScreen(
             }
         }
 
-        // 6. RECENTLY ADDED
-        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Recently") && recentlyAddedItems.isNotEmpty()) {
+        // 5. ROW 3: RECENTLY ADDED (max 15, no count beside title)
+        if (recentlyAddedItems.isNotEmpty()) {
             item {
                 Column {
-                    SectionHeader(title = "Recently Added", count = recentlyAddedItems.size)
+                    SectionHeader(title = "Recently Added")
                     Spacer(modifier = Modifier.height(10.dp))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        items(recentlyAddedItems.take(20), key = { it.id }) { item ->
-                            HomePosterCard(item = item, onClick = { onSelectMedia(item.id) })
+                        items(recentlyAddedItems, key = { it.id }) { item ->
+                            HomePosterCard(
+                                item = item,
+                                smartBadge = smartBadgesMap[item.id],
+                                onClick = { onSelectMedia(item.id) }
+                            )
                         }
                     }
                 }
             }
         }
+    }
+}
 
-        // 7. LOVED FAVORITES
-        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Favorites") && lovedItems.isNotEmpty()) {
-            item {
-                Column {
-                    SectionHeader(title = "Loved Favorites (❤️)", count = lovedItems.size, badgeColor = AppColors.Loved)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        items(lovedItems, key = { it.id }) { item ->
-                            HomePosterCard(item = item, onClick = { onSelectMedia(item.id) })
-                        }
-                    }
-                }
+@Composable
+fun SmartBadgePill(
+    badge: SmartBadge,
+    isSparkle: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = badge.backgroundColor,
+        shape = RoundedCornerShape(6.dp),
+        modifier = modifier
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            if (isSparkle) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = badge.textColor,
+                    modifier = Modifier.size(9.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
             }
-        }
-
-        // 8. WATCHLIST
-        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Watchlist") && wishlistItems.isNotEmpty()) {
-            item {
-                Column {
-                    SectionHeader(title = "From Your Watchlist", count = wishlistItems.size)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        items(wishlistItems.take(20), key = { it.id }) { item ->
-                            HomePosterCard(item = item, onClick = { onSelectMedia(item.id) })
-                        }
-                    }
-                }
-            }
-        }
-
-        // 9. COMPLETED
-        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Completed") && recentlyCompleted.isNotEmpty()) {
-            item {
-                Column {
-                    SectionHeader(title = "Completed", count = recentlyCompleted.size)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        items(recentlyCompleted.take(20), key = { it.id }) { item ->
-                            HomePosterCard(item = item, onClick = { onSelectMedia(item.id) })
-                        }
-                    }
-                }
-            }
+            Text(
+                text = badge.label,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = badge.textColor,
+                letterSpacing = 0.4.sp
+            )
         }
     }
 }
@@ -559,6 +556,7 @@ fun HomeScreen(
 fun ContinueWatchingBackdropCard(
     item: MediaItemEntity,
     progress: TVShowProgress?,
+    smartBadge: BadgeResult? = null,
     onClick: () -> Unit
 ) {
     Card(
@@ -603,18 +601,22 @@ fun ContinueWatchingBackdropCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // TV / Film Chip
-                Surface(
-                    color = Color.Black.copy(alpha = 0.72f),
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.9f),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+                // Priority: SmartBadge > TV/FILM Type
+                if (smartBadge != null) {
+                    SmartBadgePill(badge = smartBadge.badge, isSparkle = smartBadge.isSparkle)
+                } else {
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.72f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
 
                 // Taste Badge
@@ -694,11 +696,7 @@ fun ContinueWatchingBackdropCard(
 }
 
 @Composable
-fun SectionHeader(
-    title: String,
-    count: Int,
-    badgeColor: Color = MaterialTheme.colorScheme.primaryContainer
-) {
+fun SectionHeader(title: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(horizontal = 16.dp)
@@ -708,19 +706,6 @@ fun SectionHeader(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
-        Spacer(modifier = Modifier.width(6.dp))
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = if (badgeColor == MaterialTheme.colorScheme.primaryContainer) badgeColor else badgeColor.copy(alpha = 0.2f)
-        ) {
-            Text(
-                text = count.toString(),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (badgeColor == MaterialTheme.colorScheme.primaryContainer) MaterialTheme.colorScheme.onPrimaryContainer else badgeColor,
-                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-            )
-        }
     }
 }
 
@@ -728,6 +713,7 @@ fun SectionHeader(
 fun HomePosterCard(
     item: MediaItemEntity,
     nextAirDate: String? = null,
+    smartBadge: BadgeResult? = null,
     onClick: () -> Unit
 ) {
     Card(
@@ -769,22 +755,30 @@ fun HomePosterCard(
                     }
                 }
 
-                // Type Badge (top-left)
-                Surface(
-                    color = Color.Black.copy(alpha = 0.65f),
-                    shape = RoundedCornerShape(bottomEnd = 8.dp),
-                    modifier = Modifier.align(Alignment.TopStart)
-                ) {
-                    Text(
-                        text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.9f),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                // Top-Left: SmartBadge (if present) else Type Badge (TV / FILM)
+                if (smartBadge != null) {
+                    SmartBadgePill(
+                        badge = smartBadge.badge,
+                        isSparkle = smartBadge.isSparkle,
+                        modifier = Modifier.align(Alignment.TopStart)
                     )
+                } else {
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.65f),
+                        shape = RoundedCornerShape(bottomEnd = 8.dp),
+                        modifier = Modifier.align(Alignment.TopStart)
+                    ) {
+                        Text(
+                            text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
 
-                // Air Date or Taste Badge (top-right)
+                // Top-Right: Air Date or Taste Badge
                 if (nextAirDate != null) {
                     Surface(
                         color = AppColors.Gold.copy(alpha = 0.9f),
