@@ -1,0 +1,62 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Validate Room schema is committed
+        run: |
+          # exportSchema writes app/schemas on every build. If that produces a new or
+          # changed file, the schema change was not reviewed and committed alongside
+          # the code, which means a release could ship without a matching Migration.
+          ./gradlew :app:kspDebugKotlin
+          if [ -n "$(git status --porcelain app/schemas)" ]; then
+            echo "::error::Room schema files changed but were not committed. Run ./gradlew :app:kspDebugKotlin and commit app/schemas."
+            git --no-pager diff app/schemas
+            exit 1
+          fi
+
+      - name: Lint
+        run: ./gradlew :app:lintDebug
+
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest
+
+      - name: Assemble debug
+        run: ./gradlew :app:assembleDebug
+
+      - name: Instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          script: ./gradlew :app:connectedDebugAndroidTest
+          disable-animations: true
