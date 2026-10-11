@@ -48,7 +48,7 @@ interface MediaDao {
     suspend fun setEpisodeWatched(uniqueId: String, watched: Boolean, watchedDate: String?)
 }
 
-@Database(entities = [MediaItemEntity::class, EpisodeEntity::class], version = 1, exportSchema = false)
+@Database(entities = [MediaItemEntity::class, EpisodeEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun mediaDao(): MediaDao
 }

@@ -2,6 +2,7 @@ package com.vara.mediatracker.ui.detail
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -47,6 +48,19 @@ fun DetailScreen(
         .collectAsState(initial = emptyList())
     var isLoadingEpisodes by remember { mutableStateOf(false) }
 
+    val seasonsList = remember(episodes) {
+        episodes.map { it.seasonNumber }.distinct().sorted()
+    }
+    var selectedSeason by remember(seasonsList) {
+        mutableStateOf(seasonsList.firstOrNull { s -> episodes.any { it.seasonNumber == s && !it.isWatched } } ?: seasonsList.firstOrNull() ?: 1)
+    }
+    val currentSeasonEpisodes = remember(episodes, selectedSeason) {
+        episodes.filter { it.seasonNumber == selectedSeason }
+    }
+    val nextUpEpisode = remember(episodes) {
+        episodes.firstOrNull { !it.isWatched }
+    }
+
     LaunchedEffect(mediaId) {
         val item = db.mediaDao().getMediaById(mediaId)
         mediaItem = item
@@ -87,6 +101,8 @@ fun DetailScreen(
                                             seasonNumber = ep.season_number,
                                             episodeNumber = ep.episode_number,
                                             name = ep.name ?: existing?.name ?: "",
+                                            overview = ep.overview ?: existing?.overview ?: "",
+                                            stillPath = ep.still_path ?: existing?.stillPath,
                                             isWatched = existing?.isWatched ?: false,
                                             watchedDate = existing?.watchedDate,
                                             airDate = ep.air_date ?: existing?.airDate,
@@ -312,8 +328,62 @@ fun DetailScreen(
                 }
             }
 
-            // TV Show Episodes
+            // TV Show Episodes Section
             if (isTV) {
+                // Up Next Hero Banner
+                if (nextUpEpisode != null) {
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "UP NEXT",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "S${nextUpEpisode.seasonNumber} E${nextUpEpisode.episodeNumber} • ${nextUpEpisode.name.ifBlank { "Episode ${nextUpEpisode.episodeNumber}" }}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                            db.mediaDao().setEpisodeWatched(nextUpEpisode.uniqueId, true, now)
+                                            val showTmdbId = nextUpEpisode.showId.substringAfterLast("_")
+                                            syncManager.pushEpisodeWatch(showTmdbId, nextUpEpisode.seasonNumber, nextUpEpisode.episodeNumber, true)
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Mark Watched", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Section Header with Total Progress
                 item {
                     Row(
                         modifier = Modifier
@@ -323,7 +393,7 @@ fun DetailScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Episodes (${episodes.count { it.isWatched }}/${episodes.size} Watched)",
+                            text = "Episodes (${episodes.count { it.isWatched }}/${episodes.size})",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -333,18 +403,85 @@ fun DetailScreen(
                     }
                 }
 
-                if (episodes.isEmpty()) {
+                // Horizontally Scrollable Season Pills
+                if (seasonsList.size > 1) {
+                    item {
+                        androidx.compose.foundation.lazy.LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(seasonsList) { sNum ->
+                                val sEps = episodes.filter { it.seasonNumber == sNum }
+                                val watchedCount = sEps.count { it.isWatched }
+                                val isSelected = sNum == selectedSeason
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { selectedSeason = sNum },
+                                    label = {
+                                        Text("Season $sNum ($watchedCount/${sEps.size})", fontSize = 12.sp)
+                                    },
+                                    leadingIcon = if (watchedCount == sEps.size && sEps.isNotEmpty()) {
+                                        { Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF4CAF50)) }
+                                    } else null
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Batch Season Action Row
+                if (currentSeasonEpisodes.isNotEmpty()) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val allSeasonWatched = currentSeasonEpisodes.all { it.isWatched }
+                            Text(
+                                text = "Season $selectedSeason",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        val targetWatched = !allSeasonWatched
+                                        val now = if (targetWatched) SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date()) else null
+                                        val showTmdbId = mediaId.substringAfterLast("_")
+                                        currentSeasonEpisodes.forEach { ep ->
+                                            db.mediaDao().setEpisodeWatched(ep.uniqueId, targetWatched, now)
+                                            syncManager.pushEpisodeWatch(showTmdbId, ep.seasonNumber, ep.episodeNumber, targetWatched)
+                                        }
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (allSeasonWatched) "Mark Season Unwatched" else "Mark Season Watched",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (currentSeasonEpisodes.isEmpty()) {
                     item {
                         Text(
-                            text = if (isLoadingEpisodes) "Loading episodes from TMDB..." else "No episodes available.",
+                            text = if (isLoadingEpisodes) "Loading episodes from TMDB..." else "No episodes available for Season $selectedSeason.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
                     }
                 } else {
-                    items(episodes, key = { it.uniqueId }) { ep ->
-                        EpisodeRow(
+                    items(currentSeasonEpisodes, key = { it.uniqueId }) { ep ->
+                        EpisodeCard(
                             episode = ep,
                             onToggleWatched = { watched ->
                                 scope.launch {
@@ -386,36 +523,88 @@ fun TasteButton(
 }
 
 @Composable
-fun EpisodeRow(
+fun EpisodeCard(
     episode: EpisodeEntity,
     onToggleWatched: (Boolean) -> Unit
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    var expanded by remember { mutableStateOf(false) }
+
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable { expanded = !expanded },
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (episode.isWatched) {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+            }
+        )
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "S${episode.seasonNumber} E${episode.episodeNumber}" + if (episode.name.isNotBlank()) " • ${episode.name}" else "",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            if (episode.watchedDate != null) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Episode Thumbnail if available
+                if (!episode.stillPath.isNullOrBlank()) {
+                    AsyncImage(
+                        model = if (episode.stillPath.startsWith("http")) episode.stillPath else "https://image.tmdb.org/t/p/w300${episode.stillPath}",
+                        contentDescription = episode.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(width = 84.dp, height = 50.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "E${episode.episodeNumber} • ${episode.name.ifBlank { "Episode " + episode.episodeNumber }}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (episode.runtime != null && episode.runtime > 0) {
+                            Text(
+                                text = "${episode.runtime}m",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        if (!episode.airDate.isNullOrBlank()) {
+                            Text(
+                                text = episode.airDate,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Checkbox(
+                    checked = episode.isWatched,
+                    onCheckedChange = { onToggleWatched(it) }
+                )
+            }
+
+            // Expandable Overview
+            if (expanded && episode.overview.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 Text(
-                    text = "Watched",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF4CAF50)
+                    text = episode.overview,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
-
-        Checkbox(
-            checked = episode.isWatched,
-            onCheckedChange = { onToggleWatched(it) }
-        )
     }
 }

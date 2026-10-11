@@ -28,6 +28,8 @@ data class EpisodeEntity(
     val seasonNumber: Int,
     val episodeNumber: Int,
     val name: String = "",
+    val overview: String = "",
+    val stillPath: String? = null,
     val isWatched: Boolean = false,
     val watchedDate: String? = null,
     val airDate: String? = null,
