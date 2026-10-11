@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.vara.mediatracker.BuildConfig
 import com.vara.mediatracker.data.api.TMDBClient
+import com.vara.mediatracker.data.api.TVMazeClient
 import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.data.db.Migrations
 import com.vara.mediatracker.data.prefs.PreferencesManager
@@ -59,6 +60,8 @@ class AppContainer(context: Context) {
      * rebuilt whenever the stored key changes rather than cached.
      */
     fun tmdbClient(): TMDBClient = TMDBClient(preferences.tmdbApiKey, httpClient)
+
+    val tvmaze: TVMazeClient by lazy { TVMazeClient(httpClient) }
 
     /**
      * Sync manager is a factory, not a singleton: it captures credentials at

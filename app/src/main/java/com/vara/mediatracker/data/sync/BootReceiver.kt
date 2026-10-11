@@ -18,6 +18,7 @@ class BootReceiver : BroadcastReceiver() {
         if (SyncScheduler.isEnabled(context)) {
             SyncScheduler.schedulePeriodic(context)
             SyncScheduler.scheduleBadgeRefresh(context)
+            SyncScheduler.scheduleEpisodeEnrichment(context)
         }
     }
 }

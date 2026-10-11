@@ -13,6 +13,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Locks the three-stage badge pipeline to the macOS BadgeEngine windows.
@@ -619,7 +620,12 @@ class BadgeEngineFinaleParityTest {
  */
 class BadgeEngineAirTimeTest {
 
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+    // Assertions below render instants and compare day-fractions, both of which depend
+    // on the ambient zone.
+    @get:org.junit.Rule
+    val tz = FixedTimeZone()
+
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
 
     private fun at(text: String): Date = dateFormat.parse(text)!!
 
@@ -712,5 +718,103 @@ class BadgeEngineAirTimeTest {
     fun `midnight air time is accepted`() {
         assertEquals("2026-10-09 00:00", dateFormat.format(BadgeEngine.parseAirInstant("2026-10-09", "00:00")!!))
         assertEquals("2026-10-09 23:59", dateFormat.format(BadgeEngine.parseAirInstant("2026-10-09", "23:59")!!))
+    }
+}
+
+/**
+ * The stored airing instant, sourced from TVMaze, must win over the day-granular
+ * local air date — mirroring how macOS reads `cachedNextAiringDate`.
+ *
+ * "Abbott Elementary" measured 3.013 days on the bare date against 1.76 on macOS,
+ * which is enough to cross the premiere boundary. The TVMaze airstamp for its next
+ * airing resolves that without needing TMDB's missing `air_time`.
+ */
+class BadgeEngineNextAiringInstantTest {
+
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+    // A bare air date parses in the device's zone, so these cases are only meaningful
+    // against a fixed one.
+    @get:org.junit.Rule
+    val tz = FixedTimeZone()
+
+    private fun at(text: String): Date = dateFormat.parse(text)!!
+
+    private fun abbott() = listOf(
+        EpisodeEntity(
+            uniqueId = MediaIds.buildEpisodeUniqueId("tv_125935", 6, 2),
+            showId = "tv_125935",
+            seasonNumber = 6,
+            episodeNumber = 2,
+            airDate = "2026-10-14"
+        )
+    )
+
+    private fun show(instant: String? = null) =
+        MediaItemEntity(
+            id = "tv_125935",
+            title = "Abbott Elementary",
+            type = "TV Show",
+            state = "Active",
+            releaseDate = "2021-12-07",
+            nextAiringInstant = instant
+        )
+
+    @Test
+    fun `stored instant overrides the bare air date across the SOON boundary`() {
+        // 12:00 on the 12th: the bare date resolves 36h out (inside SOON's 48h
+        // window), the true instant 60h out (outside it).
+        val now = at("2026-10-12 12:00")
+
+        val withoutInstant = BadgeEngine.calculateBadge(show(), abbott(), now)?.badge
+        val withInstant = BadgeEngine.calculateBadge(
+            show("2026-10-15T00:00:00Z"), abbott(), now
+        )?.badge
+
+        assertEquals(SmartBadge.SOON, withoutInstant)
+        assertEquals(null, withInstant)
+    }
+
+    @Test
+    fun `malformed stored values fall back instead of dropping the badge`() {
+        val now = at("2026-10-12 12:00")
+
+        // Garbage in the column must not make the engine throw or blank the badge.
+        val result = BadgeEngine.calculateBadge(show("not-a-timestamp"), abbott(), now)
+        assertEquals(SmartBadge.SOON, result?.badge)
+    }
+
+    @Test
+    fun `instant also drives the BEHIND window`() {
+        val now = at("2026-10-11 18:52")
+        // Three days out is inside BEHIND's 7-day window.
+        val episodes = (1..3).map {
+            EpisodeEntity(
+                uniqueId = MediaIds.buildEpisodeUniqueId("tv_125935", 1, it),
+                showId = "tv_125935",
+                seasonNumber = 1,
+                episodeNumber = it,
+                isWatched = it <= 2,
+                watchedDate = if (it <= 2) "2026-08-01" else null,
+                airDate = if (it == 3) "2026-08-01" else "2026-08-01"
+            )
+        }
+        val liked = MediaItemEntity(
+            id = "tv_125935", title = "Abbott", type = "TV Show",
+            state = "Active", taste = "Love",
+            nextAiringInstant = "2026-10-14T20:00:00Z"
+        )
+
+        assertEquals(SmartBadge.BEHIND, BadgeEngine.calculateBadge(liked, episodes, now)?.badge)
+    }
+
+    @Test
+    fun `movies ignore the airing instant and use the release date`() {
+        val now = at("2026-10-11 18:52")
+        val movie = MediaItemEntity(
+            id = "movie_1", title = "Film", type = "Movie",
+            state = "Wishlist", releaseDate = "2026-10-20"
+        )
+
+        assertEquals(SmartBadge.PREMIERE, BadgeEngine.calculateBadge(movie, emptyList(), now)?.badge)
     }
 }

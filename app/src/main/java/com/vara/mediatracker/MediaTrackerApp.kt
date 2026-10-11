@@ -29,6 +29,7 @@ class MediaTrackerApp : Application() {
             // Badges expire on a timer even with no connectivity, so this schedule is
             // independent of the cloud sync one.
             SyncScheduler.scheduleBadgeRefresh(this)
+            SyncScheduler.scheduleEpisodeEnrichment(this)
         }
 
         appScope.launch {

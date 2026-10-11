@@ -16,6 +16,15 @@ data class MediaItemEntity(
     val state: String = "Wishlist",          // "Wishlist", "Watching", "Completed", "Paused", "Dropped"
     val taste: String = "None",              // "Loved", "Liked", "Disliked", "Hated", "None"
     val customPosterUrl: String? = null,
+    /**
+     * Precise instant of the next airing, ISO-8601, from TVMaze `airstamp`.
+     *
+     * The macOS equivalent is `cachedNextAiringDate`, and BadgeEngine reads it in the
+     * same two places. TMDB cannot supply this: its season endpoint has no `air_time`
+     * field at all, so without it a title's air date is known only to the day, which is
+     * not precise enough for a 48-hour SOON window or a 3-day premiere boundary.
+     */
+    val nextAiringInstant: String? = null,
     val isSoftDeleted: Boolean = false,
     val lastInteractionDate: String? = null,
     val lastStateChangeDate: String? = null,

@@ -33,6 +33,7 @@ object SyncScheduler {
 
     const val PERIODIC_WORK_NAME = "mediatracker-periodic-sync"
     const val BADGE_WORK_NAME = "mediatracker-badge-refresh"
+    const val ENRICHMENT_WORK_NAME = "mediatracker-episode-enrichment"
     const val ONESHOT_WORK_NAME = "mediatracker-immediate-sync"
 
     /** WorkManager's floor for periodic work is 15 minutes. */
@@ -40,6 +41,9 @@ object SyncScheduler {
 
     /** WorkManager's floor for periodic work is 15 minutes. */
     private const val BADGE_INTERVAL_MINUTES = 15L
+
+    /** Backfill cadence. Slow on purpose — this converges, it does not need freshness. */
+    private const val ENRICHMENT_INTERVAL_HOURS = 3L
 
     private fun networkConstraints() = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -54,6 +58,7 @@ object SyncScheduler {
         if (enabled) {
             schedulePeriodic(context)
             scheduleBadgeRefresh(context)
+            scheduleEpisodeEnrichment(context)
         } else {
             cancelAll(context)
         }
@@ -103,6 +108,40 @@ object SyncScheduler {
         )
     }
 
+    /**
+     * Episode backfill schedule.
+     *
+     * Network-bound and only useful while shows are still missing air dates, so it
+     * runs on a slow cadence separate from both badge refresh and cloud sync. Requires
+     * connectivity because it is nothing but TMDB calls.
+     */
+    fun scheduleEpisodeEnrichment(context: Context) {
+        val request = PeriodicWorkRequestBuilder<EpisodeEnrichmentWorker>(
+            ENRICHMENT_INTERVAL_HOURS, TimeUnit.HOURS
+        )
+            .setConstraints(networkConstraints())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
+            .addTag(TAG_ENRICH)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            ENRICHMENT_WORK_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            request
+        )
+    }
+
+    /** Runs one backfill pass immediately — useful after adding titles. */
+    fun enrichEpisodesNow(context: Context) {
+        val request = OneTimeWorkRequestBuilder<EpisodeEnrichmentWorker>()
+            .setConstraints(networkConstraints())
+            .addTag(TAG_ENRICH)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            ENRICHMENT_WORK_NAME, ExistingWorkPolicy.KEEP, request
+        )
+    }
+
     /** Runs a badge pass immediately — used on install and after a cloud sync. */
     fun refreshBadgesNow(context: Context) {
         val request = OneTimeWorkRequestBuilder<BadgeUpdateWorker>()
@@ -118,6 +157,7 @@ object SyncScheduler {
             cancelUniqueWork(PERIODIC_WORK_NAME)
             cancelUniqueWork(ONESHOT_WORK_NAME)
             cancelUniqueWork(BADGE_WORK_NAME)
+            cancelUniqueWork(ENRICHMENT_WORK_NAME)
         }
     }
 
@@ -163,6 +203,7 @@ object SyncScheduler {
 
     const val TAG_SYNC = "mediatracker-sync"
     const val TAG_BADGE = "mediatracker-badge"
+    const val TAG_ENRICH = "mediatracker-enrichment"
 
     /** Not user-visible; lets Settings show a "last synced" time for background runs. */
     fun recordSyncCompletion(context: Context, atMillis: Long = System.currentTimeMillis()) {

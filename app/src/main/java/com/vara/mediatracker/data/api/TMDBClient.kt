@@ -109,6 +109,17 @@ data class TMDBImageItem(
 )
 
 @Serializable
+data class TMDBExternalIds(
+    val imdb_id: String? = null,
+    val tvdb_id: Int? = null,
+    val facebook_id: String? = null,
+    val instagram_id: String? = null,
+    val twitter_id: String? = null,
+    val wikidata_id: String? = null,
+    val youtube_id: String? = null
+)
+
+@Serializable
 data class TMDBImagesResponse(
     val id: Int? = null,
     val logos: List<TMDBImageItem> = emptyList(),
@@ -159,6 +170,13 @@ class TMDBClient(
         client.get("https://api.themoviedb.org/3/tv/$id/images") {
             applyAuth()
             parameter("include_image_language", "en,null")
+        }.body()
+    }
+
+    /** TVDB id is the reliable bridge from TMDB to TVMaze. */
+    suspend fun getTVExternalIds(tvId: Int): Result<TMDBExternalIds> = runCatching {
+        client.get("https://api.themoviedb.org/3/tv/$tvId/external_ids") {
+            applyAuth()
         }.body()
     }
 

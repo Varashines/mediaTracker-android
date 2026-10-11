@@ -52,6 +52,30 @@ interface MediaDao {
     @Query("UPDATE tv_episodes SET isWatched = :watched, watchedDate = :watchedDate WHERE uniqueId = :uniqueId")
     suspend fun setEpisodeWatched(uniqueId: String, watched: Boolean, watchedDate: String?)
 
+    /**
+     * TV shows whose episode metadata is missing or incomplete.
+     *
+     * Air dates only ever arrived by opening a DetailScreen, which left ~98% of the
+     * episode table with no air date and made badge rules that depend on air times
+     * unreachable. Ordered by recency so a backfill spends its budget on what the user
+     * is most likely looking at.
+     */
+    @Query(
+        """
+        SELECT * FROM media_items m
+        WHERE m.isSoftDeleted = 0
+          AND m.type LIKE '%TV%'
+          AND (
+            m.nextAiringInstant IS NULL
+            OR NOT EXISTS (SELECT 1 FROM tv_episodes e WHERE e.showId = m.id)
+            OR EXISTS (SELECT 1 FROM tv_episodes e WHERE e.showId = m.id AND e.airDate IS NULL)
+          )
+        ORDER BY m.lastInteractionDate DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun getShowsNeedingEpisodeEnrichment(limit: Int): List<MediaItemEntity>
+
     // --- Used by EpisodeKeyReconciler to rewrite legacy primary keys ---
     @Query("SELECT * FROM tv_episodes")
     suspend fun getAllEpisodesList(): List<EpisodeEntity>
@@ -117,7 +141,7 @@ interface BadgeDao {
         MediaBadgeEntity::class,
         TVSeasonEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

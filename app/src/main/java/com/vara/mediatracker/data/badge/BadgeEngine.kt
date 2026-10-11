@@ -62,6 +62,10 @@ object BadgeEngine {
     fun parseDate(dateStr: String?): Date? {
         if (dateStr.isNullOrBlank()) return null
         return try {
+            // SimpleDateFormat captures the default zone at construction, so a timezone
+            // change mid-session would otherwise be ignored. Re-reading it per parse is a
+            // field write, far cheaper than rebuilding the formatter for every episode.
+            dateFormat.timeZone = TimeZone.getDefault()
             dateFormat.parse(dateStr.take(10))
         } catch (_: Exception) {
             null
@@ -90,6 +94,7 @@ object BadgeEngine {
         val time = airTime?.trim()?.take(5)?.takeIf { AIR_TIME_PATTERN.matches(it) }
         if (time == null) return parseDate(day)
         return try {
+            instantFormat.timeZone = TimeZone.getDefault()
             instantFormat.parse("$day $time")
         } catch (_: Exception) {
             parseDate(day)
@@ -257,13 +262,32 @@ object BadgeEngine {
         return null
     }
 
+    /**
+     * Resolves the instant a title's next airing happens.
+     *
+     * Prefers the stored TVMaze `airstamp`, then the next unwatched episode's air date
+     * from the local table, then the release date. macOS reads `cachedNextAiringDate`
+     * (TVMaze) in preference to the episode scan, so the ordering matches.
+     */
+    private fun nextAiringInstant(item: MediaItemEntity, nextAir: Date?): Date? =
+        item.nextAiringInstant?.let { parseInstant(it) }
+            ?: nextAir
+            ?: parseDate(item.releaseDate)
+
+    private fun parseInstant(iso: String): Date? = try {
+        java.time.Instant.parse(iso).let { Date.from(it) }
+    } catch (_: Exception) {
+        // Tolerate a non-ISO value rather than dropping the badge entirely.
+        parseDate(iso)
+    }
+
     private fun releaseWindowBadge(
         item: MediaItemEntity,
         isTv: Boolean,
         nextAir: Date?,
         now: Date
     ): BadgeResult? {
-        val airDate = nextAir ?: parseDate(item.releaseDate) ?: return null
+        val airDate = nextAiringInstant(item, nextAir) ?: return null
         val timeToAir = airDate.time - now.time
 
         // Movies: PREMIERE badge when released within the past 3 days (matches macOS moviePremiereWindow
@@ -312,7 +336,7 @@ object BadgeEngine {
         if (!isLikedOrLoved) return null
 
         // BEHIND: User has unwatched aired episodes AND a new episode airs within 7 days
-        val nextUpcomingAir = scan.nextUpcomingAirDate
+        val nextUpcomingAir = item.nextAiringInstant?.let { parseInstant(it) } ?: scan.nextUpcomingAirDate
         if (nextUpcomingAir != null) {
             val daysToAir = (nextUpcomingAir.time - now.time).toDouble() / MS_PER_DAY.toDouble()
             if (daysToAir in 0.0..BEHIND_DAYS) {
