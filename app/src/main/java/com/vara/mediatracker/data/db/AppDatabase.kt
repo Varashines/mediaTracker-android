@@ -32,6 +32,9 @@ interface MediaDao {
     suspend fun updateTaste(id: String, taste: String)
 
     // Episodes
+    @Query("SELECT * FROM tv_episodes")
+    fun getAllEpisodesFlow(): Flow<List<EpisodeEntity>>
+
     @Query("SELECT * FROM tv_episodes WHERE showId = :showId ORDER BY seasonNumber ASC, episodeNumber ASC")
     fun getEpisodesForShow(showId: String): Flow<List<EpisodeEntity>>
 

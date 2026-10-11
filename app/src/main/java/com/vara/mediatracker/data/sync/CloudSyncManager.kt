@@ -215,4 +215,30 @@ class CloudSyncManager(
             setBody(payload)
         }
     }
+
+    /**
+     * Pushes media state or taste changes directly to the cloud.
+     */
+    suspend fun pushMediaUpdate(mediaId: String, type: String, state: String, taste: String) = runCatching {
+        val now = isoFormat.format(Date())
+        val payload = RemoteMedia(
+            user_id = syncKey,
+            media_id = mediaId,
+            type = type,
+            state = state,
+            taste = taste,
+            last_interaction_date = now,
+            last_state_change_date = now,
+            updated_at = now
+        )
+
+        client.post("$supabaseUrl/rest/v1/user_media") {
+            header("apikey", anonKey)
+            header("Authorization", "Bearer $anonKey")
+            header("x-sync-key", syncKey)
+            header("Prefer", "resolution=merge-duplicates")
+            contentType(ContentType.Application.Json)
+            setBody(payload)
+        }
+    }
 }

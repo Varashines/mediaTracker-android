@@ -19,6 +19,48 @@ data class TMDBSeasonInfo(
 )
 
 @Serializable
+data class TMDBGenre(
+    val id: Int,
+    val name: String
+)
+
+@Serializable
+data class TMDBCastMember(
+    val id: Int,
+    val name: String,
+    val character: String? = null,
+    val profile_path: String? = null,
+    val order: Int = 0
+)
+
+@Serializable
+data class TMDBCreditsResponse(
+    val id: Int? = null,
+    val cast: List<TMDBCastMember> = emptyList()
+)
+
+@Serializable
+data class TMDBSearchItem(
+    val id: Int,
+    val title: String? = null,
+    val name: String? = null,
+    val overview: String? = null,
+    val poster_path: String? = null,
+    val backdrop_path: String? = null,
+    val release_date: String? = null,
+    val first_air_date: String? = null,
+    val media_type: String? = null,
+    val vote_average: Double? = null
+)
+
+@Serializable
+data class TMDBSearchResponse(
+    val page: Int = 1,
+    val results: List<TMDBSearchItem> = emptyList(),
+    val total_results: Int = 0
+)
+
+@Serializable
 data class TMDBDetailsResponse(
     val title: String? = null,
     val name: String? = null,
@@ -27,6 +69,9 @@ data class TMDBDetailsResponse(
     val backdrop_path: String? = null,
     val release_date: String? = null,
     val first_air_date: String? = null,
+    val vote_average: Double? = null,
+    val runtime: Int? = null,
+    val genres: List<TMDBGenre>? = null,
     val number_of_seasons: Int? = null,
     val number_of_episodes: Int? = null,
     val seasons: List<TMDBSeasonInfo>? = null
@@ -93,10 +138,35 @@ class TMDBClient(private val apiKey: String) {
         }.body()
     }
 
+    suspend fun getMovieCredits(id: Int): Result<TMDBCreditsResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/movie/$id/credits") {
+            applyAuth()
+        }.body()
+    }
+
+    suspend fun getTVCredits(id: Int): Result<TMDBCreditsResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/tv/$id/credits") {
+            applyAuth()
+        }.body()
+    }
+
+    suspend fun searchMulti(query: String): Result<TMDBSearchResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/search/multi") {
+            applyAuth()
+            parameter("query", query)
+            parameter("include_adult", false)
+        }.body()
+    }
+
     companion object {
         fun buildPosterUrl(path: String?): String? {
             if (path.isNullOrBlank()) return null
             return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w500$path"
+        }
+
+        fun buildProfileUrl(path: String?): String? {
+            if (path.isNullOrBlank()) return null
+            return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w185$path"
         }
     }
 }

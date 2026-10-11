@@ -33,6 +33,7 @@ import com.vara.mediatracker.ui.detail.DetailScreen
 import com.vara.mediatracker.ui.home.HomeScreen
 import com.vara.mediatracker.ui.library.LibraryScreen
 import com.vara.mediatracker.ui.settings.SettingsScreen
+import com.vara.mediatracker.ui.theme.MediaTrackerTheme
 
 class MainActivity : ComponentActivity() {
     private val db by lazy {
@@ -124,8 +125,8 @@ fun MainAppScreen(db: AppDatabase, prefs: PreferencesManager) {
                 .padding(paddingValues)
         ) {
             when (selectedTab) {
-                0 -> HomeScreen(items = mediaItems, onSelectMedia = { activeDetailMediaId = it })
-                1 -> LibraryScreen(items = mediaItems, onSelectMedia = { activeDetailMediaId = it })
+                0 -> HomeScreen(items = mediaItems, db = db, onSelectMedia = { activeDetailMediaId = it })
+                1 -> LibraryScreen(items = mediaItems, prefs = prefs, db = db, onSelectMedia = { activeDetailMediaId = it })
                 2 -> SettingsScreen(prefs = prefs, db = db)
             }
         }
@@ -229,17 +230,4 @@ fun SettingsPlaceholder() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text("Cross-Device Cloud Sync Settings")
     }
-}
-
-@Composable
-fun MediaTrackerTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Color(0xFF6750A4),
-            secondary = Color(0xFF625B71),
-            surface = Color(0xFF141218),
-            surfaceVariant = Color(0xFF2B2930)
-        ),
-        content = content
-    )
 }

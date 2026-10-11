@@ -1,11 +1,15 @@
 package com.vara.mediatracker.ui.home
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -22,33 +26,178 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.vara.mediatracker.data.db.AppDatabase
+import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.ui.theme.AppColors
+import java.text.SimpleDateFormat
+import java.util.*
 
+enum class ContinueWatchingFilter(val title: String) {
+    ALL("All"),
+    READY_NOW("Ready Now"),
+    NEXT_AIRING("Upcoming / Airing Soon"),
+    SHOWS("TV Shows"),
+    MOVIES("Movies")
+}
+
+enum class HomeFocusSection(val title: String) {
+    FOR_YOU("For You"),
+    RECENTLY_WATCHED("Recently Watched"),
+    PICK_OF_THE_DAY("Pick of the Day")
+}
+
+data class TVShowProgress(
+    val totalEpisodes: Int,
+    val watchedEpisodes: Int,
+    val nextEpisode: EpisodeEntity?,
+    val nextAiringDate: String?
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     items: List<MediaItemEntity>,
+    db: AppDatabase? = null,
     onSelectMedia: (String) -> Unit
 ) {
-    var selectedCategory by remember { mutableStateOf("All") }
+    val allEpisodes by db?.mediaDao()?.getAllEpisodesFlow()?.collectAsState(initial = emptyList())
+        ?: remember { mutableStateOf(emptyList()) }
 
-    val continueWatching = remember(items) {
-        items.filter { it.state.equals("Watching", ignoreCase = true) || it.state.equals("Active", ignoreCase = true) }
+    var selectedCategoryChip by remember { mutableStateOf("All") }
+    var activeFocusSection by remember { mutableStateOf<HomeFocusSection?>(null) }
+    var cwFilter by remember { mutableStateOf(ContinueWatchingFilter.ALL) }
+
+    // Map showId -> List<EpisodeEntity>
+    val episodesByShow = remember(allEpisodes) {
+        allEpisodes.groupBy { it.showId }
     }
+
+    // Precalculate progress and next episode per show
+    val showProgressMap = remember(items, episodesByShow) {
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        items.filter { it.type.contains("TV", ignoreCase = true) }.associate { item ->
+            val showKey = if (item.id.startsWith("tv_")) item.id else "tv_" + item.id.substringAfterLast("_")
+            val showEps = (episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList())
+                .sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+            val total = showEps.size
+            val watched = showEps.count { it.isWatched }
+            val nextEp = showEps.firstOrNull { !it.isWatched }
+            val nextAir = showEps.firstOrNull { ep ->
+                !ep.isWatched && !ep.airDate.isNullOrBlank() && ep.airDate >= todayStr
+            }?.airDate
+            item.id to TVShowProgress(
+                totalEpisodes = total,
+                watchedEpisodes = watched,
+                nextEpisode = nextEp,
+                nextAiringDate = nextAir
+            )
+        }
+    }
+
+    // 1. Continue Watching Base List
+    val continueWatchingRaw = remember(items) {
+        items.filter {
+            !it.isSoftDeleted && (
+                it.state.equals("Watching", ignoreCase = true) ||
+                it.state.equals("Active", ignoreCase = true) ||
+                it.state.equals("In Progress", ignoreCase = true)
+            )
+        }
+    }
+
+    // Filter Continue Watching based on user-selected filter (Ready Now, Next Airing Date, etc.)
+    val todayDateStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+    val filteredContinueWatching = remember(continueWatchingRaw, cwFilter, showProgressMap, todayDateStr) {
+        when (cwFilter) {
+            ContinueWatchingFilter.ALL -> continueWatchingRaw
+            ContinueWatchingFilter.SHOWS -> continueWatchingRaw.filter { it.type.contains("TV", ignoreCase = true) }
+            ContinueWatchingFilter.MOVIES -> continueWatchingRaw.filter { !it.type.contains("TV", ignoreCase = true) }
+            ContinueWatchingFilter.READY_NOW -> continueWatchingRaw.filter { item ->
+                if (!item.type.contains("TV", ignoreCase = true)) {
+                    true // Movies currently in progress are ready now
+                } else {
+                    val progress = showProgressMap[item.id]
+                    val nextEp = progress?.nextEpisode
+                    // Ready now if next episode already aired (or no airdate specified)
+                    nextEp != null && (nextEp.airDate == null || nextEp.airDate <= todayDateStr)
+                }
+            }
+            ContinueWatchingFilter.NEXT_AIRING -> continueWatchingRaw.filter { item ->
+                if (!item.type.contains("TV", ignoreCase = true)) {
+                    false
+                } else {
+                    val progress = showProgressMap[item.id]
+                    val nextEp = progress?.nextEpisode
+                    // Airing soon if next episode date > today or next upcoming episode exists
+                    nextEp != null && !nextEp.airDate.isNullOrBlank() && nextEp.airDate > todayDateStr
+                }
+            }
+        }
+    }
+
     val lovedItems = remember(items) {
-        items.filter { it.taste.equals("Loved", ignoreCase = true) || it.taste.equals("Love", ignoreCase = true) }
+        items.filter { !it.isSoftDeleted && (it.taste.equals("Loved", ignoreCase = true) || it.taste.equals("Love", ignoreCase = true)) }
     }
     val wishlistItems = remember(items) {
-        items.filter { it.state.equals("Wishlist", ignoreCase = true) }
+        items.filter { !it.isSoftDeleted && it.state.equals("Wishlist", ignoreCase = true) }
     }
     val recentlyCompleted = remember(items) {
-        items.filter { it.state.equals("Completed", ignoreCase = true) }
+        items.filter { !it.isSoftDeleted && it.state.equals("Completed", ignoreCase = true) }
+    }
+
+    // Coming Soon (Upcoming Releases sorted by releaseDate)
+    val comingSoonItems = remember(items, todayDateStr) {
+        items.filter { !it.isSoftDeleted && it.releaseDate != null && it.releaseDate > todayDateStr }
+            .sortedBy { it.releaseDate }
+    }
+
+    // Recently Added (By last interaction or added date)
+    val recentlyAddedItems = remember(items) {
+        items.filter { !it.isSoftDeleted }
+            .sortedByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
+    }
+
+    // Recently Watched (Items with lastInteractionDate in past 30 days or active/completed)
+    val recentlyWatchedItems = remember(items) {
+        items.filter { !it.isSoftDeleted && it.lastInteractionDate != null }
+            .sortedByDescending { it.lastInteractionDate }
+            .take(20)
+    }
+
+    // Pick of the Day (macOS deterministic pseudo-random formula based on day-of-year)
+    val pickOfTheDay = remember(items, lovedItems) {
+        val calendar = Calendar.getInstance()
+        val dayOfYear = calendar.get(Calendar.DAY_OF_YEAR)
+        val pool = if (lovedItems.isNotEmpty()) lovedItems else items.filter { !it.isSoftDeleted }
+        if (pool.isEmpty()) emptyList()
+        else {
+            var seed = dayOfYear
+            val picks = mutableListOf<MediaItemEntity>()
+            val usedIndices = mutableSetOf<Int>()
+            val count = minOf(4, pool.size)
+            while (picks.size < count) {
+                seed = (seed * 1103515245 + 12345) and 0x7FFFFFFF
+                val idx = Math.floorMod(seed, pool.size)
+                if (usedIndices.add(idx)) {
+                    picks.add(pool[idx])
+                }
+            }
+            picks
+        }
+    }
+
+    // For You Recommendations (Loved and high-affinity library items)
+    val forYouItems = remember(items, lovedItems) {
+        if (lovedItems.isNotEmpty()) lovedItems.shuffled(Random(Calendar.getInstance().get(Calendar.DAY_OF_YEAR).toLong())).take(15)
+        else items.take(10)
     }
 
     // Hero Spotlight: top active or loved title with backdrop or poster
-    val spotlightItem = remember(continueWatching, lovedItems, items) {
-        continueWatching.firstOrNull { it.posterUrl != null }
-            ?: lovedItems.firstOrNull { it.posterUrl != null }
-            ?: items.firstOrNull { it.posterUrl != null }
+    val spotlightItem = remember(continueWatchingRaw, lovedItems, items) {
+        continueWatchingRaw.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+            ?: lovedItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+            ?: items.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
     }
 
     if (items.isEmpty()) {
@@ -58,7 +207,7 @@ fun HomeScreen(
                     imageVector = Icons.Default.CloudSync,
                     contentDescription = null,
                     modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                    tint = AppColors.Accent.copy(alpha = 0.6f)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Your Library is Empty", style = MaterialTheme.typography.titleMedium)
@@ -83,15 +232,15 @@ fun HomeScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .height(240.dp)
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .height(220.dp)
                         .clickable { onSelectMedia(spotlightItem.id) },
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    shape = RoundedCornerShape(18.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         AsyncImage(
-                            model = spotlightItem.posterUrl,
+                            model = spotlightItem.backdropUrl ?: spotlightItem.posterUrl,
                             contentDescription = spotlightItem.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
@@ -103,8 +252,8 @@ fun HomeScreen(
                                     Brush.verticalGradient(
                                         colors = listOf(
                                             Color.Transparent,
-                                            Color.Black.copy(alpha = 0.5f),
-                                            Color.Black.copy(alpha = 0.92f)
+                                            Color.Black.copy(alpha = 0.45f),
+                                            Color.Black.copy(alpha = 0.94f)
                                         )
                                     )
                                 )
@@ -115,15 +264,15 @@ fun HomeScreen(
                                 .padding(16.dp)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer
+                                shape = RoundedCornerShape(6.dp),
+                                color = AppColors.Accent
                             ) {
                                 Text(
-                                    text = if (spotlightItem.state.equals("Watching", ignoreCase = true) || spotlightItem.state.equals("Active", ignoreCase = true)) "NOW WATCHING" else "FEATURED",
+                                    text = if (spotlightItem.state.equals("Watching", ignoreCase = true) || spotlightItem.state.equals("Active", ignoreCase = true)) "NOW WATCHING" else "FEATURED SPOTLIGHT",
                                     fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                                 )
                             }
                             Spacer(modifier = Modifier.height(4.dp))
@@ -139,7 +288,7 @@ fun HomeScreen(
                                 Text(
                                     text = spotlightItem.overview,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.8f),
+                                    color = Color.White.copy(alpha = 0.82f),
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -150,49 +299,255 @@ fun HomeScreen(
             }
         }
 
-        // 2. Quick Focus Category Pills
+        // 2. macOS-Style Top Focus Section Bar (For You / Recently Watched / Pick of the Day)
+        item {
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HomeFocusSection.values().forEach { section ->
+                        val isSelected = activeFocusSection == section
+                        Surface(
+                            onClick = {
+                                activeFocusSection = if (isSelected) null else section
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isSelected) AppColors.Accent else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = when (section) {
+                                        HomeFocusSection.FOR_YOU -> Icons.Default.AutoAwesome
+                                        HomeFocusSection.RECENTLY_WATCHED -> Icons.Default.History
+                                        HomeFocusSection.PICK_OF_THE_DAY -> Icons.Default.Star
+                                    },
+                                    contentDescription = null,
+                                    tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = section.title,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Expanded Section Tray
+                AnimatedVisibility(
+                    visible = activeFocusSection != null,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    if (activeFocusSection != null) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = AppColors.Accent.copy(alpha = 0.08f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AppColors.Accent.copy(alpha = 0.25f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(vertical = 12.dp)) {
+                                val focusList = when (activeFocusSection) {
+                                    HomeFocusSection.FOR_YOU -> forYouItems
+                                    HomeFocusSection.RECENTLY_WATCHED -> recentlyWatchedItems
+                                    HomeFocusSection.PICK_OF_THE_DAY -> pickOfTheDay
+                                    null -> emptyList()
+                                }
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    items(focusList, key = { it.id }) { item ->
+                                        HomePosterCard(item = item, onClick = { onSelectMedia(item.id) })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Quick Category Switcher Chips (All, Watching, Coming Soon, Recently Added, etc.)
         item {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val categories = listOf("All", "Watching (${continueWatching.size})", "Favorites (${lovedItems.size})", "Watchlist (${wishlistItems.size})", "Completed (${recentlyCompleted.size})")
+                val categories = listOf(
+                    "All",
+                    "Watching (${continueWatchingRaw.size})",
+                    "Coming Soon (${comingSoonItems.size})",
+                    "Recently Added (${recentlyAddedItems.size})",
+                    "Favorites (${lovedItems.size})",
+                    "Watchlist (${wishlistItems.size})",
+                    "Completed (${recentlyCompleted.size})"
+                )
                 items(categories) { cat ->
                     val cleanName = cat.substringBefore(" ")
-                    val isSelected = selectedCategory == cleanName
+                    val isSelected = selectedCategoryChip == cleanName
                     FilterChip(
                         selected = isSelected,
-                        onClick = { selectedCategory = cleanName },
-                        label = { Text(cat, fontSize = 12.sp) }
+                        onClick = { selectedCategoryChip = cleanName },
+                        label = { Text(cat, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
                     )
                 }
             }
         }
 
-        // 3. Continue Watching Carousel
-        if ((selectedCategory == "All" || selectedCategory == "Watching") && continueWatching.isNotEmpty()) {
+        // 4. CONTINUE WATCHING (With macOS-style Next Episode Date & Status Filters + Landscape Backdrop Cards)
+        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Watching") && continueWatchingRaw.isNotEmpty()) {
             item {
-                SectionHeader(title = "Continue Watching", count = continueWatching.size)
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        SectionHeader(title = "Continue Watching", count = filteredContinueWatching.size)
+                    }
+
+                    // Continue Watching Filters (All, Ready Now, Next Airing, Shows, Movies)
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(ContinueWatchingFilter.values()) { filterOption ->
+                            val isChosen = cwFilter == filterOption
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isChosen) AppColors.Accent.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                border = if (isChosen) androidx.compose.foundation.BorderStroke(1.dp, AppColors.Accent) else null,
+                                modifier = Modifier.clickable { cwFilter = filterOption }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (filterOption == ContinueWatchingFilter.NEXT_AIRING) {
+                                        Icon(
+                                            Icons.Default.Schedule,
+                                            contentDescription = null,
+                                            tint = if (isChosen) AppColors.Accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    } else if (filterOption == ContinueWatchingFilter.READY_NOW) {
+                                        Icon(
+                                            Icons.Default.PlayCircle,
+                                            contentDescription = null,
+                                            tint = if (isChosen) AppColors.Liked else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
+                                    Text(
+                                        text = filterOption.title,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isChosen) AppColors.Accent else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    if (filteredContinueWatching.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 18.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = when (cwFilter) {
+                                    ContinueWatchingFilter.READY_NOW -> "No unwatched episodes ready now"
+                                    ContinueWatchingFilter.NEXT_AIRING -> "No upcoming airing dates scheduled"
+                                    ContinueWatchingFilter.SHOWS -> "No TV shows currently in progress"
+                                    ContinueWatchingFilter.MOVIES -> "No movies currently in progress"
+                                    ContinueWatchingFilter.ALL -> "No titles in progress"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        // Landscape Backdrop Cards Carousel (Apple TV / macOS MediaTracker style)
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            items(filteredContinueWatching, key = { it.id }) { item ->
+                                val progress = showProgressMap[item.id]
+                                ContinueWatchingBackdropCard(
+                                    item = item,
+                                    progress = progress,
+                                    onClick = { onSelectMedia(item.id) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. COMING SOON (Upcoming Releases)
+        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Coming") && comingSoonItems.isNotEmpty()) {
+            item {
+                SectionHeader(title = "Coming Soon", count = comingSoonItems.size)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    items(continueWatching, key = { it.id }) { item ->
+                    items(comingSoonItems.take(20), key = { it.id }) { item ->
                         HomePosterCard(item = item, onClick = { onSelectMedia(item.id) })
                     }
                 }
             }
         }
 
-        // 4. Loved Favorites Carousel
-        if ((selectedCategory == "All" || selectedCategory == "Favorites") && lovedItems.isNotEmpty()) {
+        // 6. RECENTLY ADDED
+        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Recently") && recentlyAddedItems.isNotEmpty()) {
+            item {
+                SectionHeader(title = "Recently Added", count = recentlyAddedItems.size)
+                Spacer(modifier = Modifier.height(8.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(recentlyAddedItems.take(20), key = { it.id }) { item ->
+                        HomePosterCard(item = item, onClick = { onSelectMedia(item.id) })
+                    }
+                }
+            }
+        }
+
+        // 7. LOVED FAVORITES
+        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Favorites") && lovedItems.isNotEmpty()) {
             item {
                 SectionHeader(title = "Loved Favorites (❤️)", count = lovedItems.size)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     items(lovedItems, key = { it.id }) { item ->
                         HomePosterCard(item = item, onClick = { onSelectMedia(item.id) })
@@ -201,14 +556,14 @@ fun HomeScreen(
             }
         }
 
-        // 5. Up Next in Wishlist Carousel
-        if ((selectedCategory == "All" || selectedCategory == "Watchlist") && wishlistItems.isNotEmpty()) {
+        // 8. WATCHLIST
+        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Watchlist") && wishlistItems.isNotEmpty()) {
             item {
                 SectionHeader(title = "From Your Watchlist", count = wishlistItems.size)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     items(wishlistItems.take(20), key = { it.id }) { item ->
                         HomePosterCard(item = item, onClick = { onSelectMedia(item.id) })
@@ -217,18 +572,185 @@ fun HomeScreen(
             }
         }
 
-        // 6. Recently Completed Carousel
-        if ((selectedCategory == "All" || selectedCategory == "Completed") && recentlyCompleted.isNotEmpty()) {
+        // 9. COMPLETED
+        if ((selectedCategoryChip == "All" || selectedCategoryChip == "Completed") && recentlyCompleted.isNotEmpty()) {
             item {
                 SectionHeader(title = "Completed", count = recentlyCompleted.size)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     items(recentlyCompleted.take(20), key = { it.id }) { item ->
                         HomePosterCard(item = item, onClick = { onSelectMedia(item.id) })
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Landscape Backdrop Card for Continue Watching matching macOS Apple TV style:
+ * 16:9 ratio (230dp x 130dp), ambient overlay, next episode indicator, next air date badge,
+ * and progress bar.
+ */
+@Composable
+fun ContinueWatchingBackdropCard(
+    item: MediaItemEntity,
+    progress: TVShowProgress?,
+    onClick: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        modifier = Modifier
+            .width(230.dp)
+            .height(138.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Backdrop Image (with Poster fallback)
+            AsyncImage(
+                model = item.backdropUrl ?: item.posterUrl,
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Scrim gradient for contrast
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.25f),
+                                Color.Black.copy(alpha = 0.45f),
+                                Color.Black.copy(alpha = 0.92f)
+                            )
+                        )
+                    )
+            )
+
+            // Top Badges
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+                    .align(Alignment.TopStart),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // TV / Film Chip
+                Surface(
+                    color = Color.Black.copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+
+                // Next Airing Badge (if next episode has future airdate)
+                if (progress?.nextAiringDate != null) {
+                    Surface(
+                        color = AppColors.Gold.copy(alpha = 0.9f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Schedule,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = progress.nextAiringDate,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
+                        }
+                    }
+                } else if (item.taste == "Loved" || item.taste == "Love") {
+                    Surface(
+                        color = AppColors.Loved.copy(alpha = 0.9f),
+                        shape = CircleShape
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .size(11.dp)
+                        )
+                    }
+                }
+            }
+
+            // Bottom Content
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = item.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                // Subtitle: Next Episode label or Progress Count
+                val subText = when {
+                    item.type.contains("TV", ignoreCase = true) && progress?.nextEpisode != null -> {
+                        "Next: S${progress.nextEpisode.seasonNumber} E${progress.nextEpisode.episodeNumber} • ${progress.watchedEpisodes}/${progress.totalEpisodes} EP"
+                    }
+                    item.type.contains("TV", ignoreCase = true) && progress != null && progress.totalEpisodes > 0 -> {
+                        "${progress.watchedEpisodes}/${progress.totalEpisodes} EP Watched"
+                    }
+                    !item.releaseDate.isNullOrBlank() -> {
+                        item.releaseDate.take(4)
+                    }
+                    else -> "In Progress"
+                }
+
+                Text(
+                    text = subText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White.copy(alpha = 0.85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                // Progress Bar for TV shows
+                if (progress != null && progress.totalEpisodes > 0) {
+                    val ratio = (progress.watchedEpisodes.toFloat() / progress.totalEpisodes.toFloat()).coerceIn(0f, 1f)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { ratio },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = AppColors.Accent,
+                        trackColor = Color.White.copy(alpha = 0.25f)
+                    )
                 }
             }
         }
@@ -265,30 +787,63 @@ fun SectionHeader(title: String, count: Int) {
 @Composable
 fun HomePosterCard(item: MediaItemEntity, onClick: () -> Unit) {
     Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
         modifier = Modifier
-            .width(130.dp)
+            .width(136.dp)
             .clickable(onClick = onClick)
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(185.dp)
+                    .height(195.dp)
             ) {
                 if (item.posterUrl != null) {
                     AsyncImage(
                         model = item.posterUrl,
                         contentDescription = item.title,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (item.type.contains("TV", ignoreCase = true)) Icons.Default.Tv else Icons.Default.Movie,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                }
+
+                // Type Badge (top-left)
+                Surface(
+                    color = Color.Black.copy(alpha = 0.65f),
+                    shape = RoundedCornerShape(bottomEnd = 8.dp),
+                    modifier = Modifier.align(Alignment.TopStart)
+                ) {
+                    Text(
+                        text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
 
+                // Taste Badge (top-right)
                 if (item.taste == "Loved" || item.taste == "Love") {
                     Surface(
-                        color = Color(0xFFE91E63).copy(alpha = 0.9f),
+                        color = AppColors.Loved.copy(alpha = 0.9f),
                         shape = RoundedCornerShape(bottomStart = 8.dp),
                         modifier = Modifier.align(Alignment.TopEnd)
                     ) {
@@ -304,14 +859,22 @@ fun HomePosterCard(item: MediaItemEntity, onClick: () -> Unit) {
                 }
             }
 
-            Text(
-                text = item.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-            )
+            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                Text(
+                    text = item.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (!item.releaseDate.isNullOrBlank()) {
+                    Text(
+                        text = item.releaseDate.take(4),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
+                }
+            }
         }
     }
 }

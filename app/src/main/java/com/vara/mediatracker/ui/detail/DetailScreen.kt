@@ -61,59 +61,70 @@ fun DetailScreen(
         episodes.firstOrNull { !it.isWatched }
     }
 
+    var tmdbDetails by remember { mutableStateOf<com.vara.mediatracker.data.api.TMDBDetailsResponse?>(null) }
+    var castMembers by remember { mutableStateOf<List<com.vara.mediatracker.data.api.TMDBCastMember>>(emptyList()) }
+
     LaunchedEffect(mediaId) {
         val item = db.mediaDao().getMediaById(mediaId)
         mediaItem = item
 
-        // If it's a TV show, fetch full episodes and episode names from TMDB
-        if (item != null && item.type.contains("TV", ignoreCase = true) && prefs.tmdbApiKey.isNotBlank()) {
+        if (item != null && prefs.tmdbApiKey.isNotBlank()) {
             val tmdbId = item.id.substringAfterLast("_").toIntOrNull() ?: 0
             if (tmdbId > 0) {
-                isLoadingEpisodes = true
                 kotlinx.coroutines.Dispatchers.IO.let { ioDispatcher ->
                     kotlinx.coroutines.withContext(ioDispatcher) {
                         try {
                             val tmdbClient = com.vara.mediatracker.data.api.TMDBClient(prefs.tmdbApiKey)
-                            val tvDetailsRes = tmdbClient.getTVDetails(tmdbId)
-                            val tvDetails = tvDetailsRes.getOrNull()
-                            val seasons = tvDetails?.seasons ?: emptyList()
+                            val isMovie = item.type.contains("Movie", ignoreCase = true)
+                            
+                            // Fetch Details (Genres, Ratings, Runtime)
+                            val detailsRes = if (isMovie) tmdbClient.getMovieDetails(tmdbId) else tmdbClient.getTVDetails(tmdbId)
+                            tmdbDetails = detailsRes.getOrNull()
 
-                            val currentLocalEps = db.mediaDao().getEpisodesListForShow(showIdKey).associateBy { 
-                                "${it.seasonNumber}_${it.episodeNumber}" 
-                            }
+                            // Fetch Credits (Cast)
+                            val creditsRes = if (isMovie) tmdbClient.getMovieCredits(tmdbId) else tmdbClient.getTVCredits(tmdbId)
+                            castMembers = creditsRes.getOrNull()?.cast?.take(15) ?: emptyList()
 
-                            val newEpisodesList = mutableListOf<EpisodeEntity>()
-                            for (season in seasons) {
-                                // Skip "specials" (season 0) if desired or keep regular seasons >= 1
-                                if (season.season_number < 1) continue
-                                val seasonDetailsRes = tmdbClient.getSeasonDetails(tmdbId, season.season_number)
-                                val seasonDetails = seasonDetailsRes.getOrNull()
-                                val eps = seasonDetails?.episodes ?: emptyList()
-
-                                for (ep in eps) {
-                                    val key = "${ep.season_number}_${ep.episode_number}"
-                                    val existing = currentLocalEps[key]
-                                    val uniqueId = "${tmdbId}_${ep.season_number}_${ep.episode_number}"
-                                    newEpisodesList.add(
-                                        EpisodeEntity(
-                                            uniqueId = existing?.uniqueId ?: uniqueId,
-                                            showId = showIdKey,
-                                            seasonNumber = ep.season_number,
-                                            episodeNumber = ep.episode_number,
-                                            name = ep.name ?: existing?.name ?: "",
-                                            overview = ep.overview ?: existing?.overview ?: "",
-                                            stillPath = ep.still_path ?: existing?.stillPath,
-                                            isWatched = existing?.isWatched ?: false,
-                                            watchedDate = existing?.watchedDate,
-                                            airDate = ep.air_date ?: existing?.airDate,
-                                            runtime = ep.runtime ?: existing?.runtime,
-                                            updatedAt = existing?.updatedAt
-                                        )
-                                    )
+                            // If it's a TV show, fetch full episodes and episode names from TMDB
+                            if (!isMovie) {
+                                isLoadingEpisodes = true
+                                val seasons = tmdbDetails?.seasons ?: emptyList()
+                                val currentLocalEps = db.mediaDao().getEpisodesListForShow(showIdKey).associateBy { 
+                                    "${it.seasonNumber}_${it.episodeNumber}" 
                                 }
-                            }
-                            if (newEpisodesList.isNotEmpty()) {
-                                db.mediaDao().upsertEpisodes(newEpisodesList)
+
+                                val newEpisodesList = mutableListOf<EpisodeEntity>()
+                                for (season in seasons) {
+                                    if (season.season_number < 1) continue
+                                    val seasonDetailsRes = tmdbClient.getSeasonDetails(tmdbId, season.season_number)
+                                    val seasonDetails = seasonDetailsRes.getOrNull()
+                                    val eps = seasonDetails?.episodes ?: emptyList()
+
+                                    for (ep in eps) {
+                                        val key = "${ep.season_number}_${ep.episode_number}"
+                                        val existing = currentLocalEps[key]
+                                        val uniqueId = "${tmdbId}_${ep.season_number}_${ep.episode_number}"
+                                        newEpisodesList.add(
+                                            EpisodeEntity(
+                                                uniqueId = existing?.uniqueId ?: uniqueId,
+                                                showId = showIdKey,
+                                                seasonNumber = ep.season_number,
+                                                episodeNumber = ep.episode_number,
+                                                name = ep.name ?: existing?.name ?: "",
+                                                overview = ep.overview ?: existing?.overview ?: "",
+                                                stillPath = ep.still_path ?: existing?.stillPath,
+                                                isWatched = existing?.isWatched ?: false,
+                                                watchedDate = existing?.watchedDate,
+                                                airDate = ep.air_date ?: existing?.airDate,
+                                                runtime = ep.runtime ?: existing?.runtime,
+                                                updatedAt = existing?.updatedAt
+                                            )
+                                        )
+                                    }
+                                }
+                                if (newEpisodesList.isNotEmpty()) {
+                                    db.mediaDao().upsertEpisodes(newEpisodesList)
+                                }
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
@@ -166,17 +177,18 @@ fun DetailScreen(
                 .padding(padding),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            // Hero Header
+            // Hero Header: macOS-style Cinematic Poster & Atmosphere
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(280.dp)
+                        .height(340.dp)
                 ) {
-                    if (item.posterUrl != null) {
+                    // Ambient Backdrop Glow
+                    if (item.backdropUrl != null || item.posterUrl != null) {
                         AsyncImage(
-                            model = item.posterUrl,
-                            contentDescription = item.title,
+                            model = item.backdropUrl ?: item.posterUrl,
+                            contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -186,63 +198,196 @@ fun DetailScreen(
                                 .background(
                                     Brush.verticalGradient(
                                         colors = listOf(
-                                            Color.Transparent,
-                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                                            Color.Black.copy(alpha = 0.45f),
+                                            MaterialTheme.colorScheme.background.copy(alpha = 0.85f),
+                                            MaterialTheme.colorScheme.background
                                         )
                                     )
                                 )
                         )
                     }
 
-                    Column(
+                    // Floating Poster + Title Stack
+                    Row(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .padding(16.dp)
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.Bottom
                     ) {
-                        Text(
-                            text = item.title,
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer
-                            ) {
-                                Text(
-                                    text = item.type,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        // High-contrast Elevated Poster Card (2:3 Aspect Ratio)
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+                            modifier = Modifier
+                                .width(120.dp)
+                                .height(178.dp)
+                        ) {
+                            if (item.posterUrl != null) {
+                                AsyncImage(
+                                    model = item.posterUrl,
+                                    contentDescription = item.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
                                 )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (isTV) Icons.Default.Tv else Icons.Default.Movie,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(36.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                }
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.secondaryContainer
-                            ) {
-                                Text(
-                                    text = item.state,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
+                        }
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = item.title,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                maxLines = 3,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer
+                                ) {
+                                    Text(
+                                        text = if (isTV) "TV SERIES" else "FEATURE FILM",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.surfaceBright
+                                ) {
+                                    Text(
+                                        text = item.state.uppercase(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Controls: State & Taste Ratings
+            // Rich Metadata Strip (Year, Rating, Runtime, Genres)
+            item {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Rating Pill
+                        val vote = tmdbDetails?.vote_average
+                        if (vote != null && vote > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = com.vara.mediatracker.ui.theme.AppColors.Gold.copy(alpha = 0.15f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Star,
+                                        contentDescription = null,
+                                        tint = com.vara.mediatracker.ui.theme.AppColors.Gold,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = String.format(Locale.US, "%.1f", vote),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = com.vara.mediatracker.ui.theme.AppColors.Gold
+                                    )
+                                }
+                            }
+                        }
+
+                        // Release Year Pill
+                        val date = item.releaseDate ?: tmdbDetails?.release_date ?: tmdbDetails?.first_air_date
+                        if (!date.isNullOrBlank()) {
+                            val year = date.take(4)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                Text(
+                                    text = year,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        // Runtime or Seasons
+                        val runtime = tmdbDetails?.runtime
+                        val numSeasons = tmdbDetails?.number_of_seasons
+                        val durationText = when {
+                            runtime != null && runtime > 0 -> "${runtime / 60}h ${runtime % 60}m"
+                            numSeasons != null && numSeasons > 0 -> "$numSeasons Season" + if (numSeasons > 1) "s" else ""
+                            else -> null
+                        }
+                        if (durationText != null) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                Text(
+                                    text = durationText,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Genres Row
+                    val genres = tmdbDetails?.genres
+                    if (!genres.isNullOrEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = genres.joinToString(" • ") { it.name },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // Controls: State & Taste Ratings with Instant Cloud Push
             item {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Affinity & Taste", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text("Affinity & Taste", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -252,43 +397,46 @@ fun DetailScreen(
                                 label = "Loved",
                                 icon = Icons.Default.Favorite,
                                 isSelected = item.taste == "Loved" || item.taste == "Love",
-                                color = Color(0xFFE91E63)
+                                color = com.vara.mediatracker.ui.theme.AppColors.Loved
                             ) {
                                 val next = if (item.taste == "Loved") "None" else "Loved"
                                 scope.launch {
                                     db.mediaDao().updateTaste(item.id, next)
                                     mediaItem = item.copy(taste = next)
+                                    syncManager.pushMediaUpdate(item.id, item.type, item.state, next)
                                 }
                             }
                             TasteButton(
                                 label = "Liked",
                                 icon = Icons.Default.ThumbUp,
                                 isSelected = item.taste == "Liked" || item.taste == "Like",
-                                color = Color(0xFF4CAF50)
+                                color = com.vara.mediatracker.ui.theme.AppColors.Liked
                             ) {
                                 val next = if (item.taste == "Liked") "None" else "Liked"
                                 scope.launch {
                                     db.mediaDao().updateTaste(item.id, next)
                                     mediaItem = item.copy(taste = next)
+                                    syncManager.pushMediaUpdate(item.id, item.type, item.state, next)
                                 }
                             }
                             TasteButton(
                                 label = "Disliked",
                                 icon = Icons.Default.ThumbDown,
                                 isSelected = item.taste == "Disliked",
-                                color = Color(0xFFFF9800)
+                                color = com.vara.mediatracker.ui.theme.AppColors.Disliked
                             ) {
                                 val next = if (item.taste == "Disliked") "None" else "Disliked"
                                 scope.launch {
                                     db.mediaDao().updateTaste(item.id, next)
                                     mediaItem = item.copy(taste = next)
+                                    syncManager.pushMediaUpdate(item.id, item.type, item.state, next)
                                 }
                             }
                         }
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
-                        Text("Status", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("Status", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -302,6 +450,7 @@ fun DetailScreen(
                                             val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
                                             db.mediaDao().updateState(item.id, stateName, now)
                                             mediaItem = item.copy(state = stateName)
+                                            syncManager.pushMediaUpdate(item.id, item.type, stateName, item.taste)
                                             Toast.makeText(context, "Marked as $stateName", Toast.LENGTH_SHORT).show()
                                         }
                                     },
@@ -316,14 +465,82 @@ fun DetailScreen(
             // Overview Section
             if (item.overview.isNotBlank()) {
                 item {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                         Text("Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = item.overview,
                             style = MaterialTheme.typography.bodyMedium,
+                            lineHeight = 21.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+
+            // Top Cast Gallery Section
+            if (castMembers.isNotEmpty()) {
+                item {
+                    Column(modifier = Modifier.padding(top = 10.dp)) {
+                        Text(
+                            text = "Top Cast",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                        )
+                        androidx.compose.foundation.lazy.LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            items(castMembers, key = { it.id }) { actor ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.width(72.dp)
+                                ) {
+                                    if (actor.profile_path != null) {
+                                        AsyncImage(
+                                            model = com.vara.mediatracker.data.api.TMDBClient.buildProfileUrl(actor.profile_path),
+                                            contentDescription = actor.name,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(60.dp)
+                                                .clip(CircleShape)
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(60.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Person,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = actor.name,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    if (!actor.character.isNullOrBlank()) {
+                                        Text(
+                                            text = actor.character,
+                                            fontSize = 9.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
