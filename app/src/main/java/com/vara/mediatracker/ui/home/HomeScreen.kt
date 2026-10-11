@@ -113,7 +113,11 @@ fun HomeScreen(
     val continueWatchingPool = remember(items, smartBadgesMap, todayDateStr) {
         items.filter { item ->
             if (item.isSoftDeleted) return@filter false
-            if (item.state.equals("Completed", ignoreCase = true) || item.state.equals("Dropped", ignoreCase = true)) return@filter false
+            if (item.state.equals("Completed", ignoreCase = true) ||
+                item.state.equals("Dropped", ignoreCase = true) ||
+                item.state.equals("On Hold", ignoreCase = true) ||
+                item.state.equals("Paused", ignoreCase = true)
+            ) return@filter false
 
             val isActive = item.state.equals("Watching", ignoreCase = true) ||
                 item.state.equals("Active", ignoreCase = true) ||

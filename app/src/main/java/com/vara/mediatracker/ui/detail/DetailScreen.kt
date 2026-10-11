@@ -29,6 +29,7 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import kotlinx.coroutines.launch
+import com.vara.mediatracker.data.api.TMDBClient
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -79,7 +80,20 @@ fun DetailScreen(
                             
                             // Fetch Details (Genres, Ratings, Runtime)
                             val detailsRes = if (isMovie) tmdbClient.getMovieDetails(tmdbId) else tmdbClient.getTVDetails(tmdbId)
-                            tmdbDetails = detailsRes.getOrNull()
+                            val details = detailsRes.getOrNull()
+                            tmdbDetails = details
+
+                            // Persist backdrop and poster if updated from TMDB
+                            val tmdbBackdrop = TMDBClient.buildPosterUrl(details?.backdrop_path)
+                            val tmdbPoster = TMDBClient.buildPosterUrl(details?.poster_path)
+                            if (tmdbBackdrop != null && item.backdropUrl != tmdbBackdrop) {
+                                val updatedItem = item.copy(
+                                    backdropUrl = tmdbBackdrop,
+                                    posterUrl = item.posterUrl ?: tmdbPoster
+                                )
+                                db.mediaDao().upsertMedia(listOf(updatedItem))
+                                mediaItem = updatedItem
+                            }
 
                             // Fetch Credits (Cast)
                             val creditsRes = if (isMovie) tmdbClient.getMovieCredits(tmdbId) else tmdbClient.getTVCredits(tmdbId)
@@ -177,35 +191,50 @@ fun DetailScreen(
                 .padding(padding),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            // Hero Header: macOS-style Cinematic Poster & Atmosphere
+            // Hero Header: macOS-style Cinematic Cover / Backdrop Atmosphere
             item {
+                val coverBackgroundUrl = remember(item.backdropUrl, nextUpEpisode?.stillPath, tmdbDetails?.backdrop_path) {
+                    item.backdropUrl
+                        ?: TMDBClient.buildPosterUrl(tmdbDetails?.backdrop_path)
+                        ?: nextUpEpisode?.stillPath?.let { if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/w780$it" }
+                }
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(340.dp)
                 ) {
-                    // Ambient Backdrop Glow
-                    if (item.backdropUrl != null || item.posterUrl != null) {
+                    // Ambient Cover Backdrop Glow
+                    if (coverBackgroundUrl != null) {
                         AsyncImage(
-                            model = item.backdropUrl ?: item.posterUrl,
+                            model = coverBackgroundUrl,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Black.copy(alpha = 0.45f),
-                                            MaterialTheme.colorScheme.background.copy(alpha = 0.85f),
-                                            MaterialTheme.colorScheme.background
-                                        )
-                                    )
-                                )
+                    } else if (item.posterUrl != null) {
+                        // Blurred fallback only if no cover/backdrop exists
+                        AsyncImage(
+                            model = item.posterUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Black.copy(alpha = 0.40f),
+                                        MaterialTheme.colorScheme.background.copy(alpha = 0.85f),
+                                        MaterialTheme.colorScheme.background
+                                    )
+                                )
+                            )
+                    )
 
                     // Floating Poster + Title Stack
                     Row(
