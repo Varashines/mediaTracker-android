@@ -161,10 +161,14 @@ class EpisodeEnrichmentWorker(
     companion object {
         const val KEY_SHOWS = "shows"
 
-        /** Shows per pass. Keeps a backfill from monopolising the network. */
-        const val BATCH_SIZE = 8
+        /**
+         * Shows per pass. Was 8 on a 3-hour cadence, which put the 128 shows with no
+         * air data roughly two days out — far too slow for Coming Soon to ever be
+         * populated. Raised alongside the cadence below.
+         */
+        const val BATCH_SIZE = 20
 
         /** Concurrent shows. TMDB is rate limited; this stays well inside it. */
-        const val MAX_CONCURRENT_SHOWS = 3
+        const val MAX_CONCURRENT_SHOWS = 4
     }
 }

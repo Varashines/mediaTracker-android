@@ -366,13 +366,40 @@ fun HomeScreen(
         }
     )
 
-    // Resume is an action, not browsing, so it gets a compact strip rather than a rail.
-    val resumeItems = remember(continueWatching) {
-        HomeFeed.resumeCandidates(continueWatching, smartBadgesMap, limit = 5)
+    // --- Section membership, all decided by HomeEligibility (ported macOS rules) ---
+    val resumeItems = remember(items, episodesByShow, smartBadgesMap, todayDateStr) {
+        HomeEligibility.resumeCandidates(
+            items = items,
+            episodesByShow = episodesByShow,
+            badges = smartBadgesMap,
+            today = todayDateStr
+        )
+    }
+    val (newItems, inProgressItems) = remember(resumeItems, smartBadgesMap) {
+        HomeEligibility.splitNewAndInProgress(resumeItems, smartBadgesMap)
     }
 
-    val feedDays = remember(items, episodesByShow, smartBadgesMap) {
-        HomeFeed.build(items, episodesByShow, smartBadgesMap)
+    val comingSoonItems = remember(items, episodesByShow, todayDateStr) {
+        items.filter { item ->
+            val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+            val air = if (key != null) {
+                HomeEligibility.nextUnairedAirDate(episodesByShow[key].orEmpty(), todayDateStr)
+            } else {
+                item.releaseDate?.take(10)
+            }
+            HomeEligibility.isComingSoon(item, air, todayDateStr)
+        }
+            .sortedBy { item ->
+                val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+                if (key != null) {
+                    HomeEligibility.nextUnairedAirDate(episodesByShow[key].orEmpty(), todayDateStr)
+                } else {
+                    item.releaseDate?.take(10)
+                } ?: "9999-99-99"
+            }
+            // macOS allows 40 here (HomeCategoryProcessor line 115); 20 hid roughly
+            // half the upcoming list on a library this size.
+            .take(40)
     }
 
     LazyColumn(
@@ -380,25 +407,17 @@ fun HomeScreen(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = 4.dp, bottom = 112.dp)
     ) {
-        // Continue watching — small, horizontal, purely so a resume is one tap away.
-        if (resumeItems.isNotEmpty()) {
+        // New — just dropped. The most time-sensitive band of Continue Watching.
+        if (newItems.isNotEmpty()) {
             item {
-                Column(modifier = Modifier.padding(bottom = 6.dp)) {
-                    SectionHeader(
-                        title = "Continue watching",
-                        count = resumeItems.size,
-                        accent = AppColors.Accent
-                    )
+                Column {
+                    SectionHeader(title = "New", count = newItems.size, accent = AppColors.Liked)
                     Spacer(modifier = Modifier.height(10.dp))
                     SnapRail {
-                        items(resumeItems, key = { it.id }) { item ->
-                            ContinueWatchingBackdropCard(
+                        items(newItems, key = { it.id }) { item ->
+                            HomePosterCard(
                                 item = item,
-                                progress = showProgressMap[item.id],
                                 smartBadge = smartBadgesMap[item.id],
-                                cardWidth = 210.dp,
-                                cardHeight = 118.dp,
-                                logoUrl = logoMap[item.id],
                                 onClick = { onSelectMedia(item.id) }
                             )
                         }
@@ -407,24 +426,95 @@ fun HomeScreen(
             }
         }
 
-        // Everything else is one chronological feed.
-        item {
-            SectionHeader(
-                title = "Coming up",
-                count = feedDays.sumOf { it.entries.size },
-                accent = AppColors.Gold,
-                modifier = Modifier.padding(top = 10.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            HomeTimeline(
-                days = feedDays,
-                badges = smartBadgesMap,
-                onSelectMedia = onSelectMedia
-            )
+        // In Progress — the rest of Continue Watching: part-way, nothing urgent.
+        if (inProgressItems.isNotEmpty()) {
+            item {
+                Column {
+                    SectionHeader(
+                        title = "In Progress",
+                        count = inProgressItems.size,
+                        accent = AppColors.Accent
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    SnapRail {
+                        items(inProgressItems, key = { it.id }) { item ->
+                            HomePosterCard(
+                                item = item,
+                                smartBadge = smartBadgesMap[item.id],
+                                onClick = { onSelectMedia(item.id) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Coming Soon — anything with an unaired episode or an unreleased film,
+        // soonest first, matching macOS.
+        if (comingSoonItems.isNotEmpty()) {
+            item {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SectionHeader(
+                            title = "Coming Soon",
+                            count = comingSoonItems.size,
+                            accent = AppColors.Gold,
+                            horizontalPadding = 0.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Next 30 days",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    SnapRail {
+                        items(comingSoonItems, key = { it.id }) { item ->
+                            val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+                            HomePosterCard(
+                                item = item,
+                                nextAirDate = if (key != null) {
+                                    HomeEligibility.nextUnairedAirDate(episodesByShow[key].orEmpty(), todayDateStr)
+                                } else {
+                                    item.releaseDate?.take(10)
+                                },
+                                smartBadge = smartBadgesMap[item.id],
+                                onClick = { onSelectMedia(item.id) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (recentlyAddedItems.isNotEmpty()) {
+            item {
+                Column {
+                    SectionHeader(
+                        title = "Recently Added",
+                        count = recentlyAddedItems.size,
+                        accent = AppColors.TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    SnapRail {
+                        items(recentlyAddedItems, key = { it.id }) { item ->
+                            HomePosterCard(
+                                item = item,
+                                smartBadge = smartBadgesMap[item.id],
+                                onClick = { onSelectMedia(item.id) }
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
-
     }
+
 }
 
 @Composable

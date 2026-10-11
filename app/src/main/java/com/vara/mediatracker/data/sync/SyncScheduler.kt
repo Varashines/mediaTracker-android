@@ -42,8 +42,13 @@ object SyncScheduler {
     /** WorkManager's floor for periodic work is 15 minutes. */
     private const val BADGE_INTERVAL_MINUTES = 15L
 
-    /** Backfill cadence. Slow on purpose — this converges, it does not need freshness. */
-    private const val ENRICHMENT_INTERVAL_HOURS = 3L
+    /**
+     * Backfill cadence. Hourly rather than every 3 hours: the work is one-time
+     * convergence, and the per-pass batch is already bounded, so a faster tick
+     * shortens the blind period without adding steady-state cost once the library
+     * is fully enriched and the DAO stops selecting anything.
+     */
+    private const val ENRICHMENT_INTERVAL_HOURS = 1L
 
     private fun networkConstraints() = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
