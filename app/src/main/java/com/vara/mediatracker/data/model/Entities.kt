@@ -14,7 +14,7 @@ data class MediaItemEntity(
     val releaseDate: String? = null,
     val type: String = "Movie",              // "Movie" or "TV"
     val state: String = "Wishlist",          // "Wishlist", "Watching", "Completed", "Paused", "Dropped"
-    val taste: String = "None",              // "Loved", "Liked", "Disliked", "Hated", "None"
+    val taste: String = "None",              // "Love", "Like", "Dislike", "None" (singular, as stored)
     val customPosterUrl: String? = null,
     /**
      * Precise instant of the next airing, ISO-8601, from TVMaze `airstamp`.

@@ -113,16 +113,39 @@ object HomeEligibility {
     ): Boolean {
         if (item.isSoftDeleted) return false
         if (item.state.equals("Completed", ignoreCase = true)) return false
+        // macOS applies these when building the Home pool that Coming Soon draws
+        // from (HomeCategoryProcessor.swift:51,55,58), not in the air-date filter.
+        // Without them an On Hold or Disliked title still surfaces as "upcoming".
+        if (item.state.equals("Dropped", ignoreCase = true)) return false
+        if (item.state.equals("On Hold", ignoreCase = true)) return false
+        if (item.taste.equals("Dislike", ignoreCase = true)) return false
         val air = nextUnairedAirDate ?: return false
         return air > today
     }
 
-    /** Earliest air date among episodes that have not aired yet. */
-    fun nextUnairedAirDate(episodes: List<EpisodeEntity>, today: String): String? =
-        episodes.asSequence()
+    /**
+     * Port of macOS `cachedNextAiringDate` (MediaItem+Sync.swift:233):
+     * the air date of the FIRST UNWATCHED episode, falling back to the next
+     * unaired one only when that episode has no air date.
+     *
+     * This is not the same as "next unaired date". A show with a backlog
+     * resolves to a date already in the past, which is what keeps it in In
+     * Progress instead of Coming Soon. Taking the next *unaired* date instead
+     * put shows with unwatched episodes into Coming Soon, because the future
+     * episodes outweighed the ones you have not seen yet.
+     *
+     * `firstUnwatched` is season-then-episode order with no air-date filter,
+     * matching TVShowDetails.swift:95.
+     */
+    fun nextAiringDate(episodes: List<EpisodeEntity>, today: String): String? {
+        val ordered = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+        val firstUnwatchedAir = ordered.firstOrNull { !it.isWatched }?.airDate?.take(10)
+        if (firstUnwatchedAir != null) return firstUnwatchedAir
+        return ordered.asSequence()
             .mapNotNull { it.airDate?.take(10) }
             .filter { it > today }
             .minOrNull()
+    }
 
     /** Whether the show has any aired-but-unwatched episode to resume. */
     fun hasUnwatchedAired(episodes: List<EpisodeEntity>, today: String): Boolean =
@@ -145,7 +168,7 @@ object HomeEligibility {
                     item, badge,
                     hasUnwatchedAired = hasUnwatchedAired(eps, today),
                     watchedCount = watched,
-                    nextUnairedAirDate = nextUnairedAirDate(eps, today),
+                    nextUnairedAirDate = nextAiringDate(eps, today),
                     today = today
                 )
             ) return@mapNotNull null

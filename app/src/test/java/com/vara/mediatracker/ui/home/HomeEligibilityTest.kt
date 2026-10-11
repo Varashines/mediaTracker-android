@@ -32,9 +32,10 @@ class HomeEligibilityTest {
         type: String = "TV Show",
         release: String? = null,
         softDeleted: Boolean = false,
+        taste: String = "Like",
         lastInteraction: String? = null
     ) = MediaItemEntity(
-        id = id, title = id, type = type, state = state,
+        id = id, title = id, type = type, state = state, taste = taste,
         releaseDate = release, isSoftDeleted = softDeleted,
         lastInteractionDate = lastInteraction
     )
@@ -56,7 +57,7 @@ class HomeEligibilityTest {
         badge = badge,
         hasUnwatchedAired = HomeEligibility.hasUnwatchedAired(eps, today),
         watchedCount = eps.count { it.isWatched },
-        nextUnairedAirDate = HomeEligibility.nextUnairedAirDate(eps, today),
+        nextUnairedAirDate = HomeEligibility.nextAiringDate(eps, today),
         today = today
     )
 
@@ -167,20 +168,46 @@ class HomeEligibilityTest {
     }
 
     @Test
-    fun `next unaired ignores watched episodes`() {
-        // Mirrors TVMaze `nextepisode`: an unaired episode matters regardless of
-        // whether earlier ones are watched.
+    fun `next airing date is the first unwatched episode not the next unaired`() {
+        // Regression: "Between Steps" had an unwatched episode that already aired
+        // plus later unaired ones. Taking the next *unaired* date put it in
+        // Coming Soon; macOS takes the first unwatched episode, whose date has
+        // passed, so the title stays in In Progress.
         val eps = listOf(
-            ep(1, 1, watched = false, airDate = day(-5)),
-            ep(1, 2, watched = false, airDate = day(4))
+            ep(1, 1, watched = true, airDate = day(-20)),
+            ep(1, 2, watched = false, airDate = day(-5)),
+            ep(1, 3, watched = false, airDate = day(4))
         )
-        assertEquals(day(4), HomeEligibility.nextUnairedAirDate(eps, today))
+        assertEquals(day(-5), HomeEligibility.nextAiringDate(eps, today))
+        assertFalse(HomeEligibility.isComingSoon(item(), HomeEligibility.nextAiringDate(eps, today), today))
     }
 
     @Test
-    fun `next unaired is null when everything has aired`() {
+    fun `caught up show falls through to the next unaired episode`() {
+        // Nothing unwatched, so the unaired fallback applies and it belongs in
+        // Coming Soon.
+        val eps = listOf(
+            ep(1, 1, watched = true, airDate = day(-20)),
+            ep(1, 2, watched = false, airDate = day(6))
+        )
+        assertEquals(day(6), HomeEligibility.nextAiringDate(eps, today))
+        assertTrue(HomeEligibility.isComingSoon(item(), HomeEligibility.nextAiringDate(eps, today), today))
+    }
+
+    @Test
+    fun `unwatched episode with no air date falls back to the unaired one`() {
+        val eps = listOf(
+            ep(1, 1, watched = true, airDate = day(-20)),
+            ep(1, 2, watched = false, airDate = null),
+            ep(1, 3, watched = false, airDate = day(9))
+        )
+        assertEquals(day(9), HomeEligibility.nextAiringDate(eps, today))
+    }
+
+    @Test
+    fun `next airing date is null when everything has aired and is watched`() {
         val eps = listOf(ep(1, 1, watched = true, airDate = day(-10)))
-        assertNull(HomeEligibility.nextUnairedAirDate(eps, today))
+        assertNull(HomeEligibility.nextAiringDate(eps, today))
     }
 
     @Test
@@ -196,6 +223,21 @@ class HomeEligibilityTest {
     }
 
     // ---------- assembly ----------
+
+    @Test
+    fun `coming soon excludes dropped on hold and disliked`() {
+        // macOS applies these when building the Home pool, so such a title never
+        // reaches Coming Soon even when it has a future air date.
+        val soon = day(10)
+        fun cs(state: String = "Active", taste: String = "Like") =
+            HomeEligibility.isComingSoon(item(state = state, taste = taste), soon, day(0))
+        assertFalse(cs(state = "Dropped"))
+        assertFalse(cs(state = "On Hold"))
+        assertFalse(cs(state = "Completed"))
+        assertFalse(cs(taste = "Dislike"))
+        assertTrue(cs(state = "Wishlist"))
+        assertTrue(cs(state = "Active"))
+    }
 
     @Test
     fun `continue watching splits cleanly into new and in progress`() {

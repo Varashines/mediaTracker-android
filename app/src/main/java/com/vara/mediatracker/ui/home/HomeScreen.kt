@@ -383,7 +383,7 @@ fun HomeScreen(
         items.filter { item ->
             val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
             val air = if (key != null) {
-                HomeEligibility.nextUnairedAirDate(episodesByShow[key].orEmpty(), todayDateStr)
+                HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
             } else {
                 item.releaseDate?.take(10)
             }
@@ -392,7 +392,7 @@ fun HomeScreen(
             .sortedBy { item ->
                 val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
                 if (key != null) {
-                    HomeEligibility.nextUnairedAirDate(episodesByShow[key].orEmpty(), todayDateStr)
+                    HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
                 } else {
                     item.releaseDate?.take(10)
                 } ?: "9999-99-99"
@@ -478,7 +478,7 @@ fun HomeScreen(
                             HomePosterCard(
                                 item = item,
                                 nextAirDate = if (key != null) {
-                                    HomeEligibility.nextUnairedAirDate(episodesByShow[key].orEmpty(), todayDateStr)
+                                    HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
                                 } else {
                                     item.releaseDate?.take(10)
                                 },
