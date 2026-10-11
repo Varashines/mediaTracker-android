@@ -2,6 +2,7 @@ package com.vara.mediatracker.data.sync
 
 import com.vara.mediatracker.data.db.MediaDao
 import com.vara.mediatracker.data.model.EpisodeEntity
+import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -166,8 +167,10 @@ class CloudSyncManager(
             if (remoteEpList.isNotEmpty()) {
                 val localEpisodes = remoteEpList.map { rem ->
                     EpisodeEntity(
-                        uniqueId = rem.episode_id,
-                        showId = rem.show_id,
+                        uniqueId = MediaIds.parseEpisodeUniqueId(rem.episode_id)
+                            ?.let { MediaIds.buildEpisodeUniqueId(it.showId, it.seasonNumber, it.episodeNumber) }
+                            ?: rem.episode_id,
+                        showId = MediaIds.tvShowKey(rem.show_id),
                         seasonNumber = rem.season_number,
                         episodeNumber = rem.episode_number,
                         isWatched = rem.is_watched,
@@ -194,11 +197,12 @@ class CloudSyncManager(
      */
     suspend fun pushEpisodeWatch(showId: String, season: Int, episode: Int, watched: Boolean) = runCatching {
         val now = isoFormat.format(Date())
-        val epId = "tv_${showId}_s${season}_e${episode}"
+        val canonicalShowId = MediaIds.tvShowKey(showId)
+        val epId = MediaIds.buildEpisodeUniqueId(canonicalShowId, season, episode)
         val payload = RemoteEpisode(
             user_id = syncKey,
             episode_id = epId,
-            show_id = "tv_$showId",
+            show_id = canonicalShowId,
             season_number = season,
             episode_number = episode,
             is_watched = watched,

@@ -25,4 +25,30 @@ class PreferencesManager(context: Context) {
     var lastSyncTimestamp: Long
         get() = prefs.getLong("last_sync_timestamp", 0L)
         set(value) = prefs.edit().putLong("last_sync_timestamp", value).apply()
+
+    /**
+     * Set once the one-shot episode key reconciliation has completed successfully.
+     * The reconciler is idempotent, so a stale `false` only costs a cheap no-op scan.
+     */
+    var episodeKeyMigrationDone: Boolean
+        get() = prefs.getBoolean("episode_key_migration_v3_done", false)
+        set(value) = prefs.edit().putBoolean("episode_key_migration_v3_done", value).apply()
+
+    /**
+     * Persists every credential in a single atomic edit. Called on a debounce rather
+     * than per keystroke, so four keys commit together instead of racing each other.
+     */
+    fun saveCredentials(
+        supabaseUrl: String,
+        supabaseAnonKey: String,
+        syncKey: String,
+        tmdbApiKey: String
+    ) {
+        prefs.edit()
+            .putString("supabase_url", supabaseUrl.trim())
+            .putString("supabase_anon_key", supabaseAnonKey.trim())
+            .putString("sync_key", syncKey.trim())
+            .putString("tmdb_api_key", tmdbApiKey.trim())
+            .apply()
+    }
 }

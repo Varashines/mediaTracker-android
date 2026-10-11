@@ -23,10 +23,28 @@ import androidx.compose.ui.unit.sp
 import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
+/** Debounce for credential writes: long enough to coalesce typing, short enough to feel instant. */
+private const val SettingsScreenDebounceMs = 400L
+
+/**
+ * The four credential fields as one value.
+ *
+ * Held as a single object so `snapshotFlow` observes one coherent snapshot; four
+ * independent states would emit an intermediate save per field while typing.
+ */
+private data class CredentialDraft(
+    val supabaseUrl: String = "",
+    val supabaseAnonKey: String = "",
+    val syncKey: String = "",
+    val tmdbApiKey: String = ""
+)
+
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun SettingsScreen(
     prefs: PreferencesManager,
@@ -35,10 +53,6 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var supabaseUrl by remember { mutableStateOf(prefs.supabaseUrl) }
-    var supabaseAnonKey by remember { mutableStateOf(prefs.supabaseAnonKey) }
-    var syncKey by remember { mutableStateOf(prefs.syncKey) }
-    var tmdbApiKey by remember { mutableStateOf(prefs.tmdbApiKey) }
     var showAnonKey by remember { mutableStateOf(false) }
     var isSyncing by remember { mutableStateOf(false) }
     var lastSyncTime by remember { mutableLongStateOf(prefs.lastSyncTimestamp) }
@@ -47,6 +61,28 @@ fun SettingsScreen(
         if (lastSyncTime == 0L) "Never synced"
         else "Last synced: " + SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(lastSyncTime))
     }
+
+    // Credentials were previously written to SharedPreferences on every keystroke,
+    // costing a disk write per character. Stage them locally and commit once the user
+    // pauses typing.
+    val draft = remember {
+        mutableStateOf(
+            CredentialDraft(
+                supabaseUrl = prefs.supabaseUrl,
+                supabaseAnonKey = prefs.supabaseAnonKey,
+                syncKey = prefs.syncKey,
+                tmdbApiKey = prefs.tmdbApiKey
+            )
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        snapshotFlow { draft.value }
+            .debounce(SettingsScreenDebounceMs)
+            .collect { prefs.saveCredentials(it.supabaseUrl, it.supabaseAnonKey, it.syncKey, it.tmdbApiKey) }
+    }
+
+    val current = draft.value
 
     Column(
         modifier = Modifier
@@ -93,11 +129,8 @@ fun SettingsScreen(
 
                 // Project URL
                 OutlinedTextField(
-                    value = supabaseUrl,
-                    onValueChange = {
-                        supabaseUrl = it
-                        prefs.supabaseUrl = it
-                    },
+                    value = current.supabaseUrl,
+                    onValueChange = { draft.value = draft.value.copy(supabaseUrl = it) },
                     label = { Text("Supabase Project URL") },
                     placeholder = { Text("https://xyz.supabase.co") },
                     singleLine = true,
@@ -106,11 +139,8 @@ fun SettingsScreen(
 
                 // Anon Key
                 OutlinedTextField(
-                    value = supabaseAnonKey,
-                    onValueChange = {
-                        supabaseAnonKey = it
-                        prefs.supabaseAnonKey = it
-                    },
+                    value = current.supabaseAnonKey,
+                    onValueChange = { draft.value = draft.value.copy(supabaseAnonKey = it) },
                     label = { Text("Supabase Anon Key") },
                     placeholder = { Text("sb_publishable_...") },
                     singleLine = true,
@@ -128,11 +158,8 @@ fun SettingsScreen(
 
                 // Secret Sync Key
                 OutlinedTextField(
-                    value = syncKey,
-                    onValueChange = {
-                        syncKey = it
-                        prefs.syncKey = it
-                    },
+                    value = current.syncKey,
+                    onValueChange = { draft.value = draft.value.copy(syncKey = it) },
                     label = { Text("Secret Sync Key (from Mac Settings)") },
                     placeholder = { Text("mt_sync_...") },
                     singleLine = true,
@@ -144,7 +171,7 @@ fun SettingsScreen(
                 // Sync Now Button
                 Button(
                     onClick = {
-                        if (supabaseUrl.isBlank() || supabaseAnonKey.isBlank() || syncKey.isBlank()) {
+                        if (current.supabaseUrl.isBlank() || current.supabaseAnonKey.isBlank() || current.syncKey.isBlank()) {
                             Toast.makeText(context, "Please fill in all sync credentials", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
@@ -152,10 +179,10 @@ fun SettingsScreen(
                         scope.launch {
                             val manager = CloudSyncManager(
                                 mediaDao = db.mediaDao(),
-                                supabaseUrl = supabaseUrl,
-                                anonKey = supabaseAnonKey,
-                                syncKey = syncKey,
-                                tmdbApiKey = tmdbApiKey
+                                supabaseUrl = current.supabaseUrl,
+                                anonKey = current.supabaseAnonKey,
+                                syncKey = current.syncKey,
+                                tmdbApiKey = current.tmdbApiKey
                             )
                             val result = manager.pullFromCloud()
                             isSyncing = false
@@ -227,11 +254,8 @@ fun SettingsScreen(
                 )
 
                 OutlinedTextField(
-                    value = tmdbApiKey,
-                    onValueChange = {
-                        tmdbApiKey = it
-                        prefs.tmdbApiKey = it
-                    },
+                    value = current.tmdbApiKey,
+                    onValueChange = { draft.value = draft.value.copy(tmdbApiKey = it) },
                     label = { Text("TMDB API Key (v3 Key or v4 Read Token)") },
                     placeholder = { Text("Enter v3 key or v4 Bearer token (ey...)") },
                     singleLine = true,

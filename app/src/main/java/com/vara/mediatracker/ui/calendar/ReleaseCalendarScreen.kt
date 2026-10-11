@@ -29,9 +29,10 @@ import com.vara.mediatracker.data.badge.SmartBadge
 import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.MediaIds
+import com.vara.mediatracker.ui.common.parseTargetAirDateTime
+import com.vara.mediatracker.ui.common.rememberCountdownText
 import com.vara.mediatracker.ui.home.SmartBadgePill
-import com.vara.mediatracker.ui.home.formatCountdownTimer
-import com.vara.mediatracker.ui.home.parseTargetAirDateTime
 import com.vara.mediatracker.ui.theme.AppColors
 import java.text.SimpleDateFormat
 import java.util.*
@@ -73,7 +74,7 @@ fun ReleaseCalendarScreen(
     val smartBadgesMap = remember(items, episodesByShow) {
         val now = Date()
         items.associate { item ->
-            val showKey = if (item.id.startsWith("tv_")) item.id else "tv_" + item.id.substringAfterLast("_")
+            val showKey = MediaIds.tvShowKey(item.id)
             val showEps = episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList()
             item.id to BadgeEngine.calculateBadge(item, showEps, now)
         }
@@ -131,7 +132,7 @@ fun ReleaseCalendarScreen(
                         val c = Calendar.getInstance().apply { time = d }
                         if (c.get(Calendar.YEAR) == year && c.get(Calendar.MONTH) == month) {
                             val show = itemsMap[ep.showId]
-                                ?: itemsMap["tv_" + ep.showId.substringAfterLast("_")]
+                                ?: itemsMap[MediaIds.tvShowKey(ep.showId)]
                                 ?: items.firstOrNull { it.id.endsWith(ep.showId) }
                             if (show != null && !show.isSoftDeleted) {
                                 monthEvents.add(
@@ -406,9 +407,7 @@ fun CalendarReleaseCard(
     val targetAirDate = remember(event.dateString, item.title, item.overview) {
         parseTargetAirDateTime(event.dateString, "${item.title} ${item.overview}")
     }
-    val countdown = remember(targetAirDate) {
-        targetAirDate?.let { formatCountdownTimer(it) }
-    }
+    val countdown = rememberCountdownText(targetAirDate)
 
     Card(
         shape = RoundedCornerShape(16.dp),

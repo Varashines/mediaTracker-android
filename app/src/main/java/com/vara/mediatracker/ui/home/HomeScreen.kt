@@ -33,6 +33,9 @@ import com.vara.mediatracker.data.badge.SmartBadge
 import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.MediaIds
+import com.vara.mediatracker.ui.common.parseTargetAirDateTime
+import com.vara.mediatracker.ui.common.rememberCountdownText
 import com.vara.mediatracker.ui.theme.AppColors
 import java.text.SimpleDateFormat
 import java.util.*
@@ -81,7 +84,7 @@ fun HomeScreen(
     // Precalculate progress and next episode per show
     val showProgressMap = remember(items, episodesByShow, todayDateStr) {
         items.filter { it.type.contains("TV", ignoreCase = true) }.associate { item ->
-            val showKey = if (item.id.startsWith("tv_")) item.id else "tv_" + item.id.substringAfterLast("_")
+            val showKey = MediaIds.tvShowKey(item.id)
             val showEps = (episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList())
                 .sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
             val total = showEps.size
@@ -104,7 +107,7 @@ fun HomeScreen(
     val smartBadgesMap = remember(items, episodesByShow) {
         val now = Date()
         items.associate { item ->
-            val showKey = if (item.id.startsWith("tv_")) item.id else "tv_" + item.id.substringAfterLast("_")
+            val showKey = MediaIds.tvShowKey(item.id)
             val showEps = episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList()
             item.id to BadgeEngine.calculateBadge(item, showEps, now)
         }
@@ -191,7 +194,8 @@ fun HomeScreen(
             val tmdbClient = TMDBClient(apiKey)
             for (item in continueWatching) {
                 if (logoMap.containsKey(item.id)) continue
-                val tmdbId = item.id.substringAfterLast("_").toIntOrNull() ?: continue
+                val tmdbId = MediaIds.tmdbIdOf(item.id)
+                if (tmdbId <= 0) continue
                 val isMovie = item.type.contains("Movie", ignoreCase = true)
                 val imagesRes = if (isMovie) tmdbClient.getMovieImages(tmdbId) else tmdbClient.getTVImages(tmdbId)
                 val bestLogo = imagesRes.getOrNull()?.logos?.let { logos ->
@@ -830,94 +834,9 @@ fun SectionHeader(title: String) {
 }
 
 /**
- * Streaming service broadcast/release timing rule matching macOS DateUtils.
+ * Live countdown label. Recomposes on every tick of the app-wide clock published
+ * through LocalNowMillis, so "in 12m" actually counts down.
  */
-data class StreamingServiceRule(
-    val patterns: List<String>,
-    val releaseTime: String, // "HH:mm"
-    val timeZoneId: String,
-    val dayOffset: Int
-)
-
-val defaultStreamingRules = listOf(
-    // Apple TV Originals drop at 9 PM ET on the eve of release date
-    StreamingServiceRule(listOf("apple"), "21:00", "America/New_York", -1),
-    // Disney+ Marvel / Star Wars drops at 9 PM ET
-    StreamingServiceRule(listOf("star wars", "marvel"), "21:00", "America/New_York", 0),
-    // Disney+ standard Midnight PT
-    StreamingServiceRule(listOf("disney"), "00:00", "America/Los_Angeles", 0),
-    // Netflix: Midnight PT
-    StreamingServiceRule(listOf("netflix"), "00:00", "America/Los_Angeles", 0),
-    // Prime / Amazon / MGM+: Midnight PT
-    StreamingServiceRule(listOf("amazon", "prime", "mgm"), "00:00", "America/Los_Angeles", 0),
-    // Hulu / Peacock / Paramount+: Midnight ET
-    StreamingServiceRule(listOf("hulu", "peacock", "paramount"), "00:00", "America/New_York", 0),
-    // FX / FXX: Broadcasts evening / drops next morning on Hulu
-    StreamingServiceRule(listOf("fx", "fxx"), "00:00", "America/New_York", 1),
-    // HBO / Max: 9 PM ET
-    StreamingServiceRule(listOf("max", "hbo"), "21:00", "America/New_York", 0)
-)
-
-/**
- * Resolves exact Date for an airDate or releaseDate string using streaming/network rules or 8 PM ET default.
- */
-fun parseTargetAirDateTime(dateStr: String?, networkOrTitle: String?): Date? {
-    if (dateStr.isNullOrBlank()) return null
-    val cleanDate = dateStr.trim().take(10) // "yyyy-MM-dd"
-    if (cleanDate.length < 10) return null
-
-    val query = (networkOrTitle ?: "").lowercase(Locale.US)
-    val rule = defaultStreamingRules.firstOrNull { r ->
-        r.patterns.any { pattern -> query.contains(pattern) }
-    }
-
-    val (timePart, tzId, dayOffset) = if (rule != null) {
-        Triple(rule.releaseTime, rule.timeZoneId, rule.dayOffset)
-    } else {
-        Triple("20:00", "America/New_York", 0)
-    }
-
-    return try {
-        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone(tzId)
-        }
-        val baseDate = sdf.parse("$cleanDate $timePart") ?: return null
-        if (dayOffset != 0) {
-            val cal = Calendar.getInstance(TimeZone.getTimeZone(tzId)).apply {
-                time = baseDate
-                add(Calendar.DAY_OF_YEAR, dayOffset)
-            }
-            cal.time
-        } else {
-            baseDate
-        }
-    } catch (_: Exception) {
-        null
-    }
-}
-
-/**
- * Generates countdown label matching macOS MediaThumbnailView.upcomingCountdownLabel:
- * "in X min", "in X hours", "in X days", or calendar date.
- */
-fun formatCountdownTimer(targetDate: Date, now: Date = Date()): String {
-    val diffMillis = targetDate.time - now.time
-    if (diffMillis <= 0) return "Today"
-    val diffMinutes = (diffMillis / 60000L).toInt()
-    if (diffMinutes < 60) {
-        return "in ${maxOf(diffMinutes, 1)}m"
-    }
-    val diffHours = diffMinutes / 60
-    if (diffHours < 24) {
-        return if (diffHours == 1) "in 1h" else "in ${diffHours}h"
-    }
-    val diffDays = diffHours / 24
-    if (diffDays <= 60) {
-        return if (diffDays == 1) "in 1d" else "in ${diffDays}d"
-    }
-    return SimpleDateFormat("MMM d", Locale.getDefault()).format(targetDate)
-}
-
 @Composable
 fun HomePosterCard(
     item: MediaItemEntity,
@@ -931,9 +850,7 @@ fun HomePosterCard(
         parseTargetAirDateTime(rawDate, "${item.title} ${item.overview}")
     }
 
-    val countdownLabel = remember(targetAirDate) {
-        targetAirDate?.let { formatCountdownTimer(it) }
-    }
+    val countdownLabel = rememberCountdownText(targetAirDate)
 
     Card(
         shape = RoundedCornerShape(16.dp),

@@ -49,9 +49,20 @@ interface MediaDao {
 
     @Query("UPDATE tv_episodes SET isWatched = :watched, watchedDate = :watchedDate WHERE uniqueId = :uniqueId")
     suspend fun setEpisodeWatched(uniqueId: String, watched: Boolean, watchedDate: String?)
+
+    // --- Used by EpisodeKeyReconciler to rewrite legacy primary keys ---
+    @Query("SELECT * FROM tv_episodes")
+    suspend fun getAllEpisodesList(): List<EpisodeEntity>
+
+    @Query("DELETE FROM tv_episodes WHERE uniqueId IN (:uniqueIds)")
+    suspend fun deleteEpisodesByIds(uniqueIds: List<String>)
 }
 
-@Database(entities = [MediaItemEntity::class, EpisodeEntity::class], version = 2, exportSchema = false)
+@Database(
+    entities = [MediaItemEntity::class, EpisodeEntity::class],
+    version = 2,
+    exportSchema = true
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun mediaDao(): MediaDao
 }

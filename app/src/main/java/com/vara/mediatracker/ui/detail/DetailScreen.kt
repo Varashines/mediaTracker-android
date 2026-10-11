@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.data.model.EpisodeEntity
+import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
@@ -44,7 +45,7 @@ fun DetailScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var mediaItem by remember { mutableStateOf<MediaItemEntity?>(null) }
-    val showIdKey = if (mediaId.startsWith("tv_")) mediaId else "tv_" + mediaId.substringAfterLast("_")
+    val showIdKey = MediaIds.tvShowKey(mediaId)
     val episodes by db.mediaDao().getEpisodesForShow(showIdKey)
         .collectAsState(initial = emptyList())
     var isLoadingEpisodes by remember { mutableStateOf(false) }
@@ -70,7 +71,7 @@ fun DetailScreen(
         mediaItem = item
 
         if (item != null && prefs.tmdbApiKey.isNotBlank()) {
-            val tmdbId = item.id.substringAfterLast("_").toIntOrNull() ?: 0
+            val tmdbId = MediaIds.tmdbIdOf(item.id)
             if (tmdbId > 0) {
                 kotlinx.coroutines.Dispatchers.IO.let { ioDispatcher ->
                     kotlinx.coroutines.withContext(ioDispatcher) {
@@ -117,7 +118,7 @@ fun DetailScreen(
                                     for (ep in eps) {
                                         val key = "${ep.season_number}_${ep.episode_number}"
                                         val existing = currentLocalEps[key]
-                                        val uniqueId = "${tmdbId}_${ep.season_number}_${ep.episode_number}"
+                                        val uniqueId = MediaIds.buildEpisodeUniqueId(showIdKey, ep.season_number, ep.episode_number)
                                         newEpisodesList.add(
                                             EpisodeEntity(
                                                 uniqueId = existing?.uniqueId ?: uniqueId,
@@ -613,7 +614,7 @@ fun DetailScreen(
                                         scope.launch {
                                             val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
                                             db.mediaDao().setEpisodeWatched(nextUpEpisode.uniqueId, true, now)
-                                            val showTmdbId = nextUpEpisode.showId.substringAfterLast("_")
+                                            val showTmdbId = MediaIds.tmdbIdOf(nextUpEpisode.showId).toString()
                                             syncManager.pushEpisodeWatch(showTmdbId, nextUpEpisode.seasonNumber, nextUpEpisode.episodeNumber, true)
                                         }
                                     },
@@ -697,7 +698,7 @@ fun DetailScreen(
                                     scope.launch {
                                         val targetWatched = !allSeasonWatched
                                         val now = if (targetWatched) SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date()) else null
-                                        val showTmdbId = mediaId.substringAfterLast("_")
+                                        val showTmdbId = MediaIds.tmdbIdOf(mediaId).toString()
                                         currentSeasonEpisodes.forEach { ep ->
                                             db.mediaDao().setEpisodeWatched(ep.uniqueId, targetWatched, now)
                                             syncManager.pushEpisodeWatch(showTmdbId, ep.seasonNumber, ep.episodeNumber, targetWatched)
@@ -733,7 +734,7 @@ fun DetailScreen(
                                 scope.launch {
                                     val now = if (watched) SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date()) else null
                                     db.mediaDao().setEpisodeWatched(ep.uniqueId, watched, now)
-                                    val showTmdbId = ep.showId.substringAfterLast("_")
+                                    val showTmdbId = MediaIds.tmdbIdOf(ep.showId).toString()
                                     syncManager.pushEpisodeWatch(showTmdbId, ep.seasonNumber, ep.episodeNumber, watched)
                                 }
                             }

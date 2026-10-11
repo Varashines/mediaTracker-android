@@ -1,9 +1,11 @@
 package com.vara.mediatracker
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -23,12 +25,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import androidx.room.Room
 import coil.compose.AsyncImage
 import androidx.activity.compose.BackHandler
 import com.vara.mediatracker.data.db.AppDatabase
+import com.vara.mediatracker.data.db.EpisodeKeyReconciler
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.prefs.PreferencesManager
+import com.vara.mediatracker.ui.common.LocalNowMillis
+import com.vara.mediatracker.ui.common.rememberNowMillis
 import com.vara.mediatracker.ui.detail.DetailScreen
 import com.vara.mediatracker.ui.home.HomeScreen
 import com.vara.mediatracker.ui.library.LibraryScreen
@@ -38,7 +44,12 @@ import com.vara.mediatracker.ui.theme.MediaTrackerTheme
 class MainActivity : ComponentActivity() {
     private val db by lazy {
         Room.databaseBuilder(applicationContext, AppDatabase::class.java, "mediatracker.db")
-            .fallbackToDestructiveMigration()
+            // Destructive fallback is a development convenience only. In a release
+            // build a missing Migration must fail loudly rather than silently wipe a
+            // library that was synced from the cloud.
+            .apply {
+                if (BuildConfig.DEBUG) fallbackToDestructiveMigration()
+            }
             .build()
     }
 
@@ -47,11 +58,35 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        repairLegacyEpisodeKeys()
         setContent {
             MediaTrackerTheme {
-                MainAppScreen(db = db, prefs = prefs)
+                // Single app-wide clock so countdown labels stay live without each
+                // card owning its own ticker coroutine.
+                CompositionLocalProvider(LocalNowMillis provides rememberNowMillis()) {
+                    MainAppScreen(db = db, prefs = prefs)
+                }
             }
         }
+    }
+
+    /**
+     * Rewrites pre-canonical episode primary keys once per install. Idempotent, so a
+     * crash mid-migration simply retries on the next launch.
+     */
+    private fun repairLegacyEpisodeKeys() {
+        if (prefs.episodeKeyMigrationDone) return
+        lifecycleScope.launch {
+            val migrated = EpisodeKeyReconciler(db).reconcile()
+            prefs.episodeKeyMigrationDone = true
+            if (migrated > 0) {
+                Log.i(TAG, "Normalized $migrated legacy episode id(s) to canonical form")
+            }
+        }
+    }
+
+    companion object {
+        private const val TAG = "MediaTracker"
     }
 }
 

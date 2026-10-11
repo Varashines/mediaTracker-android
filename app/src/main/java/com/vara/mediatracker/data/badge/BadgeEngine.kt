@@ -206,11 +206,15 @@ object BadgeEngine {
         val airDate = nextAir ?: parseDate(item.releaseDate) ?: return null
         val timeToAir = airDate.time - now.time
 
-        // Movies: PREMIERE badge when released within the past 3 days (matches macOS premiere window -3 days..0)
-        // or upcoming premiere if releasing in future
+        // Movies: PREMIERE badge when released within the past 3 days (matches macOS moviePremiereWindow
+        // = -days3...greatestFiniteMagnitude) or airing in the future.
+        //
+        // The window is expressed against timeToAir, not against daysSinceRelease. The two are
+        // negatives of each other, and checking `daysSinceRelease in 0..3` silently dropped the
+        // entire future half of the range, so an upcoming movie in the Watchlist rendered no badge
+        // at all. Compare timeToAir directly, as macOS does.
         if (!item.type.contains("TV", ignoreCase = true)) {
-            val daysSinceRelease = (now.time - airDate.time).toDouble() / MS_PER_DAY.toDouble()
-            if (daysSinceRelease in 0.0..3.0) {
+            if (timeToAir >= -THREE_DAYS_MS) {
                 return BadgeResult(SmartBadge.PREMIERE, isSparkle = true)
             }
         }
