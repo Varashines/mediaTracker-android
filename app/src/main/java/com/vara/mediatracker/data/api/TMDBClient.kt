@@ -1,0 +1,102 @@
+package com.vara.mediatracker.data.api
+
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.engine.okhttp.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.serialization.kotlinx.json.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+@Serializable
+data class TMDBSeasonInfo(
+    val season_number: Int,
+    val name: String? = null,
+    val episode_count: Int? = null,
+    val air_date: String? = null
+)
+
+@Serializable
+data class TMDBDetailsResponse(
+    val title: String? = null,
+    val name: String? = null,
+    val overview: String? = null,
+    val poster_path: String? = null,
+    val backdrop_path: String? = null,
+    val release_date: String? = null,
+    val first_air_date: String? = null,
+    val number_of_seasons: Int? = null,
+    val number_of_episodes: Int? = null,
+    val seasons: List<TMDBSeasonInfo>? = null
+)
+
+@Serializable
+data class TMDBEpisodeItem(
+    val id: Int? = null,
+    val name: String? = null,
+    val overview: String? = null,
+    val season_number: Int,
+    val episode_number: Int,
+    val air_date: String? = null,
+    val runtime: Int? = null,
+    val still_path: String? = null
+)
+
+@Serializable
+data class TMDBSeasonDetailsResponse(
+    val _id: String? = null,
+    val air_date: String? = null,
+    val name: String? = null,
+    val season_number: Int,
+    val episodes: List<TMDBEpisodeItem> = emptyList()
+)
+
+class TMDBClient(private val apiKey: String) {
+    private val client = HttpClient(OkHttp) {
+        install(ContentNegotiation) {
+            json(Json {
+                ignoreUnknownKeys = true
+                isLenient = true
+            })
+        }
+    }
+
+    private val isBearerToken: Boolean
+        get() = apiKey.trim().length > 40 && apiKey.trim().startsWith("ey")
+
+    private fun HttpRequestBuilder.applyAuth() {
+        val trimmed = apiKey.trim()
+        if (isBearerToken) {
+            header("Authorization", "Bearer $trimmed")
+        } else {
+            parameter("api_key", trimmed)
+        }
+    }
+
+    suspend fun getMovieDetails(id: Int): Result<TMDBDetailsResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/movie/$id") {
+            applyAuth()
+        }.body()
+    }
+
+    suspend fun getTVDetails(id: Int): Result<TMDBDetailsResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/tv/$id") {
+            applyAuth()
+        }.body()
+    }
+
+    suspend fun getSeasonDetails(tvId: Int, seasonNumber: Int): Result<TMDBSeasonDetailsResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/tv/$tvId/season/$seasonNumber") {
+            applyAuth()
+        }.body()
+    }
+
+    companion object {
+        fun buildPosterUrl(path: String?): String? {
+            if (path.isNullOrBlank()) return null
+            return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w500$path"
+        }
+    }
+}

@@ -16,6 +16,9 @@ interface MediaDao {
     @Query("SELECT * FROM media_items WHERE id = :id LIMIT 1")
     suspend fun getMediaById(id: String): MediaItemEntity?
 
+    @Query("SELECT * FROM media_items")
+    suspend fun getAllMediaList(): List<MediaItemEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertMedia(items: List<MediaItemEntity>)
 
@@ -31,6 +34,12 @@ interface MediaDao {
     // Episodes
     @Query("SELECT * FROM tv_episodes WHERE showId = :showId ORDER BY seasonNumber ASC, episodeNumber ASC")
     fun getEpisodesForShow(showId: String): Flow<List<EpisodeEntity>>
+
+    @Query("SELECT * FROM tv_episodes WHERE showId = :showId")
+    suspend fun getEpisodesListForShow(showId: String): List<EpisodeEntity>
+
+    @Query("SELECT * FROM tv_episodes WHERE uniqueId = :uniqueId LIMIT 1")
+    suspend fun getEpisodeByUniqueId(uniqueId: String): EpisodeEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertEpisodes(episodes: List<EpisodeEntity>)

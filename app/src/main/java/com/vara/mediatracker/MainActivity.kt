@@ -25,8 +25,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.room.Room
 import coil.compose.AsyncImage
+import androidx.activity.compose.BackHandler
 import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.prefs.PreferencesManager
+import com.vara.mediatracker.ui.detail.DetailScreen
+import com.vara.mediatracker.ui.home.HomeScreen
+import com.vara.mediatracker.ui.library.LibraryScreen
+import com.vara.mediatracker.ui.settings.SettingsScreen
 
 class MainActivity : ComponentActivity() {
     private val db by lazy {
@@ -35,12 +41,14 @@ class MainActivity : ComponentActivity() {
             .build()
     }
 
+    private val prefs by lazy { PreferencesManager(applicationContext) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             MediaTrackerTheme {
-                MainAppScreen(db = db)
+                MainAppScreen(db = db, prefs = prefs)
             }
         }
     }
@@ -48,16 +56,36 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainAppScreen(db: AppDatabase) {
+fun MainAppScreen(db: AppDatabase, prefs: PreferencesManager) {
     val mediaItems by db.mediaDao().getAllActiveMedia().collectAsState(initial = emptyList())
     var selectedTab by remember { mutableIntStateOf(0) }
+    var activeDetailMediaId by remember { mutableStateOf<String?>(null) }
+
+    // Hardware / Gesture Back navigation for Detail View
+    BackHandler(enabled = activeDetailMediaId != null) {
+        activeDetailMediaId = null
+    }
+
+    if (activeDetailMediaId != null) {
+        DetailScreen(
+            mediaId = activeDetailMediaId!!,
+            db = db,
+            prefs = prefs,
+            onBack = { activeDetailMediaId = null }
+        )
+        return
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "MediaTracker",
+                        text = when (selectedTab) {
+                            0 -> "Dashboard"
+                            1 -> "Library"
+                            else -> "Settings"
+                        },
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.5.sp
                     )
@@ -96,8 +124,9 @@ fun MainAppScreen(db: AppDatabase) {
                 .padding(paddingValues)
         ) {
             when (selectedTab) {
-                0, 1 -> LibraryGrid(items = mediaItems)
-                2 -> SettingsPlaceholder()
+                0 -> HomeScreen(items = mediaItems, onSelectMedia = { activeDetailMediaId = it })
+                1 -> LibraryScreen(items = mediaItems, onSelectMedia = { activeDetailMediaId = it })
+                2 -> SettingsScreen(prefs = prefs, db = db)
             }
         }
     }

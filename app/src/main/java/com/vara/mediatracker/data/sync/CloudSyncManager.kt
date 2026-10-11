@@ -13,6 +13,10 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import com.vara.mediatracker.data.api.TMDBClient
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -46,7 +50,8 @@ class CloudSyncManager(
     private val mediaDao: MediaDao,
     private val supabaseUrl: String,
     private val anonKey: String,
-    private val syncKey: String
+    private val syncKey: String,
+    private val tmdbApiKey: String = ""
 ) {
     private val client = HttpClient(OkHttp) {
         install(ContentNegotiation) {
@@ -79,10 +84,21 @@ class CloudSyncManager(
         }
 
         val remoteMediaList: List<RemoteMedia> = mediaResponse.body()
-        val localMediaEntities = remoteMediaList.map { rem ->
+        val tmdbClient = if (tmdbApiKey.isNotBlank()) TMDBClient(tmdbApiKey) else null
+
+        // Fetch existing database cache to preserve already-fetched titles & posters
+        val existingMap = mediaDao.getAllMediaList().associateBy { it.id }
+
+        // Update states and tastes immediately without overwriting posters/titles
+        val updatedEntities = remoteMediaList.map { rem ->
+            val existing = existingMap[rem.media_id]
             MediaItemEntity(
                 id = rem.media_id,
-                title = rem.media_id, // Metadata fetcher will enrich with TMDB title
+                title = existing?.title?.takeIf { it != rem.media_id } ?: rem.media_id,
+                overview = existing?.overview ?: "",
+                posterUrl = existing?.posterUrl,
+                backdropUrl = existing?.backdropUrl,
+                releaseDate = existing?.releaseDate,
                 type = rem.type,
                 state = rem.state,
                 taste = rem.taste,
@@ -93,32 +109,84 @@ class CloudSyncManager(
                 updatedAt = rem.updated_at
             )
         }
-        mediaDao.upsertMedia(localMediaEntities)
+        mediaDao.upsertMedia(updatedEntities)
 
-        // 2. Pull Episodes Progress
-        val epResponse: HttpResponse = client.get("$supabaseUrl/rest/v1/user_episodes") {
-            parameter("user_id", "eq.$syncKey")
-            parameter("select", "*")
-            header("apikey", anonKey)
-            header("Authorization", "Bearer $anonKey")
-            header("x-sync-key", syncKey)
+        // Smart enrichment: ONLY query TMDB for items that don't have a poster or proper title yet!
+        val itemsNeedingMetadata = if (tmdbClient != null) {
+            updatedEntities.filter { it.posterUrl.isNullOrBlank() || it.title == it.id }
+        } else emptyList()
+
+        if (itemsNeedingMetadata.isNotEmpty() && tmdbClient != null) {
+            coroutineScope {
+                itemsNeedingMetadata.chunked(10).forEach { chunk ->
+                    val enriched = chunk.map { item ->
+                        async {
+                            val isMovie = item.type.contains("Movie", ignoreCase = true)
+                            val tmdbId = item.id.substringAfterLast("_").toIntOrNull() ?: 0
+                            if (tmdbId > 0) {
+                                val detailsRes = if (isMovie) tmdbClient.getMovieDetails(tmdbId) else tmdbClient.getTVDetails(tmdbId)
+                                val details = detailsRes.getOrNull()
+                                val title = details?.title ?: details?.name ?: item.title
+                                val poster = TMDBClient.buildPosterUrl(details?.poster_path) ?: item.posterUrl
+                                item.copy(
+                                    title = title,
+                                    overview = details?.overview ?: item.overview,
+                                    posterUrl = poster,
+                                    releaseDate = details?.release_date ?: details?.first_air_date ?: item.releaseDate
+                                )
+                            } else null
+                        }
+                    }.awaitAll().filterNotNull()
+                    if (enriched.isNotEmpty()) {
+                        mediaDao.upsertMedia(enriched)
+                    }
+                }
+            }
         }
 
-        val remoteEpList: List<RemoteEpisode> = epResponse.body()
-        val localEpisodes = remoteEpList.map { rem ->
-            EpisodeEntity(
-                uniqueId = rem.episode_id,
-                showId = rem.show_id,
-                seasonNumber = rem.season_number,
-                episodeNumber = rem.episode_number,
-                isWatched = rem.is_watched,
-                watchedDate = rem.watched_date,
-                updatedAt = rem.updated_at
-            )
-        }
-        mediaDao.upsertEpisodes(localEpisodes)
+        // 2. Pull Episodes Progress (Paginated in batches of 1000 to overcome Supabase limit)
+        var offset = 0
+        val pageSize = 1000
+        var hasMore = true
+        var totalEpisodesFetched = 0
 
-        remoteMediaList.size + remoteEpList.size
+        while (hasMore) {
+            val from = offset
+            val to = offset + pageSize - 1
+            val epResponse: HttpResponse = client.get("$supabaseUrl/rest/v1/user_episodes") {
+                parameter("user_id", "eq.$syncKey")
+                parameter("select", "*")
+                header("apikey", anonKey)
+                header("Authorization", "Bearer $anonKey")
+                header("x-sync-key", syncKey)
+                header("Range", "$from-$to")
+            }
+
+            val remoteEpList: List<RemoteEpisode> = epResponse.body()
+            if (remoteEpList.isNotEmpty()) {
+                val localEpisodes = remoteEpList.map { rem ->
+                    EpisodeEntity(
+                        uniqueId = rem.episode_id,
+                        showId = rem.show_id,
+                        seasonNumber = rem.season_number,
+                        episodeNumber = rem.episode_number,
+                        isWatched = rem.is_watched,
+                        watchedDate = rem.watched_date,
+                        updatedAt = rem.updated_at
+                    )
+                }
+                mediaDao.upsertEpisodes(localEpisodes)
+                totalEpisodesFetched += remoteEpList.size
+                offset += remoteEpList.size
+                if (remoteEpList.size < pageSize) {
+                    hasMore = false
+                }
+            } else {
+                hasMore = false
+            }
+        }
+
+        remoteMediaList.size + totalEpisodesFetched
     }
 
     /**
