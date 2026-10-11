@@ -336,7 +336,7 @@ fun CollapsingHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(top = 12.dp, bottom = 10.dp),
+                .padding(top = 4.dp, bottom = 8.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             Text(

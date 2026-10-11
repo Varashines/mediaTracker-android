@@ -405,14 +405,15 @@ fun HomeScreen(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 4.dp, bottom = 112.dp)
+        contentPadding = PaddingValues(top = 0.dp, bottom = 112.dp),
+        verticalArrangement = Arrangement.spacedBy(30.dp)
     ) {
         // New — just dropped. The most time-sensitive band of Continue Watching.
         if (newItems.isNotEmpty()) {
             item {
                 Column {
-                    SectionHeader(title = "New", count = newItems.size, accent = AppColors.Liked)
-                    Spacer(modifier = Modifier.height(10.dp))
+                    SectionHeader(title = "New", accent = AppColors.Liked)
+                    Spacer(modifier = Modifier.height(12.dp))
                     SnapRail {
                         items(newItems, key = { it.id }) { item ->
                             HomePosterCard(
@@ -432,10 +433,9 @@ fun HomeScreen(
                 Column {
                     SectionHeader(
                         title = "In Progress",
-                        count = inProgressItems.size,
                         accent = AppColors.Accent
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     SnapRail {
                         items(inProgressItems, key = { it.id }) { item ->
                             HomePosterCard(
@@ -460,7 +460,6 @@ fun HomeScreen(
                     ) {
                         SectionHeader(
                             title = "Coming Soon",
-                            count = comingSoonItems.size,
                             accent = AppColors.Gold,
                             horizontalPadding = 0.dp
                         )
@@ -471,7 +470,7 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     SnapRail {
                         items(comingSoonItems, key = { it.id }) { item ->
                             val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
@@ -496,10 +495,9 @@ fun HomeScreen(
                 Column {
                     SectionHeader(
                         title = "Recently Added",
-                        count = recentlyAddedItems.size,
                         accent = AppColors.TextSecondary
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     SnapRail {
                         items(recentlyAddedItems, key = { it.id }) { item ->
                             HomePosterCard(
@@ -733,7 +731,6 @@ fun ContinueWatchingBackdropCard(
 @Composable
 fun SectionHeader(
     title: String,
-    count: Int? = null,
     accent: Color? = null,
     // Exposed because the Calendar already pads its own LazyColumn; hardcoding 16dp
     // here silently double-padded it.
@@ -759,21 +756,6 @@ fun SectionHeader(
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
-        if (count != null && count > 0) {
-            Spacer(modifier = Modifier.width(7.dp))
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-            ) {
-                Text(
-                    text = if (count > 99) "99+" else count.toString(),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                )
-            }
-        }
     }
 }
 

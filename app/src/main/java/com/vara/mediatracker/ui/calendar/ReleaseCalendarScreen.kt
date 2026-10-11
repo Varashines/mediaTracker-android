@@ -235,7 +235,6 @@ fun ReleaseCalendarScreen(
             }
             SectionHeader(
                 title = titleText,
-                count = displayedEvents.size,
                 accent = AppColors.Gold,
                 horizontalPadding = 0.dp
             )
