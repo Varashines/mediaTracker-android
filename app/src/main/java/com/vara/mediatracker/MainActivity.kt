@@ -7,7 +7,19 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.navigationBarsPadding
+import com.vara.mediatracker.ui.common.AppDestinations
+import com.vara.mediatracker.ui.common.ExpressiveNavigationBar
+import com.vara.mediatracker.ui.theme.AppMotion as motion
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -75,7 +87,7 @@ fun MainAppScreen(container: AppContainer) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var activeDetailMediaId by remember { mutableStateOf<String?>(null) }
 
-    // Hardware / Gesture Back navigation for Detail View
+    // Hardware / gesture back closes an open detail before it exits the tab.
     BackHandler(enabled = activeDetailMediaId != null) {
         activeDetailMediaId = null
     }
@@ -94,96 +106,56 @@ fun MainAppScreen(container: AppContainer) {
             TopAppBar(
                 title = {
                     Text(
-                        text = when (selectedTab) {
-                            0 -> "Dashboard"
-                            1 -> "Calendar"
-                            2 -> "Library"
-                            else -> "Settings"
-                        },
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
+                        text = AppDestinations[selectedTab].label,
+                        style = MaterialTheme.typography.titleLarge
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
-        }
+        },
+        bottomBar = {
+            ExpressiveNavigationBar(
+                selectedIndex = selectedTab,
+                onSelect = { selectedTab = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = paddingValues.calculateTopPadding())
         ) {
-            // Main Screen Content
-            when (selectedTab) {
-                0 -> HomeScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
-                1 -> ReleaseCalendarScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
-                2 -> LibraryScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
-                3 -> SettingsScreen(container = container)
-            }
-
-            // Floating Bottom Bar Pill
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                tonalElevation = 8.dp,
-                shadowElevation = 12.dp,
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-                ),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .navigationBarsPadding()
-                    .padding(bottom = 12.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceAround,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val items = listOf(
-                        Triple(0, Icons.Default.Home, "Home"),
-                        Triple(1, Icons.Default.CalendarMonth, "Calendar"),
-                        Triple(2, Icons.Default.VideoLibrary, "Library"),
-                        Triple(3, Icons.Default.Settings, "Settings")
-                    )
-
-                    items.forEach { (tabIndex, icon, label) ->
-                        val isSelected = selectedTab == tabIndex
-                        Surface(
-                            onClick = { selectedTab = tabIndex },
-                            shape = RoundedCornerShape(20.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = label,
-                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                if (isSelected) {
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = label,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-                    }
+            // Direction-aware slide so moving between tabs feels spatial rather than a
+            // crossfade, which made the whole screen feel like it was reloading.
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    val forward = targetState > initialState
+                    val offset = if (forward) 1 else -1
+                    (slideInHorizontally(tween(motion.EMPHASIZED, easing = motion.emphasizedEase)) { width ->
+                        offset * width / 6
+                    } + fadeIn(tween(motion.STANDARD)))
+                        .togetherWith(
+                            slideOutHorizontally(tween(motion.EMPHASIZED, easing = motion.emphasizedEase)) { width ->
+                                -offset * width / 6
+                            } + fadeOut(tween(motion.FAST))
+                        )
+                },
+                label = "tabTransition"
+            ) { tab ->
+                when (tab) {
+                    0 -> HomeScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
+                    1 -> ReleaseCalendarScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
+                    2 -> LibraryScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
+                    else -> SettingsScreen(container = container)
                 }
             }
         }

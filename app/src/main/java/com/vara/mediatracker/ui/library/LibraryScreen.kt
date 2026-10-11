@@ -21,6 +21,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.vara.mediatracker.ui.common.EmptyState
+import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBSearchItem
 import com.vara.mediatracker.data.db.AppDatabase
@@ -310,13 +312,12 @@ fun LibraryScreen(
 
             // Grid of Library Titles
             if (filteredItems.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = if (searchQuery.isNotBlank()) "No titles match '$searchQuery'" else "No titles in this section",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                EmptyState(
+                    icon = if (searchQuery.isNotBlank()) Icons.Default.SearchOff else Icons.Default.VideoLibrary,
+                    title = if (searchQuery.isNotBlank()) "No matches" else "Nothing here yet",
+                    body = if (searchQuery.isNotBlank()) "Nothing matches \"$searchQuery\". Try a different search or filter."
+                           else "No titles match this filter yet."
+                )
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(3),
@@ -335,11 +336,12 @@ fun LibraryScreen(
 
 @Composable
 fun LibraryPosterCard(item: MediaItemEntity, onClick: () -> Unit) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        modifier = Modifier.clickable(onClick = onClick)
+    ExpressiveCard(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 1.dp,
+        pressedScale = 0.96f
     ) {
         Column {
             Box(

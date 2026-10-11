@@ -37,6 +37,8 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.ui.common.parseTargetAirDateTime
 import com.vara.mediatracker.ui.common.rememberCountdownText
+import com.vara.mediatracker.ui.common.EmptyState
+import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.rememberTodayDateString
 import com.vara.mediatracker.ui.theme.AppColors
 import java.text.SimpleDateFormat
@@ -313,23 +315,11 @@ fun HomeScreen(
     }
 
     if (items.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    imageVector = Icons.Default.CloudSync,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = AppColors.Accent.copy(alpha = 0.6f)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Your Library is Empty", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Sync with Supabase in Settings to import your titles",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+        EmptyState(
+            icon = Icons.Default.CloudSync,
+            title = "Your library is empty",
+            body = "Pair your Supabase project in Settings to import your titles."
+        )
         return
     }
 
@@ -739,14 +729,14 @@ fun ContinueWatchingBackdropCard(
 
     var isLogoFailed by remember(logoUrl) { mutableStateOf(false) }
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+    ExpressiveCard(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f),
+        tonalElevation = 3.dp,
         modifier = Modifier
             .width(cardWidth)
             .height(cardHeight)
-            .clickable(onClick = onClick)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AsyncImage(
@@ -985,14 +975,14 @@ fun HomePosterCard(
 
     val countdownLabel = rememberCountdownText(targetAirDate)
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+    ExpressiveCard(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f),
+        tonalElevation = 2.dp,
         modifier = Modifier
-            .width(136.dp)
-            .height(204.dp)
-            .clickable(onClick = onClick)
+            .width(140.dp)
+            .height(206.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (item.posterUrl != null) {

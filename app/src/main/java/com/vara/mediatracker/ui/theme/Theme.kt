@@ -1,9 +1,22 @@
 package com.vara.mediatracker.ui.theme
 
+import android.os.Build
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -13,8 +26,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vara.mediatracker.R
 
+/**
+ * Brand palette.
+ *
+ * Retained as the fallback and as the source for semantic accents that Material You
+ * cannot express — a "loved" badge needs to mean the same thing regardless of the
+ * user's wallpaper.
+ */
 object AppColors {
-    // Deep Cinematic Dark Palette
     val Background = Color(0xFF0F1014)       // OLED near-black
     val Surface = Color(0xFF16181F)          // Deep glass tone
     val SurfaceVariant = Color(0xFF20232D)   // Elevated container
@@ -31,16 +50,62 @@ object AppColors {
     val Stroke = Color(0xFF2E3240)
 }
 
-// Google Fonts Provider Setup
+// ---------------------------------------------------------------------------
+// Motion
+// ---------------------------------------------------------------------------
+
+/**
+ * Motion tokens.
+ *
+ * The app previously had exactly one animation in its whole codebase, so durations and
+ * easings were invented per call site. Centralising them is what makes transitions
+ * feel like one system instead of a pile of unrelated effects.
+ *
+ * Durations stay short on purpose: this is a dense media browser, and anything past
+ * ~400ms reads as lag when flicking through rails.
+ */
+object AppMotion {
+    /** Opacity/colour shifts. */
+    const val FAST = 150
+
+    /** Default for most transitions. */
+    const val STANDARD = 250
+
+    /** Entrances and larger layout changes. */
+    const val EMPHASIZED = 400
+
+    /** Distance travelled by slide/directional transitions. */
+    val slideDistance = 32.dp
+
+    // Springs mirror the macOS app's springGentle / springSnappy vocabulary.
+    val gentle = spring<Float>(dampingRatio = 0.85f, stiffness = 380f)
+    val snappy = spring<Float>(dampingRatio = 0.72f, stiffness = 620f)
+
+    val standardEase = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)
+    val emphasizedEase = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+    val exitEase = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+}
+
+/** Exposed so screens can read motion tokens without importing the theme object. */
+val LocalMotion = staticCompositionLocalOf { AppMotion }
+
+// ---------------------------------------------------------------------------
+// Typography
+// ---------------------------------------------------------------------------
+
 val provider = GoogleFont.Provider(
     providerAuthority = "com.google.android.gms.fonts",
     providerPackage = "com.google.android.gms",
     certificates = R.array.com_google_android_gms_fonts_certs
 )
 
-// Premium Typography: Plus Jakarta Sans / Google Sans style with clean fallback
 val PlusJakartaFont = GoogleFont("Plus Jakarta Sans")
 
+/**
+ * Downloadable fonts are unavailable until the provider has been warmed up, which
+ * makes a cold first frame fall back. Declaring the family with a matching system
+ * fallback keeps the first paint correct instead of snapping once the font arrives.
+ */
 val AppFontFamily = FontFamily(
     Font(googleFont = PlusJakartaFont, fontProvider = provider, weight = FontWeight.Normal),
     Font(googleFont = PlusJakartaFont, fontProvider = provider, weight = FontWeight.Medium),
@@ -53,14 +118,24 @@ val AppTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.ExtraBold,
-        fontSize = 32.sp,
+        fontSize = 34.sp,
+        lineHeight = 40.sp,
+        letterSpacing = (-0.8).sp,
+        color = AppColors.TextPrimary
+    ),
+    displayMedium = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 28.sp,
+        lineHeight = 34.sp,
         letterSpacing = (-0.6).sp,
         color = AppColors.TextPrimary
     ),
     headlineLarge = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.ExtraBold,
-        fontSize = 28.sp,
+        fontSize = 26.sp,
+        lineHeight = 32.sp,
         letterSpacing = (-0.5).sp,
         color = AppColors.TextPrimary
     ),
@@ -68,27 +143,39 @@ val AppTypography = Typography(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 22.sp,
+        lineHeight = 28.sp,
         letterSpacing = (-0.2).sp,
+        color = AppColors.TextPrimary
+    ),
+    headlineSmall = TextStyle(
+        fontFamily = AppFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 19.sp,
+        lineHeight = 25.sp,
+        letterSpacing = (-0.1).sp,
         color = AppColors.TextPrimary
     ),
     titleLarge = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 18.sp,
+        lineHeight = 24.sp,
         letterSpacing = (-0.2).sp,
         color = AppColors.TextPrimary
     ),
     titleMedium = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 15.sp,
+        fontWeight = FontWeight.Bold,
+        fontSize = 16.sp,
+        lineHeight = 22.sp,
         letterSpacing = (-0.1).sp,
         color = AppColors.TextPrimary
     ),
     titleSmall = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 13.5.sp,
+        fontSize = 14.sp,
+        lineHeight = 19.sp,
         color = AppColors.TextPrimary
     ),
     bodyLarge = TextStyle(
@@ -116,53 +203,130 @@ val AppTypography = Typography(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 13.sp,
-        letterSpacing = 0.2.sp,
+        letterSpacing = 0.1.sp,
         color = AppColors.TextPrimary
     ),
     labelMedium = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 12.sp,
-        letterSpacing = 0.3.sp,
+        letterSpacing = 0.2.sp,
         color = AppColors.TextSecondary
     ),
     labelSmall = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 10.5.sp,
-        letterSpacing = 0.5.sp,
+        letterSpacing = 0.4.sp,
         color = AppColors.TextTertiary
     )
 )
 
+/**
+ * Expressive shape scale.
+ *
+ * Corners are noticeably rounder than stock Material 3 — the expressive direction —
+ * with a large radius reserved for containers that should read as floating surfaces.
+ */
 val AppShapes = Shapes(
-    small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(14.dp),
-    large = RoundedCornerShape(22.dp)
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(22.dp),
+    extraLarge = RoundedCornerShape(28.dp)
 )
 
-@Composable
-fun MediaTrackerTheme(content: @Composable () -> Unit) {
-    val colorScheme = darkColorScheme(
-        primary = AppColors.Accent,
-        onPrimary = Color.White,
-        primaryContainer = AppColors.Accent.copy(alpha = 0.2f),
-        onPrimaryContainer = AppColors.AccentLuminous,
-        secondary = AppColors.SurfaceBright,
-        onSecondary = AppColors.TextPrimary,
-        background = AppColors.Background,
-        onBackground = AppColors.TextPrimary,
-        surface = AppColors.Surface,
-        onSurface = AppColors.TextPrimary,
-        surfaceVariant = AppColors.SurfaceVariant,
-        onSurfaceVariant = AppColors.TextSecondary,
-        outline = AppColors.Stroke
-    )
+// ---------------------------------------------------------------------------
+// Color schemes
+// ---------------------------------------------------------------------------
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = AppTypography,
-        shapes = AppShapes,
-        content = content
-    )
+private val CinematicDark = darkColorScheme(
+    primary = AppColors.Accent,
+    onPrimary = Color.White,
+    primaryContainer = AppColors.Accent.copy(alpha = 0.22f),
+    onPrimaryContainer = AppColors.AccentLuminous,
+    secondary = AppColors.SurfaceBright,
+    onSecondary = AppColors.TextPrimary,
+    secondaryContainer = AppColors.SurfaceVariant,
+    onSecondaryContainer = AppColors.TextPrimary,
+    tertiary = AppColors.Gold,
+    onTertiary = Color.Black,
+    background = AppColors.Background,
+    onBackground = AppColors.TextPrimary,
+    surface = AppColors.Surface,
+    onSurface = AppColors.TextPrimary,
+    surfaceVariant = AppColors.SurfaceVariant,
+    onSurfaceVariant = AppColors.TextSecondary,
+    surfaceContainer = AppColors.Surface,
+    surfaceContainerHigh = AppColors.SurfaceVariant,
+    surfaceContainerHighest = AppColors.SurfaceBright,
+    outline = AppColors.Stroke,
+    outlineVariant = AppColors.Stroke.copy(alpha = 0.6f),
+    error = Color(0xFFFF453A),
+    onError = Color.White
+)
+
+/** Light counterpart, previously missing — the app was dark-only with no way out. */
+private val CinematicLight = lightColorScheme(
+    primary = Color(0xFF0066CC),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFD3E4FF),
+    onPrimaryContainer = Color(0xFF001B3D),
+    secondary = Color(0xFF545F70),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFD8E3F8),
+    onSecondaryContainer = Color(0xFF111C2B),
+    tertiary = Color(0xFF7A5900),
+    onTertiary = Color.White,
+    background = Color(0xFFF9F9FB),
+    onBackground = Color(0xFF1A1C1E),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF1A1C1E),
+    surfaceVariant = Color(0xFFE1E2E8),
+    onSurfaceVariant = Color(0xFF44474E),
+    surfaceContainer = Color(0xFFF1F2F6),
+    surfaceContainerHigh = Color(0xFFEBECF0),
+    surfaceContainerHighest = Color(0xFFE4E5EA),
+    outline = Color(0xFFC3C6CF),
+    outlineVariant = Color(0xFFD7D9E0),
+    error = Color(0xFFBA1A1A),
+    onError = Color.White
+)
+
+/**
+ * Picks the wallpaper-derived scheme when the platform supports it.
+ *
+ * Material You is the point of the redesign on Android 12+, but the app's chrome has to
+ * stay legible against poster artwork, so the cinematic fallback remains for older
+ * devices and for anyone who turns dynamic colour off.
+ */
+@Composable
+private fun resolveColorScheme(dark: Boolean, dynamic: Boolean): ColorScheme {
+    if (dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val context = LocalContext.current
+        return if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    }
+    return if (dark) CinematicDark else CinematicLight
+}
+
+/**
+ * @param dynamicColor use Material You colours derived from the user's wallpaper.
+ *   Requires a theme carrying the wallpaper colours to be set on the Activity.
+ */
+@Composable
+fun MediaTrackerTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val colorScheme = resolveColorScheme(darkTheme, dynamicColor)
+
+    CompositionLocalProvider(LocalMotion provides AppMotion) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = AppTypography,
+            shapes = AppShapes,
+            content = content
+        )
+    }
 }
