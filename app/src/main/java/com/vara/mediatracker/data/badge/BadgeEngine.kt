@@ -21,6 +21,8 @@ enum class SmartBadge(
     BINGE("BINGE", Color(0xFF8B5CF6));          // Purple
 
     companion object {
+        val radarBadges: Set<SmartBadge> = setOf(NEW, BINGE_DROP, PREMIERE, FINALE, HOOKED)
+
         fun fromLabel(label: String?): SmartBadge? {
             return values().firstOrNull { it.label.equals(label, ignoreCase = true) }
         }
@@ -34,19 +36,20 @@ data class BadgeResult(
 
 object BadgeEngine {
     private const val MS_PER_DAY = 86_400_000L
-    private const val MS_PER_HOUR = 3_600_000L
 
-    // Windows matching macOS BadgeEngine.swift:
-    // - Movie premiere: -3 days to future
-    // - New badge: released within past 14 days
-    // - Soon badge: releasing within next 2 days (48 hours)
-    // - Behind window: next episode airs in <= 7 days
-    // - Hooked: 3+ episodes watched in last 48 hours
-    // - Binge progress threshold: 20%+ episodes watched
+    // Windows strictly matching macOS BadgeEngine.swift:
+    // - moviePremiereWindow: -TimeInterval.days3...Double.greatestFiniteMagnitude
+    //   Note: timeToAir = airDate.timeIntervalSince(now).
+    //   So release in the future has timeToAir > 0.
+    //   Release in the past up to 3 days has timeToAir between -3 days and 0.
+    // - premiereDaysWindow: -Double.greatestFiniteMagnitude...3
+    //   Note: daysSinceAir = now.timeIntervalSince(airDate) / .secondsInDay.
+    //   So up to 3 days after premiere, daysSinceAir <= 3.0.
     private const val RECENT_WATCH_CUTOFF_MS = 2 * MS_PER_DAY
+    private const val THREE_DAYS_MS = 3 * MS_PER_DAY
     private const val NEW_WINDOW_MS = 14 * MS_PER_DAY
     private const val SOON_WINDOW_MS = 2 * MS_PER_DAY
-    private const val PREMIERE_PAST_DAYS = 3.0
+    private const val PREMIERE_DAYS_MAX = 3.0
     private const val FINALE_DAYS_MIN = -7.0
     private const val FINALE_DAYS_MAX = 14.0
     private const val MILESTONE_DAYS = 14.0
@@ -56,7 +59,7 @@ object BadgeEngine {
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
-    private fun parseDate(dateStr: String?): Date? {
+    fun parseDate(dateStr: String?): Date? {
         if (dateStr.isNullOrBlank()) return null
         return try {
             dateFormat.parse(dateStr.take(10))
@@ -65,14 +68,17 @@ object BadgeEngine {
         }
     }
 
-    private data class EpisodeScan(
+    data class EpisodeScan(
         val nextEpisodeNumber: Int,
         val nextSeasonEpisodeCount: Int,
         val nextAirDate: Date?,
         val airedOnSameDayCount: Int,
         val recentlyWatchedCount: Int,
         val totalEpisodes: Int,
-        val watchedEpisodes: Int
+        val watchedEpisodes: Int,
+        val airedEpisodesCount: Int,
+        val remainingAiredEpisodesCount: Int,
+        val nextUpcomingAirDate: Date? // First future airing episode date
     )
 
     fun calculateBadge(
@@ -102,7 +108,7 @@ object BadgeEngine {
         return null
     }
 
-    private fun scanEpisodes(episodes: List<EpisodeEntity>, now: Date): EpisodeScan {
+    fun scanEpisodes(episodes: List<EpisodeEntity>, now: Date): EpisodeScan {
         val cutoff = now.time - RECENT_WATCH_CUTOFF_MS
         val sorted = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
 
@@ -112,13 +118,24 @@ object BadgeEngine {
         var sameDayCount = 0
         var recentlyWatched = 0
         var foundNext = false
+        var airedCount = 0
+        var watchedCount = 0
+        var nextUpcomingAirDate: Date? = null
 
         // Group by season to know episode count per season
         val seasonCounts = sorted.groupBy { it.seasonNumber }.mapValues { it.value.size }
 
         for (ep in sorted) {
             val epDate = parseDate(ep.airDate)
-            if (!ep.isWatched) {
+            val isAired = epDate != null && epDate <= now
+
+            if (ep.isWatched) {
+                watchedCount++
+                val watchedDate = parseDate(ep.watchedDate) ?: parseDate(ep.updatedAt)
+                if (watchedDate != null && watchedDate.time >= cutoff) {
+                    recentlyWatched++
+                }
+            } else {
                 if (!foundNext) {
                     nextEpNum = ep.episodeNumber
                     nextSeasonEpCount = seasonCounts[ep.seasonNumber] ?: 0
@@ -133,13 +150,17 @@ object BadgeEngine {
                         sameDayCount++
                     }
                 }
-            } else {
-                val watchedDate = parseDate(ep.watchedDate) ?: parseDate(ep.updatedAt)
-                if (watchedDate != null && watchedDate.time >= cutoff) {
-                    recentlyWatched++
-                }
+            }
+
+            if (isAired) {
+                airedCount++
+            } else if (epDate != null && epDate > now && nextUpcomingAirDate == null) {
+                nextUpcomingAirDate = epDate
             }
         }
+
+        // Remaining aired episodes = already aired but unwatched
+        val remainingAired = maxOf(0, airedCount - watchedCount)
 
         return EpisodeScan(
             nextEpisodeNumber = nextEpNum,
@@ -148,27 +169,32 @@ object BadgeEngine {
             airedOnSameDayCount = sameDayCount,
             recentlyWatchedCount = recentlyWatched,
             totalEpisodes = sorted.size,
-            watchedEpisodes = sorted.count { it.isWatched }
+            watchedEpisodes = watchedCount,
+            airedEpisodesCount = airedCount,
+            remainingAiredEpisodesCount = remainingAired,
+            nextUpcomingAirDate = nextUpcomingAirDate
         )
     }
 
     private fun milestoneBadge(scan: EpisodeScan, now: Date): BadgeResult? {
         val airDate = scan.nextAirDate ?: return null
-        val diffDays = (now.time - airDate.time).toDouble() / MS_PER_DAY.toDouble()
+        val daysSinceAir = (now.time - airDate.time).toDouble() / MS_PER_DAY.toDouble()
 
-        // S1 E1 or Season Premiere: air date within past 3 days or coming in future
-        if (scan.nextEpisodeNumber == 1 && diffDays <= PREMIERE_PAST_DAYS) {
+        // S1 E1 or Season Premiere:
+        // daysSinceAir <= 3 days (matches macOS premiereDaysWindow: -Double.greatestFiniteMagnitude...3)
+        // This covers both upcoming premieres and premieres that aired within the last 3 days!
+        if (scan.nextEpisodeNumber == 1 && daysSinceAir <= PREMIERE_DAYS_MAX) {
             return BadgeResult(SmartBadge.PREMIERE, isSparkle = true)
         }
 
-        // Season Finale: next unwatched episode is last episode of the season
-        val isFinaleWindow = diffDays >= FINALE_DAYS_MIN && diffDays <= FINALE_DAYS_MAX
+        // Season Finale: next unwatched episode is last episode of the season (-7 to 14 days)
+        val isFinaleWindow = daysSinceAir >= FINALE_DAYS_MIN && daysSinceAir <= FINALE_DAYS_MAX
         if (scan.nextSeasonEpisodeCount > 0 && scan.nextEpisodeNumber == scan.nextSeasonEpisodeCount && isFinaleWindow) {
             return BadgeResult(SmartBadge.FINALE, isSparkle = true)
         }
 
         // Binge Drop: multiple episodes aired on the exact same day
-        val inMilestone = Math.abs(diffDays) <= MILESTONE_DAYS
+        val inMilestone = Math.abs(daysSinceAir) <= MILESTONE_DAYS
         if (inMilestone && scan.airedOnSameDayCount > 1) {
             return BadgeResult(SmartBadge.BINGE_DROP, isSparkle = true)
         }
@@ -181,9 +207,9 @@ object BadgeEngine {
         val timeToAir = airDate.time - now.time
 
         // Movies stay on PREMIERE window up until 3 days after release
+        // (matches macOS: moviePremiereWindow = -3 days ... future)
         if (!item.type.contains("TV", ignoreCase = true)) {
-            val daysSinceRelease = (now.time - airDate.time).toDouble() / MS_PER_DAY.toDouble()
-            if (daysSinceRelease <= 3.0) {
+            if (timeToAir >= -THREE_DAYS_MS) {
                 return BadgeResult(SmartBadge.PREMIERE, isSparkle = true)
             }
         }
@@ -202,8 +228,9 @@ object BadgeEngine {
     }
 
     private fun engagementBadge(item: MediaItemEntity, scan: EpisodeScan, now: Date): BadgeResult? {
-        val remaining = scan.totalEpisodes - scan.watchedEpisodes
-        if (remaining <= 0) return null
+        // Must have episodes already aired that haven't been watched yet!
+        // If remainingAiredEpisodesCount == 0, the user is completely caught up!
+        if (scan.remainingAiredEpisodesCount <= 0) return null
 
         // HOOKED: watched 3+ episodes in past 48 hours
         if (scan.recentlyWatchedCount >= BINGE_ENGAGEMENT_COUNT) {
@@ -217,10 +244,10 @@ object BadgeEngine {
 
         if (!isLikedOrLoved) return null
 
-        // BEHIND: next episode airs within 7 days
-        val nextAir = scan.nextAirDate
-        if (nextAir != null) {
-            val daysToAir = (nextAir.time - now.time).toDouble() / MS_PER_DAY.toDouble()
+        // BEHIND: User has unwatched aired episodes AND a new episode airs within 7 days
+        val nextUpcomingAir = scan.nextUpcomingAirDate
+        if (nextUpcomingAir != null) {
+            val daysToAir = (nextUpcomingAir.time - now.time).toDouble() / MS_PER_DAY.toDouble()
             if (daysToAir in 0.0..BEHIND_DAYS) {
                 return BadgeResult(SmartBadge.BEHIND, isSparkle = false)
             }

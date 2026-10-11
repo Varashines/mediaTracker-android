@@ -37,6 +37,10 @@ import com.vara.mediatracker.ui.theme.AppColors
 import java.text.SimpleDateFormat
 import java.util.*
 
+import com.vara.mediatracker.data.api.TMDBClient
+import com.vara.mediatracker.data.prefs.PreferencesManager
+import kotlinx.coroutines.launch
+
 enum class HomeFocusSection(val title: String) {
     FOR_YOU("For You"),
     RECENTLY_WATCHED("Recently Watched"),
@@ -55,8 +59,10 @@ data class TVShowProgress(
 fun HomeScreen(
     items: List<MediaItemEntity>,
     db: AppDatabase? = null,
+    prefs: PreferencesManager? = null,
     onSelectMedia: (String) -> Unit
 ) {
+    val scope = rememberCoroutineScope()
     val allEpisodes by db?.mediaDao()?.getAllEpisodesFlow()?.collectAsState(initial = emptyList())
         ?: remember { mutableStateOf(emptyList()) }
 
@@ -78,8 +84,9 @@ fun HomeScreen(
             val total = showEps.size
             val watched = showEps.count { it.isWatched }
             val nextEp = showEps.firstOrNull { !it.isWatched }
+            // nextAir is the FIRST unwatched episode that airs in the STRICT FUTURE (> today)
             val nextAir = showEps.firstOrNull { ep ->
-                !ep.isWatched && !ep.airDate.isNullOrBlank() && ep.airDate >= todayDateStr
+                !ep.isWatched && !ep.airDate.isNullOrBlank() && ep.airDate > todayDateStr
             }?.airDate
             item.id to TVShowProgress(
                 totalEpisodes = total,
@@ -111,8 +118,7 @@ fun HomeScreen(
         }
     }
 
-    // 1. CONTINUE WATCHING: Strictly READY NOW items, ranked by macOS badge priority
-    // macOS priority order: PREMIERE (110) > NEW (100) > FINALE (95) > BINGE_DROP (90) > HOOKED (85) > Active (80)
+    // 1. CONTINUE WATCHING: Strictly READY NOW items (next unwatched episode airDate <= today or null)
     val continueWatching = remember(activeItems, showProgressMap, smartBadgesMap, todayDateStr) {
         activeItems.filter { item ->
             if (!item.type.contains("TV", ignoreCase = true)) {
@@ -123,6 +129,7 @@ fun HomeScreen(
                 if (nextEp == null) {
                     false
                 } else {
+                    // Ready now if next episode is already released (airDate <= today) or unannounced
                     nextEp.airDate == null || nextEp.airDate <= todayDateStr
                 }
             }
@@ -143,13 +150,22 @@ fun HomeScreen(
         ).take(15)
     }
 
-    // 2. COMING SOON: Upcoming Releases + Future Airing TV Episodes, ordered by earliest drop
-    val comingSoonItems = remember(items, showProgressMap, smartBadgesMap, todayDateStr) {
+    val continueWatchingIds = remember(continueWatching) {
+        continueWatching.map { it.id }.toSet()
+    }
+
+    // 2. COMING SOON: Strictly UPCOMING titles.
+    // An item cannot be in both Continue Watching and Coming Soon:
+    // - Movies / shows with releaseDate > today
+    // - TV shows where the user is caught up with released episodes, and the NEXT unwatched episode airs in the future (> today)
+    val comingSoonItems = remember(items, showProgressMap, smartBadgesMap, continueWatchingIds, todayDateStr) {
         val directUpcoming = items.filter { !it.isSoftDeleted && it.releaseDate != null && it.releaseDate > todayDateStr }
         val airingSoonShows = items.filter { item ->
             !item.isSoftDeleted && item.type.contains("TV", ignoreCase = true) &&
-                showProgressMap[item.id]?.nextAiringDate != null &&
-                showProgressMap[item.id]!!.nextAiringDate!! > todayDateStr
+                !continueWatchingIds.contains(item.id) &&
+                showProgressMap[item.id]?.nextEpisode != null &&
+                showProgressMap[item.id]?.nextEpisode?.airDate != null &&
+                showProgressMap[item.id]!!.nextEpisode!!.airDate!! > todayDateStr
         }
         (directUpcoming + airingSoonShows).distinctBy { it.id }.sortedWith(
             compareBy<MediaItemEntity> { item ->
@@ -253,7 +269,7 @@ fun HomeScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 36.dp),
+        contentPadding = PaddingValues(bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
         // 1. Cinematic Hero Spotlight
@@ -559,6 +575,13 @@ fun ContinueWatchingBackdropCard(
     smartBadge: BadgeResult? = null,
     onClick: () -> Unit
 ) {
+    // Art priority: backdrop -> next episode still path -> center-cropped poster
+    val coverUrl = remember(item.backdropUrl, item.posterUrl, progress?.nextEpisode?.stillPath) {
+        item.backdropUrl
+            ?: progress?.nextEpisode?.stillPath?.let { if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/w780$it" }
+            ?: item.posterUrl
+    }
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
@@ -569,9 +592,8 @@ fun ContinueWatchingBackdropCard(
             .clickable(onClick = onClick)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Backdrop Image (with Poster fallback)
             AsyncImage(
-                model = item.backdropUrl ?: item.posterUrl,
+                model = coverUrl,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -709,6 +731,95 @@ fun SectionHeader(title: String) {
     }
 }
 
+/**
+ * Streaming service broadcast/release timing rule matching macOS DateUtils.
+ */
+data class StreamingServiceRule(
+    val patterns: List<String>,
+    val releaseTime: String, // "HH:mm"
+    val timeZoneId: String,
+    val dayOffset: Int
+)
+
+val defaultStreamingRules = listOf(
+    // Apple TV Originals drop at 9 PM ET on the eve of release date
+    StreamingServiceRule(listOf("apple"), "21:00", "America/New_York", -1),
+    // Disney+ Marvel / Star Wars drops at 9 PM ET
+    StreamingServiceRule(listOf("star wars", "marvel"), "21:00", "America/New_York", 0),
+    // Disney+ standard Midnight PT
+    StreamingServiceRule(listOf("disney"), "00:00", "America/Los_Angeles", 0),
+    // Netflix: Midnight PT
+    StreamingServiceRule(listOf("netflix"), "00:00", "America/Los_Angeles", 0),
+    // Prime / Amazon / MGM+: Midnight PT
+    StreamingServiceRule(listOf("amazon", "prime", "mgm"), "00:00", "America/Los_Angeles", 0),
+    // Hulu / Peacock / Paramount+: Midnight ET
+    StreamingServiceRule(listOf("hulu", "peacock", "paramount"), "00:00", "America/New_York", 0),
+    // FX / FXX: Broadcasts evening / drops next morning on Hulu
+    StreamingServiceRule(listOf("fx", "fxx"), "00:00", "America/New_York", 1),
+    // HBO / Max: 9 PM ET
+    StreamingServiceRule(listOf("max", "hbo"), "21:00", "America/New_York", 0)
+)
+
+/**
+ * Resolves exact Date for an airDate or releaseDate string using streaming/network rules or 8 PM ET default.
+ */
+fun parseTargetAirDateTime(dateStr: String?, networkOrTitle: String?): Date? {
+    if (dateStr.isNullOrBlank()) return null
+    val cleanDate = dateStr.trim().take(10) // "yyyy-MM-dd"
+    if (cleanDate.length < 10) return null
+
+    val query = (networkOrTitle ?: "").lowercase(Locale.US)
+    val rule = defaultStreamingRules.firstOrNull { r ->
+        r.patterns.any { pattern -> query.contains(pattern) }
+    }
+
+    val (timePart, tzId, dayOffset) = if (rule != null) {
+        Triple(rule.releaseTime, rule.timeZoneId, rule.dayOffset)
+    } else {
+        Triple("20:00", "America/New_York", 0)
+    }
+
+    return try {
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone(tzId)
+        }
+        val baseDate = sdf.parse("$cleanDate $timePart") ?: return null
+        if (dayOffset != 0) {
+            val cal = Calendar.getInstance(TimeZone.getTimeZone(tzId)).apply {
+                time = baseDate
+                add(Calendar.DAY_OF_YEAR, dayOffset)
+            }
+            cal.time
+        } else {
+            baseDate
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/**
+ * Generates countdown label matching macOS MediaThumbnailView.upcomingCountdownLabel:
+ * "in X min", "in X hours", "in X days", or calendar date.
+ */
+fun formatCountdownTimer(targetDate: Date, now: Date = Date()): String {
+    val diffMillis = targetDate.time - now.time
+    if (diffMillis <= 0) return "Today"
+    val diffMinutes = (diffMillis / 60000L).toInt()
+    if (diffMinutes < 60) {
+        return "in ${maxOf(diffMinutes, 1)}m"
+    }
+    val diffHours = diffMinutes / 60
+    if (diffHours < 24) {
+        return if (diffHours == 1) "in 1h" else "in ${diffHours}h"
+    }
+    val diffDays = diffHours / 24
+    if (diffDays <= 60) {
+        return if (diffDays == 1) "in 1d" else "in ${diffDays}d"
+    }
+    return SimpleDateFormat("MMM d", Locale.getDefault()).format(targetDate)
+}
+
 @Composable
 fun HomePosterCard(
     item: MediaItemEntity,
@@ -716,129 +827,124 @@ fun HomePosterCard(
     smartBadge: BadgeResult? = null,
     onClick: () -> Unit
 ) {
+    // Target date resolution using network / streaming service rules
+    val targetAirDate = remember(nextAirDate, item.releaseDate, item.title, item.overview) {
+        val rawDate = nextAirDate ?: item.releaseDate
+        parseTargetAirDateTime(rawDate, "${item.title} ${item.overview}")
+    }
+
+    val countdownLabel = remember(targetAirDate) {
+        targetAirDate?.let { formatCountdownTimer(it) }
+    }
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
         modifier = Modifier
             .width(136.dp)
+            .height(204.dp)
             .clickable(onClick = onClick)
     ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(195.dp)
-            ) {
-                if (item.posterUrl != null) {
-                    AsyncImage(
-                        model = item.posterUrl,
-                        contentDescription = item.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (item.posterUrl != null) {
+                AsyncImage(
+                    model = item.posterUrl,
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (item.type.contains("TV", ignoreCase = true)) Icons.Default.Tv else Icons.Default.Movie,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(36.dp)
                     )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (item.type.contains("TV", ignoreCase = true)) Icons.Default.Tv else Icons.Default.Movie,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-                }
-
-                // Top-Left: SmartBadge (if present) else Type Badge (TV / FILM)
-                if (smartBadge != null) {
-                    SmartBadgePill(
-                        badge = smartBadge.badge,
-                        isSparkle = smartBadge.isSparkle,
-                        modifier = Modifier.align(Alignment.TopStart)
-                    )
-                } else {
-                    Surface(
-                        color = Color.Black.copy(alpha = 0.65f),
-                        shape = RoundedCornerShape(bottomEnd = 8.dp),
-                        modifier = Modifier.align(Alignment.TopStart)
-                    ) {
-                        Text(
-                            text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.9f),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                // Top-Right: Air Date or Taste Badge
-                if (nextAirDate != null) {
-                    Surface(
-                        color = AppColors.Gold.copy(alpha = 0.9f),
-                        shape = RoundedCornerShape(bottomStart = 8.dp),
-                        modifier = Modifier.align(Alignment.TopEnd)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Schedule,
-                                contentDescription = null,
-                                tint = Color.Black,
-                                modifier = Modifier.size(9.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = nextAirDate.takeLast(5), // e.g. "10-15"
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Black
-                            )
-                        }
-                    }
-                } else if (item.taste == "Loved" || item.taste == "Love") {
-                    Surface(
-                        color = AppColors.Loved.copy(alpha = 0.9f),
-                        shape = RoundedCornerShape(bottomStart = 8.dp),
-                        modifier = Modifier.align(Alignment.TopEnd)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier
-                                .padding(4.dp)
-                                .size(12.dp)
-                        )
-                    }
                 }
             }
 
-            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                Text(
-                    text = item.title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold
+            // Top-Left: SmartBadge (if present) else Type Badge (TV / FILM)
+            if (smartBadge != null) {
+                SmartBadgePill(
+                    badge = smartBadge.badge,
+                    isSparkle = smartBadge.isSparkle,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
                 )
-                val dateLabel = nextAirDate ?: item.releaseDate?.take(4)
-                if (!dateLabel.isNullOrBlank()) {
+            } else {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.72f),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                ) {
                     Text(
-                        text = if (nextAirDate != null) "Airs $nextAirDate" else dateLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (nextAirDate != null) AppColors.Gold else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
+                }
+            }
+
+            // Top-Right: Taste Badge (if loved)
+            if (item.taste == "Loved" || item.taste == "Love") {
+                Surface(
+                    color = AppColors.Loved.copy(alpha = 0.9f),
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .size(11.dp)
+                    )
+                }
+            }
+
+            // Bottom Overlay: Countdown Timer Chip for Upcoming / CS items (matching macOS hourglass pill)
+            if (!countdownLabel.isNullOrBlank()) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.78f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color.White.copy(alpha = 0.2f)),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.HourglassEmpty,
+                            contentDescription = null,
+                            tint = AppColors.Gold,
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = countdownLabel,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
                 }
             }
         }
