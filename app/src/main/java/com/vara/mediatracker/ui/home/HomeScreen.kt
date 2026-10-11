@@ -31,6 +31,7 @@ import com.vara.mediatracker.data.badge.BadgeEngine
 import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.badge.SmartBadge
 import com.vara.mediatracker.data.db.AppDatabase
+import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.MediaIds
@@ -61,13 +62,12 @@ data class TVShowProgress(
 @Composable
 fun HomeScreen(
     items: List<MediaItemEntity>,
-    db: AppDatabase? = null,
-    prefs: PreferencesManager? = null,
+    container: AppContainer,
     onSelectMedia: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    val allEpisodes by db?.mediaDao()?.getAllEpisodesFlow()?.collectAsState(initial = emptyList())
-        ?: remember { mutableStateOf(emptyList()) }
+    val allEpisodes by container.mediaDao.getAllEpisodesFlow()
+        .collectAsState(initial = emptyList())
 
     var activeFocusSection by remember { mutableStateOf<HomeFocusSection?>(null) }
 
@@ -188,8 +188,8 @@ fun HomeScreen(
     }
 
     // Pre-fetch logos for visible continue watching items
-    LaunchedEffect(continueWatching, prefs?.tmdbApiKey) {
-        val apiKey = prefs?.tmdbApiKey
+    LaunchedEffect(continueWatching, container.preferences.tmdbApiKey) {
+        val apiKey = container.preferences.tmdbApiKey
         if (!apiKey.isNullOrBlank()) {
             val tmdbClient = TMDBClient(apiKey)
             for (item in continueWatching) {

@@ -26,15 +26,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import androidx.room.Room
 import coil.compose.AsyncImage
 import androidx.activity.compose.BackHandler
-import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.data.db.EpisodeKeyReconciler
 import com.vara.mediatracker.data.model.MediaItemEntity
-import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.ui.common.LocalNowMillis
 import com.vara.mediatracker.ui.common.rememberNowMillis
+import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.ui.calendar.ReleaseCalendarScreen
 import com.vara.mediatracker.ui.detail.DetailScreen
 import com.vara.mediatracker.ui.home.HomeScreen
 import com.vara.mediatracker.ui.library.LibraryScreen
@@ -42,18 +41,10 @@ import com.vara.mediatracker.ui.settings.SettingsScreen
 import com.vara.mediatracker.ui.theme.MediaTrackerTheme
 
 class MainActivity : ComponentActivity() {
-    private val db by lazy {
-        Room.databaseBuilder(applicationContext, AppDatabase::class.java, "mediatracker.db")
-            // Destructive fallback is a development convenience only. In a release
-            // build a missing Migration must fail loudly rather than silently wipe a
-            // library that was synced from the cloud.
-            .apply {
-                if (BuildConfig.DEBUG) fallbackToDestructiveMigration()
-            }
-            .build()
-    }
 
-    private val prefs by lazy { PreferencesManager(applicationContext) }
+    private val container: AppContainer by lazy { AppContainer(applicationContext) }
+
+    private val prefs get() = container.preferences
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,7 +55,7 @@ class MainActivity : ComponentActivity() {
                 // Single app-wide clock so countdown labels stay live without each
                 // card owning its own ticker coroutine.
                 CompositionLocalProvider(LocalNowMillis provides rememberNowMillis()) {
-                    MainAppScreen(db = db, prefs = prefs)
+                    MainAppScreen(container = container)
                 }
             }
         }
@@ -77,7 +68,7 @@ class MainActivity : ComponentActivity() {
     private fun repairLegacyEpisodeKeys() {
         if (prefs.episodeKeyMigrationDone) return
         lifecycleScope.launch {
-            val migrated = EpisodeKeyReconciler(db).reconcile()
+            val migrated = EpisodeKeyReconciler(container.database).reconcile()
             prefs.episodeKeyMigrationDone = true
             if (migrated > 0) {
                 Log.i(TAG, "Normalized $migrated legacy episode id(s) to canonical form")
@@ -92,8 +83,8 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainAppScreen(db: AppDatabase, prefs: PreferencesManager) {
-    val mediaItems by db.mediaDao().getAllActiveMedia().collectAsState(initial = emptyList())
+fun MainAppScreen(container: AppContainer) {
+    val mediaItems by container.mediaDao.getAllActiveMedia().collectAsState(initial = emptyList())
     var selectedTab by remember { mutableIntStateOf(0) }
     var activeDetailMediaId by remember { mutableStateOf<String?>(null) }
 
@@ -105,8 +96,7 @@ fun MainAppScreen(db: AppDatabase, prefs: PreferencesManager) {
     if (activeDetailMediaId != null) {
         DetailScreen(
             mediaId = activeDetailMediaId!!,
-            db = db,
-            prefs = prefs,
+            container = container,
             onBack = { activeDetailMediaId = null }
         )
         return
@@ -140,10 +130,10 @@ fun MainAppScreen(db: AppDatabase, prefs: PreferencesManager) {
         ) {
             // Main Screen Content
             when (selectedTab) {
-                0 -> HomeScreen(items = mediaItems, db = db, prefs = prefs, onSelectMedia = { activeDetailMediaId = it })
-                1 -> com.vara.mediatracker.ui.calendar.ReleaseCalendarScreen(items = mediaItems, db = db, onSelectMedia = { activeDetailMediaId = it })
-                2 -> LibraryScreen(items = mediaItems, prefs = prefs, db = db, onSelectMedia = { activeDetailMediaId = it })
-                3 -> SettingsScreen(prefs = prefs, db = db)
+                0 -> HomeScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
+                1 -> ReleaseCalendarScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
+                2 -> LibraryScreen(items = mediaItems, container = container, onSelectMedia = { activeDetailMediaId = it })
+                3 -> SettingsScreen(container = container)
             }
 
             // Floating Bottom Bar Pill

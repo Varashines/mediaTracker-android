@@ -24,6 +24,7 @@ import coil.compose.AsyncImage
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBSearchItem
 import com.vara.mediatracker.data.db.AppDatabase
+import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
@@ -37,8 +38,7 @@ import java.util.*
 @Composable
 fun LibraryScreen(
     items: List<MediaItemEntity>,
-    prefs: PreferencesManager,
-    db: AppDatabase,
+    container: AppContainer,
     onSelectMedia: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -50,23 +50,15 @@ fun LibraryScreen(
     var isSearchingOnline by remember { mutableStateOf(false) }
     var onlineResults by remember { mutableStateOf<List<TMDBSearchItem>>(emptyList()) }
 
-    val syncManager = remember {
-        CloudSyncManager(
-            mediaDao = db.mediaDao(),
-            supabaseUrl = prefs.supabaseUrl,
-            anonKey = prefs.supabaseAnonKey,
-            syncKey = prefs.syncKey,
-            tmdbApiKey = prefs.tmdbApiKey
-        )
-    }
+    val syncManager = remember { container.syncManager() }
 
     // Trigger TMDB search when enabled
     LaunchedEffect(searchQuery, searchOnlineTMDB) {
-        if (searchOnlineTMDB && searchQuery.trim().length >= 2 && prefs.tmdbApiKey.isNotBlank()) {
+        if (searchOnlineTMDB && searchQuery.trim().length >= 2 && container.preferences.tmdbApiKey.isNotBlank()) {
             isSearchingOnline = true
             withContext(Dispatchers.IO) {
                 try {
-                    val client = TMDBClient(prefs.tmdbApiKey)
+                    val client = container.tmdbClient()
                     val res = client.searchMulti(searchQuery.trim())
                     onlineResults = res.getOrNull()?.results?.filter { 
                         it.media_type == "movie" || it.media_type == "tv" 
@@ -213,7 +205,7 @@ fun LibraryScreen(
                                             lastStateChangeDate = now,
                                             updatedAt = now
                                         )
-                                        db.mediaDao().upsertMedia(newItem)
+                                        container.mediaDao.upsertMedia(newItem)
                                         syncManager.pushMediaUpdate(mediaId, newItem.type, "Wishlist", "None")
                                         Toast.makeText(context, "Added '$title' to Wishlist", Toast.LENGTH_SHORT).show()
                                         onSelectMedia(mediaId)

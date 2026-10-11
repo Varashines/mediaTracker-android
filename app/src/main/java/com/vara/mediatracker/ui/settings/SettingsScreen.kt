@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vara.mediatracker.data.db.AppDatabase
+import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import kotlinx.coroutines.flow.debounce
@@ -47,9 +48,9 @@ private data class CredentialDraft(
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun SettingsScreen(
-    prefs: PreferencesManager,
-    db: AppDatabase
+    container: AppContainer
 ) {
+    val prefs = container.preferences
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -177,13 +178,7 @@ fun SettingsScreen(
                         }
                         isSyncing = true
                         scope.launch {
-                            val manager = CloudSyncManager(
-                                mediaDao = db.mediaDao(),
-                                supabaseUrl = current.supabaseUrl,
-                                anonKey = current.supabaseAnonKey,
-                                syncKey = current.syncKey,
-                                tmdbApiKey = current.tmdbApiKey
-                            )
+                            val manager = container.syncManager()
                             val result = manager.pullFromCloud()
                             isSyncing = false
                             if (result.isSuccess) {

@@ -27,6 +27,7 @@ import com.vara.mediatracker.data.badge.BadgeEngine
 import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.badge.SmartBadge
 import com.vara.mediatracker.data.db.AppDatabase
+import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.MediaIds
@@ -65,10 +66,10 @@ data class CalendarReleaseEvent(
 @Composable
 fun ReleaseCalendarScreen(
     items: List<MediaItemEntity>,
-    db: AppDatabase,
+    container: AppContainer,
     onSelectMedia: (String) -> Unit
 ) {
-    val allEpisodes by db.mediaDao().getAllEpisodesFlow().collectAsState(initial = emptyList())
+    val allEpisodes by container.mediaDao.getAllEpisodesFlow().collectAsState(initial = emptyList())
 
     val todayCalendar = remember { Calendar.getInstance() }
     val todayString = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }

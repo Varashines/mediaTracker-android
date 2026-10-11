@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.db.AppDatabase
+import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
@@ -38,10 +39,11 @@ import java.util.*
 @Composable
 fun DetailScreen(
     mediaId: String,
-    db: AppDatabase,
-    prefs: PreferencesManager,
+    container: AppContainer,
     onBack: () -> Unit
 ) {
+    val db = container.database
+    val prefs = container.preferences
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var mediaItem by remember { mutableStateOf<MediaItemEntity?>(null) }
@@ -76,7 +78,7 @@ fun DetailScreen(
                 kotlinx.coroutines.Dispatchers.IO.let { ioDispatcher ->
                     kotlinx.coroutines.withContext(ioDispatcher) {
                         try {
-                            val tmdbClient = com.vara.mediatracker.data.api.TMDBClient(prefs.tmdbApiKey)
+                            val tmdbClient = container.tmdbClient()
                             val isMovie = item.type.contains("Movie", ignoreCase = true)
                             
                             // Fetch Details (Genres, Ratings, Runtime)
@@ -161,15 +163,7 @@ fun DetailScreen(
     }
 
     val isTV = item.type.contains("TV", ignoreCase = true)
-    val syncManager = remember {
-        CloudSyncManager(
-            mediaDao = db.mediaDao(),
-            supabaseUrl = prefs.supabaseUrl,
-            anonKey = prefs.supabaseAnonKey,
-            syncKey = prefs.syncKey,
-            tmdbApiKey = prefs.tmdbApiKey
-        )
-    }
+    val syncManager = remember { container.syncManager() }
 
     Scaffold(
         topBar = {
