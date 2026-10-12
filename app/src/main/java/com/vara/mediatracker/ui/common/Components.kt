@@ -51,7 +51,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathBuilder
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -109,6 +114,89 @@ data class NavDestination(
 )
 
 /**
+ * Stroked rounded rectangle, written out by corner so the path stays a single
+ * closed contour the way the launcher icon draws it.
+ */
+private fun PathBuilder.strokedRoundedRect(
+    left: Float, top: Float, right: Float, bottom: Float, radius: Float
+) {
+    moveTo(left + radius, top)
+    lineTo(right - radius, top)
+    arcTo(radius, radius, 0f, isMoreThanHalf = false, isPositiveArc = true, right, top + radius)
+    lineTo(right, bottom - radius)
+    arcTo(radius, radius, 0f, isMoreThanHalf = false, isPositiveArc = true, right - radius, bottom)
+    lineTo(left + radius, bottom)
+    arcTo(radius, radius, 0f, isMoreThanHalf = false, isPositiveArc = true, left, bottom - radius)
+    lineTo(left, top + radius)
+    arcTo(radius, radius, 0f, isMoreThanHalf = false, isPositiveArc = true, left + radius, top)
+    close()
+}
+
+/**
+ * The app mark as a vector, ported from generate_icon.swift.
+ *
+ * generate_icon.swift draws on a 1024pt canvas with the origin at the bottom
+ * left, so each coordinate is divided by 1024/24 and its y flipped. The three
+ * shapes it lays down are a stroked player card, a filled play triangle, and a
+ * smaller stroked rule under the card; all three are kept here.
+ *
+ * They were then scaled 2x about the icon centre. In the launcher the mark sits
+ * inside a rounded square with a wide margin around it, which at 23dp leaves it
+ * occupying about a third of the space it needs, so the nav bar would have shown
+ * a speck. Stroke widths scale with the content rather than staying fixed, which
+ * is what keeps the card from vanishing at this size.
+ *
+ * Only the mark is used, not the gradient plate behind it. The nav bar is
+ * icon-only and already draws an active indicator behind whatever icon it holds;
+ * a second filled shape underneath would fight it.
+ */
+val MediaTrackerMark: ImageVector = ImageVector.Builder(
+    name = "MediaTracker",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f
+).apply {
+    val ink = SolidColor(Color.White)
+
+    path(
+        name = "player",
+        fill = null,
+        stroke = ink,
+        strokeAlpha = 1f,
+        strokeLineWidth = 1.4f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round
+    ) {
+        strokedRoundedRect(2.60f, 1.61f, 21.40f, 14.55f, 1.88f)
+    }
+
+    path(
+        name = "rule",
+        fill = null,
+        stroke = ink,
+        strokeAlpha = 0.85f,
+        strokeLineWidth = 1.4f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round
+    ) {
+        strokedRoundedRect(2.60f, 17.09f, 16.68f, 22.71f, 0.94f)
+    }
+
+    path(
+        name = "play",
+        fill = ink,
+        stroke = null,
+        fillAlpha = 0.9f
+    ) {
+        moveTo(10.50f, 10.54f)
+        lineTo(10.50f, 5.83f)
+        lineTo(14.25f, 8.15f)
+        close()
+    }
+}.build()
+
+/**
  * Bottom navigation destinations.
  *
  * Reordered away from Home/Calendar/Library/Settings. Calendar is a *view* of upcoming
@@ -117,7 +205,9 @@ data class NavDestination(
  * job is adding and finding content, not just looking at what is already there.
  */
 val AppDestinations = listOf(
-    NavDestination("Home", Icons.Filled.Home),
+    // The app mark rather than a house: Home is the app itself, so saying so with
+    // the brand is honest, and it is the only destination without a semantic icon.
+    NavDestination("Home", MediaTrackerMark),
     NavDestination("Search", Icons.Filled.Search),
     NavDestination("Library", Icons.Filled.VideoLibrary),
     NavDestination("Settings", Icons.Filled.Settings)
@@ -309,7 +399,16 @@ fun CollapsingHeader(
     }
     val barAlpha by animateFloatAsState(fraction, motion.gentle, label = "headerAlpha")
 
-    Box(modifier = modifier.fillMaxWidth()) {
+    // The status-bar inset belongs on the outer Box, once. Both halves used to
+    // apply it themselves, so they disagreed about where the content area began,
+    // and the 68dp of dead space above the large title came from the big title
+    // being vertically centred inside a box that the bar had already sized.
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+    ) {
+        // Collapsed bar: fades in as the large title fades out.
         Surface(
             color = MaterialTheme.colorScheme.background.copy(alpha = barAlpha * 0.95f),
             modifier = Modifier.fillMaxWidth()
@@ -317,7 +416,6 @@ fun CollapsingHeader(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .statusBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -335,9 +433,8 @@ fun CollapsingHeader(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(top = 4.dp, bottom = 8.dp),
-            contentAlignment = Alignment.CenterStart
+                .padding(start = 16.dp, top = 4.dp, bottom = 8.dp),
+            contentAlignment = Alignment.TopStart
         ) {
             Text(
                 text = title,
