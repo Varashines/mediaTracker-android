@@ -482,6 +482,7 @@ fun HomeScreen(
                                     item.releaseDate?.take(10)
                                 },
                                 smartBadge = smartBadgesMap[item.id],
+                                showCountdown = true,
                                 onClick = { onSelectMedia(item.id) }
                             )
                         }
@@ -759,34 +760,6 @@ fun SectionHeader(
     }
 }
 
-/** Poster rail used by the New and In Progress sections. */
-@Composable
-private fun PosterRail(
-    items: List<MediaItemEntity>,
-    badges: Map<String, BadgeResult?>,
-    progress: Map<String, TVShowProgress>,
-    onSelectMedia: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    if (items.isEmpty()) return
-
-    LazyRow(
-        modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(items, key = { it.id }) { item ->
-            val info = progress[item.id]
-            HomePosterCard(
-                item = item,
-                nextAirDate = info?.nextAiringDate,
-                smartBadge = badges[item.id],
-                onClick = { onSelectMedia(item.id) }
-            )
-        }
-    }
-}
-
 /**
  * Live countdown label. Recomposes on every tick of the app-wide clock published
  * through LocalNowMillis, so "in 12m" actually counts down.
@@ -796,15 +769,19 @@ fun HomePosterCard(
     item: MediaItemEntity,
     nextAirDate: String? = null,
     smartBadge: BadgeResult? = null,
+    showCountdown: Boolean = false,
     onClick: () -> Unit
 ) {
-    // Target date resolution using network / streaming service rules
-    val targetAirDate = remember(nextAirDate, item.releaseDate, item.title, item.overview) {
-        val rawDate = nextAirDate ?: item.releaseDate
-        parseTargetAirDateTime(rawDate, "${item.title} ${item.overview}")
+    // Target date resolution using network / streaming service rules (only computed when countdown is enabled)
+    val targetAirDate = remember(nextAirDate, item.releaseDate, item.title, item.overview, showCountdown) {
+        if (!showCountdown) null
+        else {
+            val rawDate = nextAirDate ?: item.releaseDate
+            parseTargetAirDateTime(rawDate, "${item.title} ${item.overview}")
+        }
     }
 
-    val countdownLabel = rememberCountdownText(targetAirDate)
+    val countdownLabel = if (showCountdown) rememberCountdownText(targetAirDate) else null
 
     ExpressiveCard(
         onClick = onClick,

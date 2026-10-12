@@ -277,10 +277,6 @@ fun CalendarReleaseCard(
     onClick: () -> Unit
 ) {
     val item = event.mediaItem
-    val targetAirDate = remember(event.dateString, item.title, item.overview) {
-        parseTargetAirDateTime(event.dateString, "${item.title} ${item.overview}")
-    }
-    val countdown = rememberCountdownText(targetAirDate)
 
     ExpressiveCard(
         onClick = onClick,
@@ -350,32 +346,6 @@ fun CalendarReleaseCard(
                                 color = Color.White.copy(alpha = 0.9f),
                                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                             )
-                        }
-                    }
-
-                    if (countdown != null) {
-                        Surface(
-                            color = Color.Black.copy(alpha = 0.7f),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.HourglassEmpty,
-                                    contentDescription = null,
-                                    tint = AppColors.Gold,
-                                    modifier = Modifier.size(8.dp)
-                                )
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Text(
-                                    text = countdown,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
                         }
                     }
 

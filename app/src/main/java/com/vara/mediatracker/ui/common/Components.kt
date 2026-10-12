@@ -406,7 +406,6 @@ fun CollapsingHeader(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .statusBarsPadding()
     ) {
         // Collapsed bar: fades in as the large title fades out.
         Surface(
