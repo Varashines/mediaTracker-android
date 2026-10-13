@@ -227,13 +227,24 @@ val AppShapes = Shapes(
 )
 
 object ExpressiveShapes {
-    /** Uniform hero card shape */
-    val Hero = RoundedCornerShape(22.dp)
-    val AsymHero = RoundedCornerShape(22.dp)
+    /**
+     * Asymmetric "M3E" radii: one diagonal pair tight, the other round. This is the
+     * prototype's signature — hero `34/12`, card `24/8`, tag `14/4`.
+     */
+    val AsymHero = RoundedCornerShape(topStart = 34.dp, topEnd = 12.dp, bottomEnd = 34.dp, bottomStart = 12.dp)
+    val AsymCard = RoundedCornerShape(topStart = 24.dp, topEnd = 8.dp, bottomEnd = 24.dp, bottomStart = 8.dp)
+    val AsymTag = RoundedCornerShape(topStart = 14.dp, topEnd = 4.dp, bottomEnd = 14.dp, bottomStart = 4.dp)
 
-    /** Uniform media / list card shape. Matches ExpressiveCard's default. */
-    val Card = RoundedCornerShape(18.dp)
-    val AsymCard = RoundedCornerShape(18.dp)
+    /** Uniform hero card shape. */
+    val Hero = RoundedCornerShape(28.dp)
+
+    /** Uniform media / list card shape. */
+    val Card = RoundedCornerShape(20.dp)
+
+    /** Uniform squircles (prototype: 14 / 20 / 28). */
+    val SquircleSm = RoundedCornerShape(14.dp)
+    val SquircleMd = RoundedCornerShape(20.dp)
+    val SquircleLg = RoundedCornerShape(28.dp)
 
     /** Squircle tag / badge shape */
     val SquircleTag = RoundedCornerShape(10.dp)
@@ -243,6 +254,43 @@ object ExpressiveShapes {
 
     /** Inner active squircle pill */
     val ActivePill = RoundedCornerShape(14.dp)
+}
+
+/**
+ * Spacing scale, mirroring the prototype's Tailwind rhythm (4 / 8 / 12 / 16 / 20 / 24).
+ * Use these instead of ad-hoc dp so gutters and gaps stay consistent and breathable.
+ */
+object AppSpacing {
+    val xs = 4.dp
+    val sm = 8.dp
+    val md = 12.dp
+    val lg = 16.dp
+    val xl = 20.dp
+    val xxl = 24.dp
+
+    /** Screen edge gutter. */
+    val gutter = 20.dp
+
+    /** Vertical gap between sections. */
+    val sectionGap = 24.dp
+
+    /** Gap between rows in a list. */
+    val rowGap = 12.dp
+}
+
+/** Mono micro-labels for metadata (network, counts, dates, percentages). */
+object AppTextStyles {
+    val MonoLabel = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        fontSize = 10.sp,
+        letterSpacing = 0.8.sp
+    )
+    val MonoValue = TextStyle(
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        fontSize = 11.sp
+    )
 }
 
 data class ThemePreset(
@@ -257,100 +305,143 @@ data class ThemePreset(
     val backgroundColor: Color,
     val surfaceColor: Color,
     val surfaceContainerHighColor: Color,
-    val surfaceContainerHighestColor: Color
+    val surfaceContainerHighestColor: Color,
+    // M3E tonal additions (prototype token set).
+    val secondaryContainerColor: Color,
+    val onSecondaryContainerColor: Color,
+    val surfaceContainerColor: Color,
+    val outlineColor: Color,
+    val onSurfaceColor: Color,
+    val onSurfaceVariantColor: Color
 )
 
 object ThemePresets {
     val presets = listOf(
-        // 0: Mac (Native Azure / Deep Slate)
+        // 0: Mac (Native Azure) — remapped to the prototype's "electric blue" tonal set.
         ThemePreset(
             name = "Mac",
             accentHex = "#0A84FF",
-            darkBGHex = "#1C1D20",
-            darkSurfaceHex = "#222428",
-            primaryColor = Color(0xFF0A84FF),
-            onPrimaryColor = Color.White,
-            primaryContainerColor = Color(0xFF004080),
-            onPrimaryContainerColor = Color(0xFFD0E4FF),
-            backgroundColor = Color(0xFF131417),
-            surfaceColor = Color(0xFF1C1D20),
-            surfaceContainerHighColor = Color(0xFF24262B),
-            surfaceContainerHighestColor = Color(0xFF2D3036)
+            darkBGHex = "#111418",
+            darkSurfaceHex = "#16191E",
+            primaryColor = Color(0xFFA1C9FF),
+            onPrimaryColor = Color(0xFF00325B),
+            primaryContainerColor = Color(0xFF004880),
+            onPrimaryContainerColor = Color(0xFFD2E4FF),
+            backgroundColor = Color(0xFF111418),
+            surfaceColor = Color(0xFF16191E),
+            surfaceContainerHighColor = Color(0xFF24272C),
+            surfaceContainerHighestColor = Color(0xFF2F3237),
+            secondaryContainerColor = Color(0xFF39465A),
+            onSecondaryContainerColor = Color(0xFFD8E3F8),
+            surfaceContainerColor = Color(0xFF191C21),
+            outlineColor = Color(0xFF8C9199),
+            onSurfaceColor = Color(0xFFE2E2E7),
+            onSurfaceVariantColor = Color(0xFFC2C7CF)
         ),
         // 1: Trippy (Cyan / Teal)
         ThemePreset(
             name = "Trippy",
             accentHex = "#3E9DB0",
-            darkBGHex = "#1A1D1F",
-            darkSurfaceHex = "#212426",
-            primaryColor = Color(0xFF3E9DB0),
-            onPrimaryColor = Color.White,
-            primaryContainerColor = Color(0xFF1A4750),
-            onPrimaryContainerColor = Color(0xFFBCE8F0),
-            backgroundColor = Color(0xFF121516),
-            surfaceColor = Color(0xFF1A1D1F),
-            surfaceContainerHighColor = Color(0xFF222629),
-            surfaceContainerHighestColor = Color(0xFF2B3034)
+            darkBGHex = "#0E1416",
+            darkSurfaceHex = "#131A1C",
+            primaryColor = Color(0xFF8EDBE8),
+            onPrimaryColor = Color(0xFF00363F),
+            primaryContainerColor = Color(0xFF004E5C),
+            onPrimaryContainerColor = Color(0xFFB0ECF5),
+            backgroundColor = Color(0xFF0E1416),
+            surfaceColor = Color(0xFF131A1C),
+            surfaceContainerHighColor = Color(0xFF20282B),
+            surfaceContainerHighestColor = Color(0xFF2A3336),
+            secondaryContainerColor = Color(0xFF2F4A50),
+            onSecondaryContainerColor = Color(0xFFCFE9EE),
+            surfaceContainerColor = Color(0xFF161D1F),
+            outlineColor = Color(0xFF869396),
+            onSurfaceColor = Color(0xFFDEE4E6),
+            onSurfaceVariantColor = Color(0xFFBCC7CA)
         ),
-        // 2: Chill (Nordic Emerald / Forest Green)
+        // 2: Chill (Nordic Emerald) — the prototype's "emerald" set.
         ThemePreset(
             name = "Chill",
             accentHex = "#67A06B",
-            darkBGHex = "#1A1E1B",
-            darkSurfaceHex = "#212621",
-            primaryColor = Color(0xFF67A06B),
-            onPrimaryColor = Color.White,
-            primaryContainerColor = Color(0xFF264828),
-            onPrimaryContainerColor = Color(0xFFC7EBC8),
-            backgroundColor = Color(0xFF121613),
-            surfaceColor = Color(0xFF1A1E1B),
-            surfaceContainerHighColor = Color(0xFF222723),
-            surfaceContainerHighestColor = Color(0xFF2A312B)
+            darkBGHex = "#101513",
+            darkSurfaceHex = "#151B18",
+            primaryColor = Color(0xFF6DDFB8),
+            onPrimaryColor = Color(0xFF003828),
+            primaryContainerColor = Color(0xFF00513B),
+            onPrimaryContainerColor = Color(0xFF8BFCD4),
+            backgroundColor = Color(0xFF101513),
+            surfaceColor = Color(0xFF151B18),
+            surfaceContainerHighColor = Color(0xFF262D29),
+            surfaceContainerHighestColor = Color(0xFF313833),
+            secondaryContainerColor = Color(0xFF334B41),
+            onSecondaryContainerColor = Color(0xFFBDECD8),
+            surfaceContainerColor = Color(0xFF1C221E),
+            outlineColor = Color(0xFF89938D),
+            onSurfaceColor = Color(0xFFE0E3DF),
+            onSurfaceVariantColor = Color(0xFFBFC9C2)
         ),
         // 3: Epic (Violet / Royal Purple)
         ThemePreset(
             name = "Epic",
             accentHex = "#8C66A8",
-            darkBGHex = "#1B1A21",
-            darkSurfaceHex = "#222130",
-            primaryColor = Color(0xFF8C66A8),
-            onPrimaryColor = Color.White,
-            primaryContainerColor = Color(0xFF452D5A),
-            onPrimaryContainerColor = Color(0xFFEADBFA),
-            backgroundColor = Color(0xFF131218),
-            surfaceColor = Color(0xFF1B1A21),
-            surfaceContainerHighColor = Color(0xFF24222D),
-            surfaceContainerHighestColor = Color(0xFF2D2B39)
+            darkBGHex = "#141217",
+            darkSurfaceHex = "#1A171D",
+            primaryColor = Color(0xFFDCB8F4),
+            onPrimaryColor = Color(0xFF3D1E4E),
+            primaryContainerColor = Color(0xFF553567),
+            onPrimaryContainerColor = Color(0xFFF0D7FF),
+            backgroundColor = Color(0xFF141217),
+            surfaceColor = Color(0xFF1A171D),
+            surfaceContainerHighColor = Color(0xFF2A252D),
+            surfaceContainerHighestColor = Color(0xFF352F38),
+            secondaryContainerColor = Color(0xFF46324D),
+            onSecondaryContainerColor = Color(0xFFEED7F3),
+            surfaceContainerColor = Color(0xFF1F1B22),
+            outlineColor = Color(0xFF948E9B),
+            onSurfaceColor = Color(0xFFE6DFE8),
+            onSurfaceVariantColor = Color(0xFFCBC2CD)
         ),
-        // 4: Emotional (Rose Pink / Vivid Berry)
+        // 4: Emotional (Rose) — the prototype's "plum" set.
         ThemePreset(
             name = "Emotional",
             accentHex = "#D06A93",
-            darkBGHex = "#1F1A1D",
-            darkSurfaceHex = "#262024",
-            primaryColor = Color(0xFFD06A93),
-            onPrimaryColor = Color.White,
-            primaryContainerColor = Color(0xFF5E273F),
-            onPrimaryContainerColor = Color(0xFFFFD9E6),
-            backgroundColor = Color(0xFF161214),
-            surfaceColor = Color(0xFF1F1A1D),
-            surfaceContainerHighColor = Color(0xFF282125),
-            surfaceContainerHighestColor = Color(0xFF33292F)
+            darkBGHex = "#161217",
+            darkSurfaceHex = "#1C171B",
+            primaryColor = Color(0xFFF4B8D4),
+            onPrimaryColor = Color(0xFF4E1E38),
+            primaryContainerColor = Color(0xFF67355A),
+            onPrimaryContainerColor = Color(0xFFFFD7EE),
+            backgroundColor = Color(0xFF161217),
+            surfaceColor = Color(0xFF1C171B),
+            surfaceContainerHighColor = Color(0xFF2C252B),
+            surfaceContainerHighestColor = Color(0xFF372F36),
+            secondaryContainerColor = Color(0xFF4B3245),
+            onSecondaryContainerColor = Color(0xFFFFD7EE),
+            surfaceContainerColor = Color(0xFF211B20),
+            outlineColor = Color(0xFF9B8E97),
+            onSurfaceColor = Color(0xFFEBDFE7),
+            onSurfaceVariantColor = Color(0xFFCFC2CA)
         ),
-        // 5: Sunset (Amber / Warm Tangerine)
+        // 5: Sunset (Amber) — the prototype's "amber sunset" set.
         ThemePreset(
             name = "Sunset",
             accentHex = "#E07A48",
-            darkBGHex = "#1F1B19",
-            darkSurfaceHex = "#27221F",
-            primaryColor = Color(0xFFE07A48),
-            onPrimaryColor = Color.White,
-            primaryContainerColor = Color(0xFF663014),
-            onPrimaryContainerColor = Color(0xFFFFDBCC),
-            backgroundColor = Color(0xFF161311),
-            surfaceColor = Color(0xFF1F1B19),
-            surfaceContainerHighColor = Color(0xFF29231F),
-            surfaceContainerHighestColor = Color(0xFF342C27)
+            darkBGHex = "#17120E",
+            darkSurfaceHex = "#1D1713",
+            primaryColor = Color(0xFFFFB77C),
+            onPrimaryColor = Color(0xFF4C2700),
+            primaryContainerColor = Color(0xFF6C3A00),
+            onPrimaryContainerColor = Color(0xFFFFDDBA),
+            backgroundColor = Color(0xFF17120E),
+            surfaceColor = Color(0xFF1D1713),
+            surfaceContainerHighColor = Color(0xFF2E2620),
+            surfaceContainerHighestColor = Color(0xFF39302B),
+            secondaryContainerColor = Color(0xFF564233),
+            onSecondaryContainerColor = Color(0xFFFBDECD),
+            surfaceContainerColor = Color(0xFF231C17),
+            outlineColor = Color(0xFF9F8D83),
+            onSurfaceColor = Color(0xFFEDE0D9),
+            onSurfaceVariantColor = Color(0xFFD4C3B9)
         )
     )
 
@@ -364,34 +455,35 @@ fun createColorSchemeForPreset(preset: ThemePreset, isDark: Boolean = true): Col
             onPrimary = preset.onPrimaryColor,
             primaryContainer = preset.primaryContainerColor,
             onPrimaryContainer = preset.onPrimaryContainerColor,
-            secondary = preset.primaryColor.copy(alpha = 0.85f),
-            onSecondary = Color.White,
-            secondaryContainer = preset.primaryContainerColor.copy(alpha = 0.7f),
-            onSecondaryContainer = preset.onPrimaryContainerColor,
+            secondary = preset.secondaryContainerColor,
+            onSecondary = preset.onSecondaryContainerColor,
+            secondaryContainer = preset.secondaryContainerColor,
+            onSecondaryContainer = preset.onSecondaryContainerColor,
             tertiary = Color(0xFFFFD60A), // Gold star
             onTertiary = Color.Black,
             tertiaryContainer = Color(0xFF3E2D00),
             onTertiaryContainer = Color(0xFFFFE082),
             background = preset.backgroundColor,
-            onBackground = Color(0xFFF2EFF4),
+            onBackground = preset.onSurfaceColor,
             surface = preset.surfaceColor,
-            onSurface = Color(0xFFF2EFF4),
-            surfaceVariant = preset.surfaceColor,
-            onSurfaceVariant = Color(0xFFA5A0AB),
-            surfaceContainer = preset.surfaceColor,
+            onSurface = preset.onSurfaceColor,
+            surfaceVariant = preset.surfaceContainerColor,
+            onSurfaceVariant = preset.onSurfaceVariantColor,
+            surfaceContainer = preset.surfaceContainerColor,
             surfaceContainerHigh = preset.surfaceContainerHighColor,
             surfaceContainerHighest = preset.surfaceContainerHighestColor,
-            outline = Color(0xFF484550),
-            outlineVariant = Color(0xFF2C2A33),
+            outline = preset.outlineColor,
+            outlineVariant = preset.outlineColor.copy(alpha = 0.4f),
             error = Color(0xFFFF5252),
             onError = Color.White
         )
     } else {
         // Light mode: near-white surfaces subtly tinted toward the preset accent so
-        // the six palettes stay distinguishable instead of all collapsing to grey.
+        // the palettes stay distinguishable instead of all collapsing to grey.
         // Container tokens are opaque — translucent containers composite against
         // whatever sits behind them and make contrast unpredictable.
-        val accent = preset.primaryColor
+        val accent = runCatching { Color(android.graphics.Color.parseColor(preset.accentHex)) }
+            .getOrDefault(preset.primaryColor)
         val ink = Color(0xFF16171C)
         lightColorScheme(
             primary = accent,
