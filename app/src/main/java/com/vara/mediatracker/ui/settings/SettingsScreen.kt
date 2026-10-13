@@ -116,6 +116,7 @@ fun SettingsScreen(
     var regionMenuExpanded by remember { mutableStateOf(false) }
     var isSyncing by remember { mutableStateOf(false) }
     var lastSyncSummary by remember { mutableStateOf<CloudSyncManager.SyncSummary?>(null) }
+    var pendingImpact by remember { mutableStateOf<CloudSyncManager.SyncImpact?>(null) }
     var isConfigExpanded by remember { mutableStateOf(false) }
     var isTmdbExpanded by remember { mutableStateOf(false) }
     var lastSyncTime by remember { mutableLongStateOf(prefs.lastSyncTimestamp) }
@@ -315,25 +316,15 @@ fun SettingsScreen(
                                 Toast.makeText(context, "Configure credentials below first", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
+                            // Preview the diff first (macOS SyncImpact), then confirm.
                             isSyncing = true
                             scope.launch {
-                                val manager = container.syncManager()
-                                val result = manager.sync()
+                                val result = container.syncManager().computeImpact()
                                 isSyncing = false
                                 if (result.isSuccess) {
-                                    SyncScheduler.recordSyncCompletion(context)
-                                    val summary = result.getOrNull()
-                                    lastSyncSummary = summary
-                                    val now = System.currentTimeMillis()
-                                    prefs.lastSyncTimestamp = now
-                                    lastSyncTime = now
-                                    Toast.makeText(
-                                        context,
-                                        "Synced — ↑ ${summary?.outgoing ?: 0} sent, ↓ ${summary?.incoming ?: 0} received",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    pendingImpact = result.getOrNull()
                                 } else {
-                                    Toast.makeText(context, "Sync failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "Preview failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
                                 }
                             }
                         },
@@ -950,5 +941,65 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    // Pre-sync preview (macOS SyncImpact): show the incoming/outgoing diff, then apply.
+    pendingImpact?.let { impact ->
+        AlertDialog(
+            onDismissRequest = { pendingImpact = null },
+            title = { Text("Cloud Sync Preview") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Review what will change between this device and the cloud.")
+                    Text(
+                        text = "↓ Incoming: ${impact.incomingTitles.size} titles · ${impact.incomingEpisodes} episodes",
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "↑ Outgoing: ${impact.outgoingTitles.size} titles · ${impact.outgoingEpisodes} episodes",
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (impact.conflictTitles.isNotEmpty()) {
+                        Text(
+                            text = "${impact.conflictTitles.size} conflicts (newest wins)",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    val sample = (impact.incomingTitles + impact.outgoingTitles).distinct().take(6)
+                    if (sample.isNotEmpty()) {
+                        Text(
+                            text = sample.joinToString("\n"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 6
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingImpact = null
+                    isSyncing = true
+                    scope.launch {
+                        val result = container.syncManager().sync()
+                        isSyncing = false
+                        if (result.isSuccess) {
+                            SyncScheduler.recordSyncCompletion(context)
+                            lastSyncSummary = result.getOrNull()
+                            val now = System.currentTimeMillis()
+                            prefs.lastSyncTimestamp = now
+                            lastSyncTime = now
+                            val s = result.getOrNull()
+                            Toast.makeText(context, "Synced — ↑ ${s?.outgoing ?: 0} sent, ↓ ${s?.incoming ?: 0} received", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Sync failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }) { Text("Sync Now") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingImpact = null }) { Text("Cancel") }
+            }
+        )
     }
 }

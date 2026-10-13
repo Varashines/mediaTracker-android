@@ -341,9 +341,44 @@ class CloudSyncManager(
     /** Incoming/outgoing counts for one two-way sync, for the UI indicator. */
     data class SyncSummary(val outgoing: Int, val incoming: Int)
 
+    /** Pre-sync preview: what a sync would change, without applying anything. */
+    data class SyncImpact(
+        val incomingTitles: List<String>,
+        val outgoingTitles: List<String>,
+        val conflictTitles: List<String>,
+        val incomingEpisodes: Int,
+        val outgoingEpisodes: Int
+    ) {
+        val totalIncoming: Int get() = incomingTitles.size + incomingEpisodes
+        val totalOutgoing: Int get() = outgoingTitles.size + outgoingEpisodes
+    }
+
+    private data class Reconcile(
+        val outgoingMedia: List<MediaItemEntity>,
+        val incomingMedia: List<MediaItemEntity>,
+        val outgoingEpisodes: List<EpisodeEntity>,
+        val incomingEpisodes: List<EpisodeEntity>,
+        val conflictTitles: List<String>
+    )
+
+    /** Computes what a sync would change, without writing anything (macOS SyncImpact). */
+    suspend fun computeImpact(): Result<SyncImpact> = runCatching {
+        if (supabaseUrl.isBlank() || anonKey.isBlank() || syncKey.isBlank()) {
+            return Result.failure(IllegalStateException("Sync credentials not configured"))
+        }
+        val r = reconcile()
+        SyncImpact(
+            incomingTitles = r.incomingMedia.map { it.title },
+            outgoingTitles = r.outgoingMedia.map { it.title },
+            conflictTitles = r.conflictTitles,
+            incomingEpisodes = r.incomingEpisodes.size,
+            outgoingEpisodes = r.outgoingEpisodes.size
+        )
+    }
+
     /**
-     * Full two-way sync: fetch the cloud, reconcile it against the local library, then
-     * push local wins and apply cloud wins. Conflicts are last-write-wins by timestamp.
+     * Full two-way sync: push local wins and apply cloud wins. Conflicts are
+     * last-write-wins by timestamp. Prefer [computeImpact] first to preview it.
      *
      * @return how many rows were sent up and applied down.
      */
@@ -351,11 +386,25 @@ class CloudSyncManager(
         if (supabaseUrl.isBlank() || anonKey.isBlank() || syncKey.isBlank()) {
             return Result.failure(IllegalStateException("Sync credentials not configured"))
         }
+        val r = reconcile()
+        if (r.incomingMedia.isNotEmpty()) mediaDao.upsertMedia(r.incomingMedia)
+        if (r.incomingEpisodes.isNotEmpty()) mediaDao.upsertEpisodes(r.incomingEpisodes)
+        pushMediaBatch(r.outgoingMedia)
+        pushEpisodeBatch(r.outgoingEpisodes)
+        SyncSummary(
+            outgoing = r.outgoingMedia.size + r.outgoingEpisodes.size,
+            incoming = r.incomingMedia.size + r.incomingEpisodes.size
+        )
+    }
 
+    /** Fetches the cloud and diffs it against the local library. Pure read. */
+    private suspend fun reconcile(): Reconcile {
         val remoteMedia = fetchRemoteMedia()
         val remoteEpisodes = fetchRemoteEpisodes()
         val remoteMediaById = remoteMedia.associateBy { it.media_id }
-        val remoteEpisodesById = remoteEpisodes.associateBy { it.episode_id }
+        // Cloud rows carry legacy episode ids ("1412_5_10"); normalize to the canonical
+        // "tv_1412_s5_e10" so they actually match the local rows.
+        val remoteEpisodesById = remoteEpisodes.associateBy { canonicalEpisodeId(it.episode_id) }
 
         val localMedia = mediaDao.getAllMediaList()
         val localEpisodes = mediaDao.getAllEpisodesList()
@@ -363,6 +412,7 @@ class CloudSyncManager(
 
         val outgoingMedia = mutableListOf<MediaItemEntity>()
         val incomingMedia = mutableListOf<MediaItemEntity>()
+        val conflictTitles = mutableListOf<String>()
         for (local in localMedia) {
             val remote = remoteMediaById[local.id]
             if (remote == null) {
@@ -370,6 +420,7 @@ class CloudSyncManager(
                 continue
             }
             if (!local.state.equals(remote.state, true) || !local.taste.equals(remote.taste, true)) {
+                conflictTitles.add(local.title)
                 val localTime = parseInstant(local.lastStateChangeDate)
                 val remoteTime = parseInstant(remote.updated_at)
                 if (remoteTime != null && (localTime == null || remoteTime > localTime)) {
@@ -402,16 +453,13 @@ class CloudSyncManager(
             }
         }
 
-        if (incomingMedia.isNotEmpty()) mediaDao.upsertMedia(incomingMedia)
-        if (incomingEpisodes.isNotEmpty()) mediaDao.upsertEpisodes(incomingEpisodes)
-        pushMediaBatch(outgoingMedia)
-        pushEpisodeBatch(outgoingEpisodes)
-
-        SyncSummary(
-            outgoing = outgoingMedia.size + outgoingEpisodes.size,
-            incoming = incomingMedia.size + incomingEpisodes.size
-        )
+        return Reconcile(outgoingMedia, incomingMedia, outgoingEpisodes, incomingEpisodes, conflictTitles)
     }
+
+    private fun canonicalEpisodeId(id: String): String =
+        MediaIds.parseEpisodeUniqueId(id)?.let {
+            MediaIds.buildEpisodeUniqueId(it.showId, it.seasonNumber, it.episodeNumber)
+        } ?: id
 
     private suspend fun fetchRemoteMedia(): List<RemoteMedia> {
         val response: HttpResponse = client.get("$supabaseUrl/rest/v1/user_media") {
