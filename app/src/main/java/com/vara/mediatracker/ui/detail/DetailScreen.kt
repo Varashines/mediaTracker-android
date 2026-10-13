@@ -45,7 +45,9 @@ import com.vara.mediatracker.data.sync.CloudSyncManager
 import kotlinx.coroutines.launch
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TmdbResponseCache
+import com.vara.mediatracker.ui.common.ChipTone
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
+import com.vara.mediatracker.ui.common.StatusChip
 import com.vara.mediatracker.ui.common.ExpressiveToggleGroup
 import com.vara.mediatracker.ui.common.springClickable
 import com.vara.mediatracker.util.AirTimeResolver
@@ -1299,20 +1301,13 @@ fun EpisodeCard(
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                // Status Badge Chip (Watched vs Upcoming)
-                if (episode.isWatched) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = sem.success.copy(alpha = 0.18f)
-                    ) {
-                        Text(
-                            text = "Watched",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = sem.success,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
+                // Status tag: Watched / Upcoming / Locked (prototype's episode checklist).
+                val today = java.time.LocalDate.now().toString()
+                val aired = !episode.airDate.isNullOrBlank() && episode.airDate!!.take(10) <= today
+                when {
+                    episode.isWatched -> StatusChip(label = "Watched", tone = ChipTone.Positive)
+                    !aired -> StatusChip(label = "Locked", tone = ChipTone.Muted)
+                    else -> StatusChip(label = "Upcoming", tone = ChipTone.Warning)
                 }
             }
 
