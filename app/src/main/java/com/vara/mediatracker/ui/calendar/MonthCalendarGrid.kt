@@ -149,11 +149,11 @@ private fun DayCell(
     Box(
         modifier = Modifier
             .size(40.dp)
-            .clip(CircleShape)
+            .clip(RoundedCornerShape(14.dp))
             .background(
                 when {
                     isToday -> accent
-                    isSelected -> accent.copy(alpha = 0.20f)
+                    isSelected -> accent.copy(alpha = 0.22f)
                     else -> Color.Transparent
                 }
             )

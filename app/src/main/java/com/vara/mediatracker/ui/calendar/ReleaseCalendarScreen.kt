@@ -36,9 +36,11 @@ import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.formatReleaseDay
 import com.vara.mediatracker.ui.common.rememberCountdownText
 import com.vara.mediatracker.ui.common.rememberTodayDateString
+import com.vara.mediatracker.ui.common.springClickable
 import com.vara.mediatracker.ui.home.SectionHeader
 import com.vara.mediatracker.ui.home.SmartBadgePill
 import com.vara.mediatracker.ui.theme.AppColors
+import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -277,25 +279,26 @@ fun CalendarReleaseCard(
     onClick: () -> Unit
 ) {
     val item = event.mediaItem
+    var isAlertSet by remember { mutableStateOf(false) }
 
     ExpressiveCard(
         onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
-        tonalElevation = 1.dp,
+        shape = ExpressiveShapes.AsymCard,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+        tonalElevation = 2.dp,
         pressedScale = 0.985f,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(10.dp),
+            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Poster Artwork Thumbnail
+            // Squircle Poster Artwork Thumbnail
             Box(
                 modifier = Modifier
-                    .width(58.dp)
-                    .height(84.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .width(62.dp)
+                    .height(88.dp)
+                    .clip(ExpressiveShapes.SquircleTag)
             ) {
                 if (item.posterUrl != null) {
                     AsyncImage(
@@ -321,7 +324,7 @@ fun CalendarReleaseCard(
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
             // Metadata & Episode description
             Column(
@@ -349,8 +352,7 @@ fun CalendarReleaseCard(
                         }
                     }
 
-                    // Multi-episode drop: surfaces how many episodes land today,
-                    // which the single context label can only hint at.
+                    // Multi-episode drop indicator
                     if (event.isEpisode && event.episodeCount > 1) {
                         Surface(
                             color = AppColors.Accent.copy(alpha = 0.9f),
@@ -371,7 +373,7 @@ fun CalendarReleaseCard(
 
                 Text(
                     text = item.title,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -385,16 +387,14 @@ fun CalendarReleaseCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                // Was "Airs on 2026-10-12" — a raw ISO value that reads like a database
-                // dump. Now "Today" / "Tomorrow" / "Wed 15 Oct".
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.Schedule,
                         contentDescription = null,
                         tint = AppColors.Gold.copy(alpha = 0.9f),
-                        modifier = Modifier.size(11.dp)
+                        modifier = Modifier.size(12.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
@@ -413,6 +413,31 @@ fun CalendarReleaseCard(
                         )
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Tactile reminder bell trigger button
+            IconButton(
+                onClick = { isAlertSet = !isAlertSet },
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isAlertSet) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                    .springClickable(
+                        pressedScale = 0.88f,
+                        onClick = { isAlertSet = !isAlertSet }
+                    )
+            ) {
+                Icon(
+                    imageVector = if (isAlertSet) Icons.Default.NotificationsActive else Icons.Default.NotificationsNone,
+                    contentDescription = if (isAlertSet) "Notification active" else "Notify release",
+                    tint = if (isAlertSet) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

@@ -33,6 +33,8 @@ import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import kotlinx.coroutines.launch
 import com.vara.mediatracker.data.api.TMDBClient
+import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
+import com.vara.mediatracker.ui.common.springClickable
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -482,26 +484,33 @@ fun DetailScreen(
 
                         Text("Status", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            listOf("Wishlist", "Watching", "Completed", "Dropped").forEach { stateName ->
-                                FilterChip(
-                                    selected = item.state.equals(stateName, ignoreCase = true),
-                                    onClick = {
-                                        scope.launch {
-                                            val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                            db.mediaDao().updateState(item.id, stateName, now)
-                                            mediaItem = item.copy(state = stateName)
-                                            syncManager.pushMediaUpdate(item.id, item.type, stateName, item.taste)
-                                            Toast.makeText(context, "Marked as $stateName", Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    label = { Text(stateName, fontSize = 12.sp) }
-                                )
+                        
+                        val statusList = listOf("Wishlist", "Watching", "Completed", "Dropped")
+                        val currentMatchedState = statusList.firstOrNull { it.equals(item.state, ignoreCase = true) } ?: "Wishlist"
+
+                        ExpressiveSegmentedControl(
+                            items = statusList,
+                            selectedItem = currentMatchedState,
+                            onItemSelected = { stateName ->
+                                scope.launch {
+                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                    db.mediaDao().updateState(item.id, stateName, now)
+                                    mediaItem = item.copy(state = stateName)
+                                    syncManager.pushMediaUpdate(item.id, item.type, stateName, item.taste)
+                                    Toast.makeText(context, "Marked as $stateName", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            labelProvider = { it },
+                            iconProvider = { stateName ->
+                                when (stateName) {
+                                    "Wishlist" -> Icons.Default.Bookmark
+                                    "Watching" -> Icons.Default.PlayArrow
+                                    "Completed" -> Icons.Default.Check
+                                    "Dropped" -> Icons.Default.Close
+                                    else -> null
+                                }
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -795,20 +804,49 @@ fun EpisodeCard(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .clickable { expanded = !expanded },
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (episode.isWatched) {
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
             } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
             }
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (episode.isWatched) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
         )
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
+                // Tactile Squircle Check Button (M3E style)
+                Surface(
+                    onClick = { onToggleWatched(!episode.isWatched) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (episode.isWatched) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    border = if (episode.isWatched) null else androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier
+                        .size(36.dp)
+                        .springClickable { onToggleWatched(!episode.isWatched) }
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        if (episode.isWatched) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Mark unwatched",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
                 // Episode Thumbnail if available
                 if (!episode.stillPath.isNullOrBlank()) {
                     AsyncImage(
@@ -817,7 +855,7 @@ fun EpisodeCard(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .size(width = 84.dp, height = 50.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(8.dp))
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                 }
@@ -850,10 +888,23 @@ fun EpisodeCard(
                     }
                 }
 
-                Checkbox(
-                    checked = episode.isWatched,
-                    onCheckedChange = { onToggleWatched(it) }
-                )
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Status Badge Chip (Watched vs Upcoming)
+                if (episode.isWatched) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF4CAF50).copy(alpha = 0.18f)
+                    ) {
+                        Text(
+                            text = "Watched",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF81C784),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
             }
 
             // Expandable Overview

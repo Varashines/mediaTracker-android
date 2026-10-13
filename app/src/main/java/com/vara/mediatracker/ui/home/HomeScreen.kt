@@ -43,7 +43,9 @@ import com.vara.mediatracker.ui.common.rememberCountdownText
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.rememberTodayDateString
+import com.vara.mediatracker.ui.common.springClickable
 import com.vara.mediatracker.ui.theme.AppColors
+import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -408,6 +410,108 @@ fun HomeScreen(
         contentPadding = PaddingValues(top = 0.dp, bottom = 112.dp),
         verticalArrangement = Arrangement.spacedBy(30.dp)
     ) {
+        // Expressive Asymmetrical Hero Spotlight Card
+        if (spotlightItem != null) {
+            item {
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    ExpressiveCard(
+                        onClick = { onSelectMedia(spotlightItem.id) },
+                        shape = ExpressiveShapes.AsymHero,
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        tonalElevation = 4.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(230.dp)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            val heroCover = spotlightItem.backdropUrl ?: spotlightItem.posterUrl
+                            if (heroCover != null) {
+                                AsyncImage(
+                                    model = heroCover,
+                                    contentDescription = spotlightItem.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            // Gradient scrim
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color.Black.copy(alpha = 0.25f),
+                                                Color.Black.copy(alpha = 0.65f),
+                                                Color.Black.copy(alpha = 0.95f)
+                                            )
+                                        )
+                                    )
+                            )
+                            // Airing / Featured Pill
+                            val spotlightBadge = smartBadgesMap[spotlightItem.id]
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(7.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.White)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = spotlightBadge?.badge?.label ?: "SPOTLIGHT",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Info Overlay
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(16.dp)
+                            ) {
+                                Text(
+                                    text = spotlightItem.title,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (!spotlightItem.overview.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = spotlightItem.overview,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.8f),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // New — just dropped. The most time-sensitive band of Continue Watching.
         if (newItems.isNotEmpty()) {
             item {
@@ -576,7 +680,7 @@ fun ContinueWatchingBackdropCard(
 
     ExpressiveCard(
         onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
+        shape = ExpressiveShapes.AsymCard,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f),
         tonalElevation = 3.dp,
         modifier = Modifier

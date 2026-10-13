@@ -77,6 +77,8 @@ object AppMotion {
     // Springs mirror the macOS app's springGentle / springSnappy vocabulary.
     val gentle = spring<Float>(dampingRatio = 0.85f, stiffness = 380f)
     val snappy = spring<Float>(dampingRatio = 0.72f, stiffness = 620f)
+    val gentleDp = spring<androidx.compose.ui.unit.Dp>(dampingRatio = 0.85f, stiffness = 380f)
+    val snappyDp = spring<androidx.compose.ui.unit.Dp>(dampingRatio = 0.72f, stiffness = 620f)
 
     val standardEase = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)
     val emphasizedEase = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
@@ -224,6 +226,7 @@ val AppTypography = Typography(
  *
  * Corners are noticeably rounder than stock Material 3 — the expressive direction —
  * with a large radius reserved for containers that should read as floating surfaces.
+ * Asymmetric shapes introduce tactile identity inspired by Material 3 Expressive.
  */
 val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(6.dp),
@@ -232,6 +235,33 @@ val AppShapes = Shapes(
     large = RoundedCornerShape(22.dp),
     extraLarge = RoundedCornerShape(28.dp)
 )
+
+object ExpressiveShapes {
+    /** Asymmetrical hero card corner radii (e.g. 32dp top-left & bottom-right, 10dp opposing) */
+    val AsymHero = RoundedCornerShape(
+        topStart = 32.dp,
+        topEnd = 10.dp,
+        bottomEnd = 32.dp,
+        bottomStart = 10.dp
+    )
+
+    /** Asymmetrical media card corner radii */
+    val AsymCard = RoundedCornerShape(
+        topStart = 22.dp,
+        topEnd = 8.dp,
+        bottomEnd = 22.dp,
+        bottomStart = 8.dp
+    )
+
+    /** Squircle tag / badge shape */
+    val SquircleTag = RoundedCornerShape(12.dp)
+
+    /** Connected pill control container */
+    val PillContainer = RoundedCornerShape(26.dp)
+
+    /** Inner active squircle pill */
+    val ActivePill = RoundedCornerShape(16.dp)
+}
 
 // ---------------------------------------------------------------------------
 // Color schemes

@@ -1,10 +1,12 @@
 package com.vara.mediatracker.ui.common
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -105,6 +107,119 @@ fun ExpressiveCard(
         }
     ) {
         content()
+    }
+}
+
+/**
+ * Tactile spring click feedback modifier matching .m3e-spring-tap from the web showcase.
+ * Scales down to pressedScale on tap and bounces back using AppMotion.snappy.
+ */
+@Composable
+fun Modifier.springClickable(
+    enabled: Boolean = true,
+    pressedScale: Float = 0.95f,
+    onClick: () -> Unit
+): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val motion = LocalMotion.current
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && enabled) pressedScale else 1f,
+        animationSpec = motion.snappy,
+        label = "springClickScale"
+    )
+
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .clickable(
+            interactionSource = interaction,
+            indication = ripple(bounded = true),
+            enabled = enabled,
+            onClick = onClick
+        )
+}
+
+/**
+ * Connected M3 Expressive Segmented Pill Control.
+ * Renders a pill container with animated active squircle selection and tactile taps.
+ */
+@Composable
+fun <T> ExpressiveSegmentedControl(
+    items: List<T>,
+    selectedItem: T,
+    onItemSelected: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    labelProvider: @Composable (T) -> String,
+    iconProvider: (@Composable (T) -> ImageVector?)? = null,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    activeColor: Color = MaterialTheme.colorScheme.primary,
+    activeContentColor: Color = MaterialTheme.colorScheme.onPrimary,
+    inactiveContentColor: Color = MaterialTheme.colorScheme.onSurfaceVariant
+) {
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = containerColor,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(4.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items.forEach { item ->
+                val isSelected = item == selectedItem
+                val motion = LocalMotion.current
+                val animScale by animateFloatAsState(
+                    targetValue = if (isSelected) 1f else 0.98f,
+                    animationSpec = motion.snappy,
+                    label = "pillScale"
+                )
+
+                Surface(
+                    onClick = { onItemSelected(item) },
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (isSelected) activeColor else Color.Transparent,
+                    contentColor = if (isSelected) activeContentColor else inactiveContentColor,
+                    modifier = Modifier
+                        .weight(1f)
+                        .graphicsLayer {
+                            scaleX = animScale
+                            scaleY = animScale
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(vertical = 8.dp, horizontal = 6.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val icon = iconProvider?.invoke(item)
+                        if (icon != null) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = if (isSelected) activeContentColor else inactiveContentColor
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                        }
+                        Text(
+                            text = labelProvider(item),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                            color = if (isSelected) activeContentColor else inactiveContentColor
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -243,56 +358,63 @@ fun ExpressiveNavigationBar(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
         modifier = modifier.fillMaxWidth()
     ) {
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 8.dp, vertical = 8.dp)
         ) {
-            AppDestinations.forEachIndexed { index, destination ->
-                val selected = index == selectedIndex
-                val indicatorAlpha by animateFloatAsState(
-                    targetValue = if (selected) 1f else 0f,
-                    animationSpec = motion.gentle,
-                    label = "navIndicatorAlpha"
-                )
-                val indicatorScale by animateFloatAsState(
-                    targetValue = if (selected) 1f else 0.6f,
-                    animationSpec = motion.gentle,
-                    label = "navIndicatorScale"
-                )
-                val iconScale by animateFloatAsState(
-                    targetValue = if (selected) 1f else 0.94f,
-                    animationSpec = motion.snappy,
-                    label = "navIconScale"
-                )
+            val totalDestinations = AppDestinations.size
+            val slotWidth = maxWidth / totalDestinations
+            val indicatorWidth = 58.dp
+            val indicatorHeight = 36.dp
 
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Active indicator sits behind the icon.
+            // Compute the target horizontal offset to center the pill on the selected slot
+            val targetOffset = (slotWidth * selectedIndex) + ((slotWidth - indicatorWidth) / 2)
+            val animatedOffset by animateDpAsState(
+                targetValue = targetOffset,
+                animationSpec = motion.gentleDp,
+                label = "slidingNavPill"
+            )
+
+            // Dynamic sliding pill indicator
+            Box(
+                modifier = Modifier
+                    .offset(x = animatedOffset)
+                    .width(indicatorWidth)
+                    .height(indicatorHeight)
+                    .align(Alignment.CenterStart)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AppDestinations.forEachIndexed { index, destination ->
+                    val selected = index == selectedIndex
+                    val iconScale by animateFloatAsState(
+                        targetValue = if (selected) 1.05f else 0.92f,
+                        animationSpec = motion.snappy,
+                        label = "navIconScale"
+                    )
+
                     Box(
                         modifier = Modifier
-                            .width(64.dp)
-                            .height(32.dp)
-                            .graphicsLayer {
-                                alpha = indicatorAlpha
-                                scaleX = indicatorScale
-                                scaleY = indicatorScale
-                            }
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.20f))
-                    )
-                    Box(
-                        modifier = Modifier.size(44.dp),
+                            .weight(1f)
+                            .height(indicatorHeight)
+                            .clip(RoundedCornerShape(18.dp))
+                            .springClickable(
+                                pressedScale = 0.90f,
+                                onClick = { onSelect(index) }
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = destination.icon,
                             contentDescription = destination.label,
                             tint = if (selected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                             modifier = Modifier
                                 .size(23.dp)
                                 .graphicsLayer {
@@ -301,17 +423,6 @@ fun ExpressiveNavigationBar(
                                 }
                         )
                     }
-                    // Full-row tap target; the icon alone is a small target on a phone.
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .clip(CircleShape)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(),
-                                onClick = { onSelect(index) }
-                            )
-                    )
                 }
             }
         }

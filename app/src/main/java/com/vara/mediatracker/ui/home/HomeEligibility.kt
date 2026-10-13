@@ -91,7 +91,7 @@ object HomeEligibility {
             val air = if (isTv && releaseDate != null && releaseDate <= today) releaseDate else releaseDate
             if (air == null) return false
             val daysSince = daysBetween(air, today)
-            if (daysSince < 0 || daysSince > 3) return false
+            if (daysSince < 0 || daysSince > 5) return false
         }
 
         return true
