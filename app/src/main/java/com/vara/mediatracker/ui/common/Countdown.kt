@@ -95,16 +95,7 @@ fun parseTargetAirDateTime(dateStr: String?, networkOrTitle: String?): Date? {
     val cleanDate = dateStr.trim().take(10) // "yyyy-MM-dd"
     if (cleanDate.length < 10) return null
 
-    val query = (networkOrTitle ?: "").lowercase(Locale.US)
-    val rule = defaultStreamingRules.firstOrNull { r ->
-        r.patterns.any { pattern -> query.contains(pattern) }
-    }
-
-    val (timePart, tzId, dayOffset) = if (rule != null) {
-        Triple(rule.releaseTime, rule.timeZoneId, rule.dayOffset)
-    } else {
-        Triple("20:00", "America/New_York", 0)
-    }
+    val (timePart, tzId, dayOffset) = resolveReleaseRule(networkOrTitle)
 
     return try {
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply {
@@ -122,6 +113,44 @@ fun parseTargetAirDateTime(dateStr: String?, networkOrTitle: String?): Date? {
         }
     } catch (_: Exception) {
         null
+    }
+}
+
+/**
+ * Human-readable drop time for a release, resolved from the network's streaming rule.
+ *
+ * Returns e.g. "9:00 PM ET" / "12:00 AM PT", formatted in the rule's own timezone so the
+ * label matches what the service advertises. Previously every card hardcoded
+ * "(9:00 PM EST)", which was simply wrong for Netflix, Disney, and movies.
+ */
+fun formatReleaseAirTime(dateStr: String?, networkOrTitle: String?): String? {
+    if (dateStr.isNullOrBlank()) return null
+    val cleanDate = dateStr.trim().take(10)
+    if (cleanDate.length < 10) return null
+
+    val (timePart, tzId, _) = resolveReleaseRule(networkOrTitle)
+    val tz = TimeZone.getTimeZone(tzId)
+    return try {
+        val base = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply {
+            timeZone = tz
+        }.parse("$cleanDate $timePart") ?: return null
+        val time = SimpleDateFormat("h:mm a", Locale.US).apply { timeZone = tz }.format(base)
+        val zone = tz.getDisplayName(false, TimeZone.SHORT, Locale.US)
+        "$time $zone"
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun resolveReleaseRule(networkOrTitle: String?): Triple<String, String, Int> {
+    val query = (networkOrTitle ?: "").lowercase(Locale.US)
+    val rule = defaultStreamingRules.firstOrNull { r ->
+        r.patterns.any { pattern -> query.contains(pattern) }
+    }
+    return if (rule != null) {
+        Triple(rule.releaseTime, rule.timeZoneId, rule.dayOffset)
+    } else {
+        Triple("20:00", "America/New_York", 0)
     }
 }
 

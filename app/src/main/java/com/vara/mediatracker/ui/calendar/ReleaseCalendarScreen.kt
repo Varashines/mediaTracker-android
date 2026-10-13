@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,6 +37,7 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.ui.common.parseTargetAirDateTime
 import com.vara.mediatracker.ui.common.ExpressiveCard
+import com.vara.mediatracker.ui.common.formatReleaseAirTime
 import com.vara.mediatracker.ui.common.formatReleaseDay
 import com.vara.mediatracker.ui.common.rememberCountdownText
 import com.vara.mediatracker.ui.common.rememberTodayDateString
@@ -45,6 +47,8 @@ import com.vara.mediatracker.ui.home.SmartBadgePill
 import com.vara.mediatracker.ui.theme.AppColors
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.util.NetworkResolver
+import com.vara.mediatracker.data.prefs.PreferencesManager
+import com.vara.mediatracker.data.sync.ReleaseAlertScheduler
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -400,7 +404,7 @@ fun ReleaseCalendarScreen(
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 ) {
                     Text(
-                        text = "${displayedEvents.size} Episodes",
+                        text = "${displayedEvents.size} ${if (displayedEvents.size == 1) "release" else "releases"}",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Black,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -446,9 +450,19 @@ fun CalendarReleaseCard(
     onClick: () -> Unit
 ) {
     val item = event.mediaItem
-    var isAlertSet by remember { mutableStateOf(false) }
-    val isTV = item.type.contains("TV", ignoreCase = true)
+    val context = LocalContext.current
+    val prefs = remember(context) { PreferencesManager(context.applicationContext) }
+    var isAlertSet by remember(item.id, event.dateString) {
+        mutableStateOf(prefs.isReleaseAlertSet(item.id, event.dateString))
+    }
     val netInfo = remember(item) { NetworkResolver.resolve(item) }
+    val airTimeLabel = remember(event.dateString, netInfo.name) {
+        formatReleaseAirTime(event.dateString, netInfo.name)
+    }
+    val alertInstant = remember(event.dateString, netInfo.name) {
+        parseTargetAirDateTime(event.dateString, netInfo.name)
+    }
+    val canAlert = alertInstant != null && alertInstant.time > System.currentTimeMillis()
 
     ExpressiveCard(
         onClick = onClick,
@@ -485,7 +499,7 @@ fun CalendarReleaseCard(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(netInfo.badgeColor.copy(alpha = 0.25f)),
+                            .background(netInfo.badgeColor.copy(alpha = 0.85f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -524,15 +538,22 @@ fun CalendarReleaseCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = netInfo.badgeColor.copy(alpha = 0.20f)
+                        color = netInfo.badgeColor.copy(alpha = 0.9f)
                     ) {
                         Text(
                             text = netInfo.name.uppercase(),
                             fontSize = 9.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = netInfo.textColor,
                             letterSpacing = 0.5.sp,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    if (smartBadge != null) {
+                        com.vara.mediatracker.ui.home.SmartBadgePill(
+                            badge = smartBadge.badge,
+                            isSparkle = smartBadge.isSparkle
                         )
                     }
                 }
@@ -551,7 +572,7 @@ fun CalendarReleaseCard(
                 Spacer(modifier = Modifier.height(2.dp))
 
                 Text(
-                    text = "${event.contextLabel} (9:00 PM EST)",
+                    text = if (airTimeLabel != null) "${event.contextLabel} • $airTimeLabel" else event.contextLabel,
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -561,22 +582,41 @@ fun CalendarReleaseCard(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Set Alert Pill Button
-            Button(
-                onClick = { isAlertSet = !isAlertSet },
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isAlertSet) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.primary,
-                    contentColor = if (isAlertSet) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onPrimary
-                ),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                modifier = Modifier.springClickable { isAlertSet = !isAlertSet }
-            ) {
-                Text(
-                    text = if (isAlertSet) "Alert Set" else "Set Alert",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            // Set Alert Pill Button — only for a release that has not aired yet.
+            if (canAlert) {
+                Button(
+                    onClick = {
+                        val next = !isAlertSet
+                        isAlertSet = next
+                        prefs.setReleaseAlert(item.id, event.dateString, next)
+                        if (next) {
+                            val subtitle = airTimeLabel?.let { "${event.contextLabel} • $it" }
+                                ?: event.contextLabel
+                            ReleaseAlertScheduler.schedule(
+                                context = context,
+                                mediaId = item.id,
+                                dateString = event.dateString,
+                                title = item.title,
+                                subtitle = subtitle,
+                                triggerAtMillis = alertInstant!!.time
+                            )
+                        } else {
+                            ReleaseAlertScheduler.cancel(context, item.id, event.dateString)
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isAlertSet) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.primary,
+                        contentColor = if (isAlertSet) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onPrimary
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = if (isAlertSet) "Alert Set" else "Set Alert",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }

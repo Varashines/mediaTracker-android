@@ -13,7 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import com.vara.mediatracker.ui.theme.AppColors
+import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +22,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,6 +59,7 @@ fun DetailScreen(
     val prefs = container.preferences
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val sem = LocalSemanticColors.current
     var mediaItem by remember { mutableStateOf<MediaItemEntity?>(null) }
     val showIdKey = MediaIds.tvShowKey(mediaId)
     val episodes by db.mediaDao().getEpisodesForShow(showIdKey)
@@ -74,12 +81,19 @@ fun DetailScreen(
 
     var tmdbDetails by remember { mutableStateOf<com.vara.mediatracker.data.api.TMDBDetailsResponse?>(null) }
     var castMembers by remember { mutableStateOf<List<com.vara.mediatracker.data.api.TMDBCastMember>>(emptyList()) }
+    var loadFailed by remember { mutableStateOf(false) }
+    var reloadTrigger by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(mediaId) {
-        val item = db.mediaDao().getMediaById(mediaId)
+    LaunchedEffect(mediaId, reloadTrigger) {
+        loadFailed = false
+        val item = runCatching { db.mediaDao().getMediaById(mediaId) }.getOrNull()
+        if (item == null) {
+            loadFailed = true
+            return@LaunchedEffect
+        }
         mediaItem = item
 
-        if (item != null && prefs.tmdbApiKey.isNotBlank()) {
+        if (prefs.tmdbApiKey.isNotBlank()) {
             val tmdbId = MediaIds.tmdbIdOf(item.id)
             if (tmdbId > 0) {
                 kotlinx.coroutines.Dispatchers.IO.let { ioDispatcher ->
@@ -142,7 +156,7 @@ fun DetailScreen(
                             // If it's a TV show, fetch full episodes and episode names from TMDB
                             if (!isMovie) {
                                 isLoadingEpisodes = true
-                                val seasons = tmdbDetails?.seasons ?: emptyList()
+                                val seasons = details?.seasons ?: emptyList()
                                 val currentLocalEps = db.mediaDao().getEpisodesListForShow(showIdKey).associateBy { 
                                     "${it.seasonNumber}_${it.episodeNumber}" 
                                 }
@@ -213,7 +227,41 @@ fun DetailScreen(
     val item = mediaItem
     if (item == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            if (loadFailed) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudOff,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(44.dp)
+                    )
+                    Text(
+                        text = "Couldn't load this title",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "It may have been removed, or the library is still syncing.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(onClick = onBack, shape = RoundedCornerShape(12.dp)) {
+                            Text("Back")
+                        }
+                        Button(onClick = { reloadTrigger++ }, shape = RoundedCornerShape(12.dp)) {
+                            Text("Retry")
+                        }
+                    }
+                }
+            } else {
+                CircularProgressIndicator()
+            }
         }
         return
     }
@@ -372,7 +420,7 @@ fun DetailScreen(
                                         Icon(
                                             imageVector = Icons.Default.Star,
                                             contentDescription = null,
-                                            tint = AppColors.Gold,
+                                            tint = sem.gold,
                                             modifier = Modifier.size(15.dp)
                                         )
                                         Spacer(modifier = Modifier.width(3.dp))
@@ -529,8 +577,8 @@ fun DetailScreen(
                             // Loved Pill
                             Surface(
                                 shape = CircleShape,
-                                color = if (isLoved) AppColors.Loved.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
-                                border = if (isLoved) BorderStroke(1.dp, AppColors.Loved) else null,
+                                color = if (isLoved) sem.loved.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
+                                border = if (isLoved) BorderStroke(1.dp, sem.loved) else null,
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
@@ -547,7 +595,7 @@ fun DetailScreen(
                                     Icon(
                                         imageVector = Icons.Default.Favorite,
                                         contentDescription = "Love",
-                                        tint = if (isLoved) AppColors.Loved else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        tint = if (isLoved) sem.loved else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -556,8 +604,8 @@ fun DetailScreen(
                             // Liked Pill
                             Surface(
                                 shape = CircleShape,
-                                color = if (isLiked) AppColors.Liked.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
-                                border = if (isLiked) BorderStroke(1.dp, AppColors.Liked) else null,
+                                color = if (isLiked) sem.liked.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
+                                border = if (isLiked) BorderStroke(1.dp, sem.liked) else null,
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
@@ -574,7 +622,7 @@ fun DetailScreen(
                                     Icon(
                                         imageVector = Icons.Default.ThumbUp,
                                         contentDescription = "Like",
-                                        tint = if (isLiked) AppColors.Liked else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        tint = if (isLiked) sem.liked else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -583,8 +631,8 @@ fun DetailScreen(
                             // Disliked Pill
                             Surface(
                                 shape = CircleShape,
-                                color = if (isDisliked) AppColors.Disliked.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
-                                border = if (isDisliked) BorderStroke(1.dp, AppColors.Disliked) else null,
+                                color = if (isDisliked) sem.disliked.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
+                                border = if (isDisliked) BorderStroke(1.dp, sem.disliked) else null,
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
@@ -601,7 +649,7 @@ fun DetailScreen(
                                     Icon(
                                         imageVector = Icons.Default.ThumbDown,
                                         contentDescription = "Dislike",
-                                        tint = if (isDisliked) AppColors.Disliked else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        tint = if (isDisliked) sem.disliked else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -922,7 +970,7 @@ fun DetailScreen(
                                         Text("Season $sNum ($watchedCount/${sEps.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     },
                                     leadingIcon = if (watchedCount == sEps.size && sEps.isNotEmpty()) {
-                                        { Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF4CAF50)) }
+                                        { Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp), tint = sem.success) }
                                     } else null
                                 )
                             }
@@ -1096,6 +1144,7 @@ fun EpisodeCard(
     onToggleWatched: (Boolean) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val sem = LocalSemanticColors.current
 
     Card(
         modifier = Modifier
@@ -1123,20 +1172,35 @@ fun EpisodeCard(
             ) {
                 // Tactile Squircle Check Button (M3E style)
                 Surface(
-                    onClick = { onToggleWatched(!episode.isWatched) },
                     shape = RoundedCornerShape(12.dp),
                     color = if (episode.isWatched) MaterialTheme.colorScheme.primary else Color.Transparent,
                     border = if (episode.isWatched) null else androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier
                         .size(36.dp)
+                        .semantics {
+                            contentDescription = if (episode.isWatched) {
+                                "Mark episode unwatched"
+                            } else {
+                                "Mark episode watched"
+                            }
+                            role = Role.Checkbox
+                            toggleableState = if (episode.isWatched) ToggleableState.On else ToggleableState.Off
+                        }
                         .springClickable { onToggleWatched(!episode.isWatched) }
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                         if (episode.isWatched) {
                             Icon(
                                 imageVector = Icons.Default.Check,
-                                contentDescription = "Mark unwatched",
+                                contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -1192,13 +1256,13 @@ fun EpisodeCard(
                 if (episode.isWatched) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF4CAF50).copy(alpha = 0.18f)
+                        color = sem.success.copy(alpha = 0.18f)
                     ) {
                         Text(
                             text = "Watched",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF81C784),
+                            color = sem.success,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }

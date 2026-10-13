@@ -91,6 +91,21 @@ class PreferencesManager(context: Context) {
     }
 
     /**
+     * Release reminders the user opted into, keyed "mediaId|yyyy-MM-dd". Persisted so
+     * a card that scrolls out of the lazy list (or the screen closes) keeps its state,
+     * and so the scheduler knows whether a reminder is live.
+     */
+    fun isReleaseAlertSet(mediaId: String, dateString: String): Boolean =
+        prefs.getStringSet(KEY_RELEASE_ALERTS, emptySet())?.contains("$mediaId|$dateString") == true
+
+    fun setReleaseAlert(mediaId: String, dateString: String, set: Boolean) {
+        val key = "$mediaId|$dateString"
+        val current = prefs.getStringSet(KEY_RELEASE_ALERTS, emptySet())?.toMutableSet() ?: mutableSetOf()
+        if (set) current.add(key) else current.remove(key)
+        prefs.edit().putStringSet(KEY_RELEASE_ALERTS, current).apply()
+    }
+
+    /**
      * Persists every credential in a single atomic edit. Called on a debounce rather
      * than per keystroke, so four keys commit together instead of racing each other.
      */
@@ -106,5 +121,9 @@ class PreferencesManager(context: Context) {
             .putString("sync_key", syncKey.trim())
             .putString("tmdb_api_key", tmdbApiKey.trim())
             .apply()
+    }
+
+    private companion object {
+        const val KEY_RELEASE_ALERTS = "release_alerts"
     }
 }

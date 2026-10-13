@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -383,36 +384,76 @@ fun createColorSchemeForPreset(preset: ThemePreset, isDark: Boolean = true): Col
             onError = Color.White
         )
     } else {
-        // Light mode adaptation: clean white/off-white background with preset-tinted surfaces & high-contrast dark text
+        // Light mode: near-white surfaces subtly tinted toward the preset accent so
+        // the six palettes stay distinguishable instead of all collapsing to grey.
+        // Container tokens are opaque — translucent containers composite against
+        // whatever sits behind them and make contrast unpredictable.
+        val accent = preset.primaryColor
+        val ink = Color(0xFF16171C)
         lightColorScheme(
-            primary = preset.primaryColor,
+            primary = accent,
             onPrimary = Color.White,
-            primaryContainer = preset.primaryColor.copy(alpha = 0.14f),
-            onPrimaryContainer = preset.primaryColor,
-            secondary = preset.primaryColor.copy(alpha = 0.85f),
+            primaryContainer = lerp(Color.White, accent, 0.18f),
+            onPrimaryContainer = lerp(ink, accent, 0.35f),
+            secondary = lerp(ink, accent, 0.35f),
             onSecondary = Color.White,
-            secondaryContainer = preset.primaryColor.copy(alpha = 0.10f),
-            onSecondaryContainer = Color(0xFF1B1B1E),
-            tertiary = Color(0xFFD49B00),
+            secondaryContainer = lerp(Color.White, accent, 0.12f),
+            onSecondaryContainer = lerp(ink, accent, 0.35f),
+            tertiary = Color(0xFFB58900),
             onTertiary = Color.White,
             tertiaryContainer = Color(0xFFFFF3CD),
             onTertiaryContainer = Color(0xFF4A3700),
-            background = Color(0xFFF7F8FA),
-            onBackground = Color(0xFF131418),
-            surface = Color(0xFFFFFFFF),
-            onSurface = Color(0xFF131418),
-            surfaceVariant = Color(0xFFEEF0F5),
-            onSurfaceVariant = Color(0xFF555966),
-            surfaceContainer = Color(0xFFF2F4F8),
-            surfaceContainerHigh = Color(0xFFE9ECF2),
-            surfaceContainerHighest = Color(0xFFDFE3EB),
-            outline = Color(0xFFC4C8D4),
-            outlineVariant = Color(0xFFE2E5ED),
+            background = lerp(Color.White, accent, 0.04f),
+            onBackground = ink,
+            surface = lerp(Color.White, accent, 0.02f),
+            onSurface = ink,
+            surfaceVariant = lerp(Color.White, accent, 0.07f),
+            onSurfaceVariant = lerp(ink, accent, 0.22f),
+            surfaceContainer = lerp(Color.White, accent, 0.06f),
+            surfaceContainerHigh = lerp(Color.White, accent, 0.10f),
+            surfaceContainerHighest = lerp(Color.White, accent, 0.15f),
+            outline = lerp(Color(0xFF8A8F9C), accent, 0.12f),
+            outlineVariant = lerp(Color(0xFFD2D6E0), accent, 0.10f),
             error = Color(0xFFD32F2F),
             onError = Color.White
         )
     }
 }
+
+/**
+ * Semantic accents that must mean the same thing in either theme (a "loved" badge,
+ * a gold star, a success dot). These are brand meanings Material You cannot derive
+ * from the wallpaper, so each mode gets a hand-tuned variant with enough contrast on
+ * its own background.
+ */
+data class SemanticColors(
+    val loved: Color,
+    val liked: Color,
+    val disliked: Color,
+    val gold: Color,
+    val success: Color,
+    val warning: Color
+)
+
+private val DarkSemanticColors = SemanticColors(
+    loved = Color(0xFFFF2D55),
+    liked = Color(0xFF34C759),
+    disliked = Color(0xFFFF9500),
+    gold = Color(0xFFFFD60A),
+    success = Color(0xFF6DDFB8),
+    warning = Color(0xFFFFB300)
+)
+
+private val LightSemanticColors = SemanticColors(
+    loved = Color(0xFFD81B47),
+    liked = Color(0xFF1B8E3D),
+    disliked = Color(0xFFC26A00),
+    gold = Color(0xFFA67C00),
+    success = Color(0xFF0B7A52),
+    warning = Color(0xFFA86200)
+)
+
+val LocalSemanticColors = staticCompositionLocalOf { DarkSemanticColors }
 
 val LocalThemePreset = staticCompositionLocalOf { 0 }
 val LocalIsDarkTheme = staticCompositionLocalOf { true }
@@ -436,7 +477,8 @@ fun MediaTrackerTheme(
     CompositionLocalProvider(
         LocalMotion provides AppMotion,
         LocalThemePreset provides presetIndex,
-        LocalIsDarkTheme provides isDark
+        LocalIsDarkTheme provides isDark,
+        LocalSemanticColors provides if (isDark) DarkSemanticColors else LightSemanticColors
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

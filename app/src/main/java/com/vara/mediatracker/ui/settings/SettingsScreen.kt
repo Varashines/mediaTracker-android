@@ -35,6 +35,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.data.sync.CloudSyncManager
+import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -68,6 +69,7 @@ fun SettingsScreen(
     val prefs = container.preferences
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val sem = LocalSemanticColors.current
     var currentPresetIndex by remember { mutableIntStateOf(prefs.themePreset) }
     var currentThemeMode by remember { mutableIntStateOf(prefs.themeMode) }
 
@@ -168,7 +170,7 @@ fun SettingsScreen(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE086D3))
+                            .background(MaterialTheme.colorScheme.primary)
                     )
                 }
                 Spacer(modifier = Modifier.height(2.dp))
@@ -215,7 +217,7 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(if (isCloudConnected) Color(0xFF6DDFB8) else Color(0xFFFFB300))
+                                .background(if (isCloudConnected) sem.success else sem.warning)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
@@ -373,7 +375,7 @@ fun SettingsScreen(
                                 Text(
                                     text = if (isCloudConnected) "Configured & hidden" else "Setup required",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (isCloudConnected) Color(0xFF6DDFB8) else Color(0xFFFFB300)
+                                    color = if (isCloudConnected) sem.success else sem.warning
                                 )
                             }
                         }
@@ -494,7 +496,7 @@ fun SettingsScreen(
                                 Text(
                                     text = if (isTmdbConnected) "API key configured & masked" else "Optional key for higher limits",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (isTmdbConnected) Color(0xFF6DDFB8) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (isTmdbConnected) sem.success else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }

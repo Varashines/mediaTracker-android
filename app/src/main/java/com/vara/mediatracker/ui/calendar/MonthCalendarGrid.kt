@@ -83,7 +83,7 @@ fun MonthCalendarGrid(
                         text = label,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                     )
                 }
             }
@@ -150,7 +150,7 @@ private fun DayCell(
                     )
                     isEventDay -> Modifier.border(
                         1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
                         RoundedCornerShape(14.dp)
                     )
                     else -> Modifier

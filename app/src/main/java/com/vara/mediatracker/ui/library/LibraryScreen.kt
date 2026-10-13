@@ -196,7 +196,7 @@ fun LibraryScreen(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF6DDFB8))
+                                .background(MaterialTheme.colorScheme.primary)
                         )
                     }
                     Spacer(modifier = Modifier.height(2.dp))
