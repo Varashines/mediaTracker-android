@@ -290,7 +290,7 @@ class CloudSyncManager(
     suspend fun pushEpisodeWatch(showId: String, season: Int, episode: Int, watched: Boolean) = runCatching {
         val now = isoFormat.format(Date())
         val canonicalShowId = MediaIds.tvShowKey(showId)
-        val epId = MediaIds.buildEpisodeUniqueId(canonicalShowId, season, episode)
+        val epId = MediaIds.buildCloudEpisodeId(canonicalShowId, season, episode)
         val payload = RemoteEpisode(
             user_id = syncKey,
             episode_id = epId,
@@ -526,7 +526,7 @@ class CloudSyncManager(
             val canonicalShowId = MediaIds.tvShowKey(ep.showId)
             RemoteEpisode(
                 user_id = syncKey,
-                episode_id = MediaIds.buildEpisodeUniqueId(canonicalShowId, ep.seasonNumber, ep.episodeNumber),
+                episode_id = MediaIds.buildCloudEpisodeId(canonicalShowId, ep.seasonNumber, ep.episodeNumber),
                 show_id = canonicalShowId,
                 season_number = ep.seasonNumber,
                 episode_number = ep.episodeNumber,

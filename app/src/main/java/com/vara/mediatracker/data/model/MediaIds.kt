@@ -37,6 +37,16 @@ object MediaIds {
         return "tv_${cleanShowId}_s${seasonNumber}_e${episodeNumber}"
     }
 
+    /**
+     * The cloud/Mac episode key, e.g. `1399_2_5`.
+     *
+     * Supabase and the macOS app key episodes as `{tmdbId}_{season}_{episode}` (no `tv_`
+     * prefix, no `s`/`e`). Android stores the canonical form locally but must push this
+     * legacy shape so the two apps share rows instead of creating duplicates.
+     */
+    fun buildCloudEpisodeId(showId: String, seasonNumber: Int, episodeNumber: Int): String =
+        "${tmdbIdOf(showId)}_${seasonNumber}_${episodeNumber}"
+
     fun isCanonicalEpisodeId(uniqueId: String): Boolean = CANONICAL_EPISODE.matches(uniqueId)
 
     /** Parses both canonical and legacy episode keys. Returns null for unrecognized formats. */
