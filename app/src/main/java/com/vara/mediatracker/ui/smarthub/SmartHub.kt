@@ -170,3 +170,59 @@ object SmartCategoryMatcher {
         return false
     }
 }
+
+/** One weekday bucket for "Released This Week", e.g. "Monday, Aug 17". */
+data class WeekDayGroup(
+    val label: String,
+    val items: List<MediaItemEntity>
+)
+
+/**
+ * Groups "Released This Week" titles by the day of the current week whose month/day
+ * matches their release — the same bucketing as macOS `DateUtils.weekdayDisplayString`.
+ * Days with no releases are omitted; groups are ordered by weekday.
+ */
+fun groupOnThisWeek(
+    items: List<MediaItemEntity>,
+    now: Date = Date(),
+    calendar: Calendar = Calendar.getInstance()
+): List<WeekDayGroup> {
+    val weekStart = (calendar.clone() as Calendar).apply {
+        time = now
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    while (weekStart.get(Calendar.DAY_OF_WEEK) != weekStart.firstDayOfWeek) {
+        weekStart.add(Calendar.DAY_OF_YEAR, -1)
+    }
+
+    val weekDays = (0..6).map { (weekStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, it) } }
+    val labelFormat = SimpleDateFormat("EEEE, MMM d", Locale.getDefault())
+
+    val buckets = LinkedHashMap<Int, MutableList<MediaItemEntity>>()
+    for (item in items) {
+        val release = runCatching {
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(item.releaseDate?.take(10) ?: return@runCatching null)
+        }.getOrNull() ?: continue
+        val rCal = (calendar.clone() as Calendar).apply { time = release }
+        val rMonth = rCal.get(Calendar.MONTH)
+        val rDay = rCal.get(Calendar.DAY_OF_MONTH)
+
+        val index = weekDays.indexOfFirst {
+            it.get(Calendar.MONTH) == rMonth && it.get(Calendar.DAY_OF_MONTH) == rDay
+        }
+        if (index < 0) continue
+        buckets.getOrPut(index) { mutableListOf() }.add(item)
+    }
+
+    return buckets.entries
+        .sortedBy { it.key }
+        .map { (index, groupItems) ->
+            WeekDayGroup(
+                label = labelFormat.format(weekDays[index].time),
+                items = groupItems.sortedBy { it.title.lowercase(Locale.US) }
+            )
+        }
+}

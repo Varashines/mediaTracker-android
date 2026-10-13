@@ -1,6 +1,7 @@
 package com.vara.mediatracker.ui.smarthub
 
 import com.vara.mediatracker.data.model.MediaItemEntity
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -166,5 +167,28 @@ class SmartCategoryMatcherTest {
     @Test
     fun `on this week needs a release date`() {
         assertFalse(matches(SmartCategory.ON_THIS_WEEK, item(type = "Movie", releaseDate = null)))
+    }
+
+    // ---------- week grouping ----------
+
+    @Test
+    fun `groupOnThisWeek buckets by weekday and orders by day`() {
+        val now = at("2026-08-20") // Thursday
+        val items = listOf(
+            item(type = "Movie", releaseDate = "2020-08-20"), // Thursday
+            item(type = "Movie", releaseDate = "2019-08-17"), // Monday
+            item(type = "Movie", releaseDate = "2018-08-20")  // Thursday
+        )
+        val groups = groupOnThisWeek(items, now)
+        assertEquals(2, groups.size)
+        assertEquals(1, groups[0].items.size) // Monday
+        assertEquals(2, groups[1].items.size) // Thursday
+    }
+
+    @Test
+    fun `groupOnThisWeek omits titles with no matching week day`() {
+        val now = at("2026-08-20")
+        val items = listOf(item(type = "Movie", releaseDate = "2020-08-03"))
+        assertTrue(groupOnThisWeek(items, now).isEmpty())
     }
 }

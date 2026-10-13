@@ -1,6 +1,5 @@
 package com.vara.mediatracker.ui.smarthub
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -28,10 +27,8 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
-import com.vara.mediatracker.ui.common.SectionListScreen
 import com.vara.mediatracker.ui.common.rememberTodayDateString
 import com.vara.mediatracker.ui.discovery.DiscoveryHubContent
-import com.vara.mediatracker.ui.home.TVShowProgress
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 
 /** The two hubs hosted by the Smart tab. */
@@ -45,7 +42,7 @@ private enum class HubTab(val label: String) {
  *
  * Smart counts and membership come from data Android already stores (persisted badges,
  * state, taste, release dates, cached runtimes); Discovery aggregates the facet columns
- * backfilled by MetadataEnrichmentWorker. Both open the shared SectionListScreen.
+ * backfilled by MetadataEnrichmentWorker. Both open SmartCollectionListScreen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,6 +55,7 @@ fun SmartHubScreen(
     var hubTab by remember { mutableStateOf(HubTab.SMART) }
     var activeTitle by remember { mutableStateOf<String?>(null) }
     var activeItems by remember { mutableStateOf<List<MediaItemEntity>>(emptyList()) }
+    var activeGroupByWeek by remember { mutableStateOf(false) }
 
     val allEpisodes by container.mediaDao.getAllEpisodesFlow().collectAsState(initial = emptyList())
     val badgeRows by container.database.badgeDao().observeBadges().collectAsState(initial = emptyList())
@@ -91,46 +89,20 @@ fun SmartHubScreen(
         }
     }
 
-    val showProgressMap = remember(items, episodesByShow, todayDate) {
-        items.filter { it.type.contains("TV", ignoreCase = true) }.associate { item ->
-            val showKey = MediaIds.tvShowKey(item.id)
-            val showEps = (episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList())
-                .sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
-            item.id to TVShowProgress(
-                totalEpisodes = showEps.size,
-                watchedEpisodes = showEps.count { it.isWatched },
-                nextEpisode = showEps.firstOrNull { !it.isWatched },
-                nextAiringDate = showEps.firstOrNull { ep ->
-                    !ep.isWatched && !ep.airDate.isNullOrBlank() && ep.airDate > todayDate
-                }?.airDate
-            )
-        }
-    }
-
-    val networkMap = remember(items) {
-        buildMap {
-            items.forEach { item ->
-                container.preferences.getCachedNetwork(item.id)?.let { put(item.id, it) }
-            }
-        }
-    }
-
-    fun openSection(title: String, filtered: List<MediaItemEntity>) {
+    fun openSection(title: String, filtered: List<MediaItemEntity>, groupByWeek: Boolean = false) {
         activeTitle = title
         activeItems = filtered
+        activeGroupByWeek = groupByWeek
     }
 
     val title = activeTitle
     if (title != null) {
-        BackHandler { activeTitle = null; activeItems = emptyList() }
-        SectionListScreen(
+        SmartCollectionListScreen(
             title = title,
             items = activeItems,
-            showProgressMap = showProgressMap,
-            smartBadgesMap = smartBadgesMap,
-            networkMap = networkMap,
             onSelectMedia = onSelectMedia,
-            onBack = { activeTitle = null; activeItems = emptyList() }
+            onBack = { activeTitle = null; activeItems = emptyList() },
+            groupByWeek = activeGroupByWeek
         )
         return
     }
@@ -218,7 +190,14 @@ fun SmartHubScreen(
                     SmartCategoryCard(
                         category = category,
                         count = members.size,
-                        onClick = { openSection(category.title, members) }
+                        onClick = {
+                            openSection(
+                                title = category.title,
+                                filtered = members,
+                                // Released This Week is bucketed by weekday, like macOS.
+                                groupByWeek = category == SmartCategory.ON_THIS_WEEK
+                            )
+                        }
                     )
                 }
             }
