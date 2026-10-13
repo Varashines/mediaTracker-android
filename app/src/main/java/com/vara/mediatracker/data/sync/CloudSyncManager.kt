@@ -337,4 +337,192 @@ class CloudSyncManager(
             setBody(payload)
         }
     }
+
+    /** Incoming/outgoing counts for one two-way sync, for the UI indicator. */
+    data class SyncSummary(val outgoing: Int, val incoming: Int)
+
+    /**
+     * Full two-way sync: fetch the cloud, reconcile it against the local library, then
+     * push local wins and apply cloud wins. Conflicts are last-write-wins by timestamp.
+     *
+     * @return how many rows were sent up and applied down.
+     */
+    suspend fun sync(): Result<SyncSummary> = runCatching {
+        if (supabaseUrl.isBlank() || anonKey.isBlank() || syncKey.isBlank()) {
+            return Result.failure(IllegalStateException("Sync credentials not configured"))
+        }
+
+        val remoteMedia = fetchRemoteMedia()
+        val remoteEpisodes = fetchRemoteEpisodes()
+        val remoteMediaById = remoteMedia.associateBy { it.media_id }
+        val remoteEpisodesById = remoteEpisodes.associateBy { it.episode_id }
+
+        val localMedia = mediaDao.getAllMediaList()
+        val localEpisodes = mediaDao.getAllEpisodesList()
+        val localMediaById = localMedia.associateBy { it.id }
+
+        val outgoingMedia = mutableListOf<MediaItemEntity>()
+        val incomingMedia = mutableListOf<MediaItemEntity>()
+        for (local in localMedia) {
+            val remote = remoteMediaById[local.id]
+            if (remote == null) {
+                outgoingMedia.add(local)
+                continue
+            }
+            if (!local.state.equals(remote.state, true) || !local.taste.equals(remote.taste, true)) {
+                val localTime = parseInstant(local.lastStateChangeDate)
+                val remoteTime = parseInstant(remote.updated_at)
+                if (remoteTime != null && (localTime == null || remoteTime > localTime)) {
+                    incomingMedia.add(fromRemote(remote, local))
+                } else {
+                    outgoingMedia.add(local)
+                }
+            }
+        }
+        for (remote in remoteMedia) {
+            if (!localMediaById.containsKey(remote.media_id)) incomingMedia.add(fromRemote(remote, null))
+        }
+
+        val outgoingEpisodes = mutableListOf<EpisodeEntity>()
+        val incomingEpisodes = mutableListOf<EpisodeEntity>()
+        for (local in localEpisodes) {
+            val remote = remoteEpisodesById[local.uniqueId]
+            if (remote == null) {
+                if (local.isWatched) outgoingEpisodes.add(local)
+                continue
+            }
+            if (local.isWatched != remote.is_watched) {
+                val localTime = parseInstant(local.watchedDate)
+                val remoteTime = parseInstant(remote.updated_at)
+                if (remoteTime != null && (localTime == null || remoteTime > localTime)) {
+                    incomingEpisodes.add(local.copy(isWatched = remote.is_watched, watchedDate = remote.watched_date))
+                } else {
+                    outgoingEpisodes.add(local)
+                }
+            }
+        }
+
+        if (incomingMedia.isNotEmpty()) mediaDao.upsertMedia(incomingMedia)
+        if (incomingEpisodes.isNotEmpty()) mediaDao.upsertEpisodes(incomingEpisodes)
+        pushMediaBatch(outgoingMedia)
+        pushEpisodeBatch(outgoingEpisodes)
+
+        SyncSummary(
+            outgoing = outgoingMedia.size + outgoingEpisodes.size,
+            incoming = incomingMedia.size + incomingEpisodes.size
+        )
+    }
+
+    private suspend fun fetchRemoteMedia(): List<RemoteMedia> {
+        val response: HttpResponse = client.get("$supabaseUrl/rest/v1/user_media") {
+            parameter("user_id", "eq.$syncKey")
+            parameter("select", "*")
+            header("apikey", anonKey)
+            header("Authorization", "Bearer $anonKey")
+            header("x-sync-key", syncKey)
+        }
+        return response.body()
+    }
+
+    private suspend fun fetchRemoteEpisodes(): List<RemoteEpisode> {
+        val out = mutableListOf<RemoteEpisode>()
+        var offset = 0
+        val pageSize = 1000
+        while (true) {
+            val response: HttpResponse = client.get("$supabaseUrl/rest/v1/user_episodes") {
+                parameter("user_id", "eq.$syncKey")
+                parameter("select", "*")
+                header("apikey", anonKey)
+                header("Authorization", "Bearer $anonKey")
+                header("x-sync-key", syncKey)
+                header("Range", "$offset-${offset + pageSize - 1}")
+            }
+            val page: List<RemoteEpisode> = response.body()
+            if (page.isEmpty()) break
+            out.addAll(page)
+            offset += page.size
+            if (page.size < pageSize) break
+        }
+        return out
+    }
+
+    private suspend fun pushMediaBatch(items: List<MediaItemEntity>) {
+        if (items.isEmpty()) return
+        val now = isoFormat.format(Date())
+        val payload = items.map { item ->
+            RemoteMedia(
+                user_id = syncKey,
+                media_id = item.id,
+                type = item.type,
+                state = item.state,
+                taste = item.taste,
+                last_interaction_date = item.lastInteractionDate ?: now,
+                last_state_change_date = item.lastStateChangeDate ?: now,
+                updated_at = now
+            )
+        }
+        client.post("$supabaseUrl/rest/v1/user_media") {
+            header("apikey", anonKey)
+            header("Authorization", "Bearer $anonKey")
+            header("x-sync-key", syncKey)
+            header("Prefer", "resolution=merge-duplicates")
+            contentType(ContentType.Application.Json)
+            setBody(payload)
+        }
+    }
+
+    private suspend fun pushEpisodeBatch(episodes: List<EpisodeEntity>) {
+        if (episodes.isEmpty()) return
+        val now = isoFormat.format(Date())
+        val payload = episodes.map { ep ->
+            val canonicalShowId = MediaIds.tvShowKey(ep.showId)
+            RemoteEpisode(
+                user_id = syncKey,
+                episode_id = MediaIds.buildEpisodeUniqueId(canonicalShowId, ep.seasonNumber, ep.episodeNumber),
+                show_id = canonicalShowId,
+                season_number = ep.seasonNumber,
+                episode_number = ep.episodeNumber,
+                is_watched = ep.isWatched,
+                watched_date = ep.watchedDate ?: if (ep.isWatched) now else null,
+                updated_at = now
+            )
+        }
+        client.post("$supabaseUrl/rest/v1/user_episodes") {
+            header("apikey", anonKey)
+            header("Authorization", "Bearer $anonKey")
+            header("x-sync-key", syncKey)
+            header("Prefer", "resolution=merge-duplicates")
+            contentType(ContentType.Application.Json)
+            setBody(payload)
+        }
+    }
+
+    /** Local entity from a remote row, preserving the locally-derived fields. */
+    private fun fromRemote(remote: RemoteMedia, existing: MediaItemEntity?): MediaItemEntity =
+        MediaItemEntity(
+            id = remote.media_id,
+            title = existing?.title?.takeIf { it != remote.media_id } ?: remote.media_id,
+            overview = existing?.overview ?: "",
+            posterUrl = existing?.posterUrl,
+            backdropUrl = existing?.backdropUrl,
+            releaseDate = existing?.releaseDate,
+            type = remote.type,
+            state = remote.state,
+            taste = remote.taste,
+            nextAiringInstant = existing?.nextAiringInstant,
+            timezone = existing?.timezone,
+            network = existing?.network,
+            genres = existing?.genres,
+            language = existing?.language,
+            studios = existing?.studios,
+            providers = existing?.providers,
+            customPosterUrl = remote.custom_poster_url,
+            isSoftDeleted = remote.is_soft_deleted,
+            lastInteractionDate = remote.last_interaction_date,
+            lastStateChangeDate = remote.last_state_change_date,
+            updatedAt = remote.updated_at
+        )
+
+    private fun parseInstant(value: String?): Date? =
+        value?.let { runCatching { Date.from(java.time.Instant.parse(it)) }.getOrNull() }
 }

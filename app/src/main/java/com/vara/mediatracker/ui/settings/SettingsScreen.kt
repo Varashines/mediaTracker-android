@@ -115,6 +115,7 @@ fun SettingsScreen(
     var providerRegion by remember { mutableStateOf(prefs.providerRegion) }
     var regionMenuExpanded by remember { mutableStateOf(false) }
     var isSyncing by remember { mutableStateOf(false) }
+    var lastSyncSummary by remember { mutableStateOf<CloudSyncManager.SyncSummary?>(null) }
     var isConfigExpanded by remember { mutableStateOf(false) }
     var isTmdbExpanded by remember { mutableStateOf(false) }
     var lastSyncTime by remember { mutableLongStateOf(prefs.lastSyncTimestamp) }
@@ -298,7 +299,9 @@ fun SettingsScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = lastSyncLabel,
+                                text = lastSyncSummary?.let {
+                                    "Two-way sync · ↑ ${it.outgoing} sent · ↓ ${it.incoming} received"
+                                } ?: lastSyncLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -315,15 +318,20 @@ fun SettingsScreen(
                             isSyncing = true
                             scope.launch {
                                 val manager = container.syncManager()
-                                val result = manager.pullFromCloud()
+                                val result = manager.sync()
                                 isSyncing = false
                                 if (result.isSuccess) {
                                     SyncScheduler.recordSyncCompletion(context)
-                                    val count = result.getOrNull() ?: 0
+                                    val summary = result.getOrNull()
+                                    lastSyncSummary = summary
                                     val now = System.currentTimeMillis()
                                     prefs.lastSyncTimestamp = now
                                     lastSyncTime = now
-                                    Toast.makeText(context, "Sync complete ($count items)", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        "Synced — ↑ ${summary?.outgoing ?: 0} sent, ↓ ${summary?.incoming ?: 0} received",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 } else {
                                     Toast.makeText(context, "Sync failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
                                 }
