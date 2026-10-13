@@ -4,6 +4,8 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -30,7 +32,6 @@ import coil.compose.AsyncImage
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
-import com.vara.mediatracker.ui.common.ExpressiveToggleGroup
 import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBSearchItem
@@ -59,6 +60,8 @@ fun LibraryScreen(
     var searchOnlineTMDB by remember { mutableStateOf(false) }
     var filters by remember { mutableStateOf(LibraryFilters()) }
     var showFilters by remember { mutableStateOf(false) }
+    var showGroup by remember { mutableStateOf(false) }
+    var showSort by remember { mutableStateOf(false) }
     var isSearchingOnline by remember { mutableStateOf(false) }
     var onlineResults by remember { mutableStateOf<List<TMDBSearchItem>>(emptyList()) }
 
@@ -451,7 +454,9 @@ fun LibraryScreen(
 
                     LibraryFilterBar(
                         filters = filters,
-                        onFiltersClick = { showFilters = true }
+                        onFiltersClick = { showFilters = true },
+                        onGroupClick = { showGroup = true },
+                        onSortClick = { showSort = true }
                     )
                 }
             }
@@ -491,6 +496,26 @@ fun LibraryScreen(
             filters = filters,
             onFiltersChange = { filters = it },
             onDismiss = { showFilters = false }
+        )
+    }
+
+    if (showGroup) {
+        LibraryOptionSheet(
+            title = "Group by",
+            options = LibraryFilters.GROUPS,
+            selected = filters.groupBy,
+            onSelect = { filters = filters.copy(groupBy = it) },
+            onDismiss = { showGroup = false }
+        )
+    }
+
+    if (showSort) {
+        LibraryOptionSheet(
+            title = "Sort by",
+            options = LibraryFilters.SORTS,
+            selected = filters.sort,
+            onSelect = { filters = filters.copy(sort = it) },
+            onDismiss = { showSort = false }
         )
     }
 }
@@ -602,33 +627,43 @@ private fun LibraryGroupHeader(title: String, count: Int) {
     }
 }
 
-/** The Filters entry point above the grid. Group-by and Sort live inside the sheet. */
+/** Filter by / Group by / Sort by entry points above the grid — one chip each. */
 @Composable
 private fun LibraryFilterBar(
     filters: LibraryFilters,
-    onFiltersClick: () -> Unit
+    onFiltersClick: () -> Unit,
+    onGroupClick: () -> Unit,
+    onSortClick: () -> Unit
 ) {
-    Row(
+    androidx.compose.foundation.lazy.LazyRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        FilterBarChip(
-            label = if (filters.activeCount > 0) "Filters · ${filters.activeCount}" else "Filters",
-            icon = Icons.Default.FilterList,
-            highlighted = filters.activeCount > 0,
-            onClick = onFiltersClick
-        )
-        Text(
-            text = buildString {
-                if (filters.groupBy != LibraryFilters.GROUP_NONE) append("Grouped by ${filters.groupBy} · ")
-                append(filters.sort)
-            },
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        item {
+            FilterBarChip(
+                label = if (filters.activeCount > 0) "Filter by · ${filters.activeCount}" else "Filter by",
+                icon = Icons.Default.FilterList,
+                highlighted = filters.activeCount > 0,
+                onClick = onFiltersClick
+            )
+        }
+        item {
+            FilterBarChip(
+                label = "Group: ${filters.groupBy}",
+                icon = Icons.Default.ViewAgenda,
+                highlighted = filters.groupBy != LibraryFilters.GROUP_NONE,
+                onClick = onGroupClick
+            )
+        }
+        item {
+            FilterBarChip(
+                label = "Sort: ${filters.sort}",
+                icon = Icons.Default.SwapVert,
+                highlighted = false,
+                onClick = onSortClick
+            )
+        }
     }
 }
 
@@ -685,13 +720,14 @@ private fun LibraryFilterSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Filters",
+                    text = "Filter by",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Black,
                     modifier = Modifier.weight(1f)
@@ -733,39 +769,62 @@ private fun LibraryFilterSheet(
                     }
                 }
             }
-
-            ToggleGroupSection(title = "Group by") {
-                ExpressiveToggleGroup(
-                    items = LibraryFilters.GROUPS,
-                    selectedItem = filters.groupBy,
-                    onItemSelected = { onFiltersChange(filters.copy(groupBy = it)) },
-                    labelProvider = { it }
-                )
-            }
-
-            ToggleGroupSection(title = "Sort") {
-                ExpressiveToggleGroup(
-                    items = LibraryFilters.SORTS,
-                    selectedItem = filters.sort,
-                    onItemSelected = { onFiltersChange(filters.copy(sort = it)) },
-                    labelProvider = { it }
-                )
-            }
         }
     }
 }
 
+/** Single-select option sheet for Group by / Sort by. */
 @Composable
-private fun ToggleGroupSection(title: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title.uppercase(Locale.US),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.primary,
-            letterSpacing = 1.0.sp
-        )
-        content()
+private fun LibraryOptionSheet(
+    title: String,
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            options.forEach { option ->
+                val isSelected = option == selected
+                Surface(
+                    onClick = { onSelect(option) },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = option,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

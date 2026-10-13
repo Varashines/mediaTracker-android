@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -65,6 +66,7 @@ fun DetailScreen(
     val sem = LocalSemanticColors.current
     var mediaItem by remember { mutableStateOf<MediaItemEntity?>(null) }
     var markMenuExpanded by remember { mutableStateOf(false) }
+    var statusPickerOpen by remember { mutableStateOf(false) }
     val showIdKey = MediaIds.tvShowKey(mediaId)
     val episodes by db.mediaDao().getEpisodesForShow(showIdKey)
         .collectAsState(initial = emptyList())
@@ -513,22 +515,26 @@ fun DetailScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 12.dp)
                     ) {
-                        // Status: an inline connected toggle group, replacing the dropdown.
-                        ExpressiveToggleGroup(
-                            items = allStates,
-                            selectedItem = currentMatchedState,
-                            onItemSelected = { (rawState, displayName, _) ->
-                                scope.launch {
-                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                    db.mediaDao().updateState(item.id, rawState, now)
-                                    mediaItem = item.copy(state = rawState)
-                                    syncManager.pushMediaUpdate(item.id, item.type, rawState, item.taste)
-                                    Toast.makeText(context, "Marked as $displayName", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            labelProvider = { it.second },
-                            iconProvider = { it.third }
-                        )
+                        // Status: a compact picker that opens an expressive sheet, rather
+                        // than six always-visible buttons.
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "STATUS",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            StatusPickerButton(
+                                label = currentMatchedState.second,
+                                icon = currentMatchedState.third,
+                                onClick = { statusPickerOpen = true }
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -647,6 +653,25 @@ fun DetailScreen(
                             }
                         }
                     }
+                }
+
+                // Expressive status picker sheet (opened by the STATUS picker above).
+                if (statusPickerOpen) {
+                    StatusPickerSheet(
+                        states = allStates,
+                        current = currentMatchedState,
+                        onSelect = { (rawState, displayName, _) ->
+                            statusPickerOpen = false
+                            scope.launch {
+                                val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                db.mediaDao().updateState(item.id, rawState, now)
+                                mediaItem = item.copy(state = rawState)
+                                syncManager.pushMediaUpdate(item.id, item.type, rawState, item.taste)
+                                Toast.makeText(context, "Marked as $displayName", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onDismiss = { statusPickerOpen = false }
+                    )
                 }
             }
 
@@ -1352,5 +1377,92 @@ private fun NetworkPillLabel(logo: String?, fallback: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             letterSpacing = 0.5.sp
         )
+    }
+}
+
+/** Compact status picker button that opens [StatusPickerSheet]. */
+@Composable
+private fun StatusPickerButton(label: String, icon: ImageVector, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Spacer(modifier = Modifier.width(2.dp))
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+/** M3 Expressive single-select sheet for the watch status. */
+@Composable
+private fun StatusPickerSheet(
+    states: List<Triple<String, String, ImageVector>>,
+    current: Triple<String, String, ImageVector>,
+    onSelect: (Triple<String, String, ImageVector>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "Set status",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            states.forEach { state ->
+                val isSelected = state.first == current.first
+                Surface(
+                    onClick = { onSelect(state) },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = state.third,
+                            contentDescription = null,
+                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Text(
+                            text = state.second,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
