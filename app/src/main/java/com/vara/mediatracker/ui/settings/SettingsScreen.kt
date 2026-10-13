@@ -43,8 +43,10 @@ import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -318,13 +320,15 @@ fun SettingsScreen(
                             }
                             // Preview the diff first (macOS SyncImpact), then confirm.
                             isSyncing = true
-                            scope.launch {
+                            container.appScope.launch {
                                 val result = container.syncManager().computeImpact()
-                                isSyncing = false
-                                if (result.isSuccess) {
-                                    pendingImpact = result.getOrNull()
-                                } else {
-                                    Toast.makeText(context, "Preview failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+                                withContext(Dispatchers.Main) {
+                                    isSyncing = false
+                                    if (result.isSuccess) {
+                                        pendingImpact = result.getOrNull()
+                                    } else {
+                                        Toast.makeText(context, "Preview failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+                                    }
                                 }
                             }
                         },
@@ -980,19 +984,21 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     pendingImpact = null
                     isSyncing = true
-                    scope.launch {
+                    container.appScope.launch {
                         val result = container.syncManager().sync()
-                        isSyncing = false
-                        if (result.isSuccess) {
-                            SyncScheduler.recordSyncCompletion(context)
-                            lastSyncSummary = result.getOrNull()
-                            val now = System.currentTimeMillis()
-                            prefs.lastSyncTimestamp = now
-                            lastSyncTime = now
-                            val s = result.getOrNull()
-                            Toast.makeText(context, "Synced — ↑ ${s?.outgoing ?: 0} sent, ↓ ${s?.incoming ?: 0} received", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Sync failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+                        withContext(Dispatchers.Main) {
+                            isSyncing = false
+                            if (result.isSuccess) {
+                                SyncScheduler.recordSyncCompletion(context)
+                                lastSyncSummary = result.getOrNull()
+                                val now = System.currentTimeMillis()
+                                prefs.lastSyncTimestamp = now
+                                lastSyncTime = now
+                                val s = result.getOrNull()
+                                Toast.makeText(context, "Synced — ↑ ${s?.outgoing ?: 0} sent, ↓ ${s?.incoming ?: 0} received", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Sync failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+                            }
                         }
                     }
                 }) { Text("Sync Now") }

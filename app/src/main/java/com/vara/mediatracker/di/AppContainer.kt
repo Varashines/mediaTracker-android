@@ -13,6 +13,9 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
 
 /**
@@ -29,6 +32,13 @@ import kotlinx.serialization.json.Json
 class AppContainer(context: Context) {
 
     private val appContext = context.applicationContext
+
+    /**
+     * App-lifetime scope for work that must outlive a screen — e.g. a manual cloud sync.
+     * A `rememberCoroutineScope()` would cancel the sync the moment the user navigates
+     * away, surfacing "The coroutine scope left the composition" as a sync failure.
+     */
+    val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     val database: AppDatabase by lazy {
         Room.databaseBuilder(appContext, AppDatabase::class.java, "mediatracker.db")
