@@ -183,16 +183,22 @@ fun MainAppScreen(
                         items = mediaItems,
                         container = container,
                         onSelectMedia = { activeDetailMediaId = it },
-                        onOpenCalendar = { selectedTab = 1 },
+                        onOpenCalendar = { selectedTab = 2 },
                         onOpenSearch = { isSearchActive = true }
                     )
-                    1 -> ReleaseCalendarScreen(
+                    1 -> com.vara.mediatracker.ui.smarthub.SmartHubScreen(
                         items = mediaItems,
                         container = container,
                         onSelectMedia = { activeDetailMediaId = it },
                         onOpenSearch = { isSearchActive = true }
                     )
-                    2 -> LibraryScreen(
+                    2 -> ReleaseCalendarScreen(
+                        items = mediaItems,
+                        container = container,
+                        onSelectMedia = { activeDetailMediaId = it },
+                        onOpenSearch = { isSearchActive = true }
+                    )
+                    3 -> LibraryScreen(
                         items = mediaItems,
                         container = container,
                         onSelectMedia = { activeDetailMediaId = it },

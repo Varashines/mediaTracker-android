@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
@@ -317,13 +318,14 @@ val MediaTrackerMark: ImageVector = ImageVector.Builder(
 /**
  * Bottom navigation destinations.
  *
- * Reordered away from Home/Calendar/Library/Settings. Calendar is a *view* of upcoming
- * releases rather than a place you live, so it does not deserve a permanent slot; it is
- * reached from the Home header. Search took its place because for a tracker the primary
- * job is adding and finding content, not just looking at what is already there.
+ * Home / Smart Hub / Radar / Library / Settings. The Smart Hub surfaces the macOS
+ * smart categories (Release Radar, Premiere Radar, Catch Up, Loved, Binge, Quick
+ * Bites, Shelved, Released This Week); Radar stays a top-level view of upcoming
+ * releases because it is time-sensitive rather than a place you browse.
  */
 val AppDestinations = listOf(
     NavDestination("Home", Icons.Default.Home),
+    NavDestination("Smart", Icons.Default.AutoAwesome),
     NavDestination("Radar", Icons.Default.CalendarMonth),
     NavDestination("Library", Icons.Default.VideoLibrary),
     NavDestination("Settings", Icons.Default.Settings)
@@ -359,19 +361,20 @@ fun ExpressiveNavigationBar(
 
                 Column(
                     modifier = Modifier
+                        .weight(1f)
                         .clip(RoundedCornerShape(20.dp))
                         .springClickable(
                             pressedScale = 0.90f,
                             onClick = { onSelect(index) }
                         )
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Box(
                         modifier = Modifier
-                            .width(52.dp)
-                            .height(28.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .width(44.dp)
+                            .height(26.dp)
+                            .clip(RoundedCornerShape(13.dp))
                             .background(
                                 if (selected) MaterialTheme.colorScheme.primary
                                 else Color.Transparent
@@ -392,6 +395,7 @@ fun ExpressiveNavigationBar(
                     Text(
                         text = destination.label,
                         fontSize = 10.sp,
+                        maxLines = 1,
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                         color = if (selected) MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.onSurfaceVariant
