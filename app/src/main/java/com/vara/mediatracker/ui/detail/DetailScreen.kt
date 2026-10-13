@@ -510,48 +510,26 @@ fun DetailScreen(
                     ),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
                 ) {
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Status: a compact picker that opens an expressive sheet, rather
-                        // than six always-visible buttons.
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "STATUS",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                letterSpacing = 0.5.sp
-                            )
-                            Spacer(modifier = Modifier.weight(1f))
-                            StatusPickerButton(
-                                label = currentMatchedState.second,
-                                icon = currentMatchedState.third,
-                                onClick = { statusPickerOpen = true }
-                            )
-                        }
+                        // Status picker opens an expressive sheet; taste pills sit beside it.
+                        StatusPickerButton(
+                            label = currentMatchedState.second,
+                            icon = currentMatchedState.third,
+                            onClick = { statusPickerOpen = true }
+                        )
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.weight(1f))
 
                         // Taste Toggles (Loved / Liked / Disliked)
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "TASTE",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                letterSpacing = 0.5.sp
-                            )
-                            Spacer(modifier = Modifier.weight(1f))
                             val isLoved = item.taste.equals("Loved", ignoreCase = true) || item.taste.equals("Love", ignoreCase = true)
                             val isLiked = item.taste.equals("Liked", ignoreCase = true) || item.taste.equals("Like", ignoreCase = true)
                             val isDisliked = item.taste.equals("Disliked", ignoreCase = true)

@@ -155,9 +155,13 @@ fun ReleaseCalendarScreen(
     // null = follow the scroll position; true/false = the user pinned Week/Month. The
     // override resets when the month changes so scrolling keeps working afterwards.
     var manualWeekMode by remember { mutableStateOf<Boolean?>(null) }
+    // Collapse to the week strip only once the month card has genuinely left the
+    // viewport. The old check flipped on the first pixel of scroll (index > 0), which
+    // made the calendar feel twitchy; this waits until the grid is well out of view.
     val scrolledPastTop by remember {
         derivedStateOf {
-            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 80
+            listState.firstVisibleItemIndex > 2 ||
+                (listState.firstVisibleItemIndex == 2 && listState.firstVisibleItemScrollOffset > 220)
         }
     }
     val isCompactWeek = manualWeekMode ?: scrolledPastTop
@@ -354,7 +358,7 @@ fun ReleaseCalendarScreen(
                     )
                 }
             }
-        } else {
+        } else if (selectedDateString != null) {
             items(displayedEvents, key = { "${it.mediaItem.id}_${it.dateString}_${it.isEpisode}" }) { event ->
                 CalendarReleaseCard(
                     event = event,
@@ -362,7 +366,47 @@ fun ReleaseCalendarScreen(
                     onClick = { onSelectMedia(event.mediaItem.id) }
                 )
             }
+        } else {
+            // Whole-month view: group the releases under a day header so a long list
+            // reads as a schedule rather than a wall of cards.
+            displayedEvents.groupBy { it.dateString }.forEach { (date, dayEvents) ->
+                item(key = "day_$date") {
+                    ReleaseDayHeader(dateString = date, count = dayEvents.size)
+                }
+                items(dayEvents, key = { "${it.mediaItem.id}_${it.dateString}_${it.isEpisode}" }) { event ->
+                    CalendarReleaseCard(
+                        event = event,
+                        smartBadge = smartBadgesMap[event.mediaItem.id],
+                        onClick = { onSelectMedia(event.mediaItem.id) }
+                    )
+                }
+            }
         }
+    }
+}
+
+/** Day separator shown between date groups in the whole-month view. */
+@Composable
+private fun ReleaseDayHeader(dateString: String, count: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = formatReleaseDay(dateString),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "$count ${if (count == 1) "release" else "releases"}",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
