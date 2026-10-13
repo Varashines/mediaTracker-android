@@ -198,7 +198,7 @@ fun <T> ExpressiveSegmentedControl(
                 ) {
                     Row(
                         modifier = Modifier
-                            .padding(vertical = 8.dp, horizontal = 6.dp)
+                            .padding(vertical = 12.dp, horizontal = 6.dp)
                             .fillMaxWidth(),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
@@ -399,6 +399,32 @@ fun ExpressiveNavigationBar(
                 }
             }
         }
+    }
+}
+
+/**
+ * "View All (n)" section action. Boxed rather than a bare clickable Text so the tap
+ * target clears the 48dp minimum; the previous 2dp-padded text was roughly a third
+ * of that and easy to miss.
+ */
+@Composable
+fun SectionViewAllLink(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 }
 

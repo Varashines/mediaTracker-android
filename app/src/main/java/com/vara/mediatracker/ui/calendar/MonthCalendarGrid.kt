@@ -22,10 +22,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vara.mediatracker.ui.common.springClickable
+import java.text.DateFormatSymbols
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -49,7 +54,9 @@ fun MonthCalendarGrid(
     isCompactWeek: Boolean = false
 ) {
     val dayFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
-    val days = remember(month) { buildMonthDays(month, dayFormat) }
+    val firstDayOfWeek = remember { Calendar.getInstance().firstDayOfWeek }
+    val weekdayLabels = remember(firstDayOfWeek) { weekdayLabelsFor(firstDayOfWeek) }
+    val days = remember(month, firstDayOfWeek) { buildMonthDays(month, dayFormat, firstDayOfWeek) }
 
     // In compact week mode, find the 7-day row containing selectedDate or todayString
     val displayWeeks = remember(days, isCompactWeek, selectedDate, todayString) {
@@ -74,7 +81,7 @@ fun MonthCalendarGrid(
                 .fillMaxWidth()
                 .padding(bottom = 6.dp)
         ) {
-            listOf("M", "T", "W", "T", "F", "S", "S").forEach { label ->
+            weekdayLabels.forEach { label ->
                 Box(
                     modifier = Modifier.weight(1f),
                     contentAlignment = Alignment.Center
@@ -131,7 +138,7 @@ private fun DayCell(
 
     Box(
         modifier = Modifier
-            .size(width = 42.dp, height = 44.dp)
+            .size(width = 44.dp, height = 48.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(
                 when {
@@ -156,6 +163,15 @@ private fun DayCell(
                     else -> Modifier
                 }
             )
+            .semantics(mergeDescendants = true) {
+                contentDescription = buildString {
+                    append("Day $dayNum")
+                    if (isToday) append(", today")
+                    if (isEventDay) append(", $eventCount release${if (eventCount == 1) "" else "s"}")
+                    if (isSelected) append(", selected")
+                }
+                role = Role.Button
+            }
             .springClickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -195,14 +211,18 @@ private fun DayCell(
 
 /**
  * Leading blanks for the first week so the 1st lands under the right weekday, padded
- * out to whole weeks.
+ * out to whole weeks. [firstDayOfWeek] follows the device locale rather than assuming
+ * Monday, and matches the weekday header rendered above the grid.
  */
-internal fun buildMonthDays(month: Calendar, format: SimpleDateFormat): List<String?> {
+internal fun buildMonthDays(
+    month: Calendar,
+    format: SimpleDateFormat,
+    firstDayOfWeek: Int = Calendar.MONDAY
+): List<String?> {
     val cal = month.clone() as Calendar
     cal.set(Calendar.DAY_OF_MONTH, 1)
     val maxDay = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
-    // Monday-first offset.
-    val offset = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
+    val offset = (cal.get(Calendar.DAY_OF_WEEK) - firstDayOfWeek + 7) % 7
 
     val out = MutableList<String?>(offset) { null }
     for (day in 1..maxDay) {
@@ -211,4 +231,13 @@ internal fun buildMonthDays(month: Calendar, format: SimpleDateFormat): List<Str
     }
     while (out.size % 7 != 0) out.add(null)
     return out
+}
+
+/** Two-letter weekday headers in locale order, starting from [firstDayOfWeek]. */
+private fun weekdayLabelsFor(firstDayOfWeek: Int): List<String> {
+    val symbols = DateFormatSymbols.getInstance()
+    return (0 until 7).map { offset ->
+        val dayConstant = ((firstDayOfWeek - 1 + offset) % 7) + 1
+        symbols.shortWeekdays.getOrElse(dayConstant) { "" }.take(2)
+    }
 }

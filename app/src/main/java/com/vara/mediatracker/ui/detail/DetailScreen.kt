@@ -580,8 +580,13 @@ fun DetailScreen(
                                 color = if (isLoved) sem.loved.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
                                 border = if (isLoved) BorderStroke(1.dp, sem.loved) else null,
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(44.dp)
                                     .clip(CircleShape)
+                                    .semantics {
+                                        contentDescription = "Loved"
+                                        role = Role.Checkbox
+                                        toggleableState = if (isLoved) ToggleableState.On else ToggleableState.Off
+                                    }
                                     .clickable {
                                         val next = if (isLoved) "None" else "Loved"
                                         scope.launch {
@@ -594,7 +599,7 @@ fun DetailScreen(
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.Favorite,
-                                        contentDescription = "Love",
+                                        contentDescription = null,
                                         tint = if (isLoved) sem.loved else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -607,8 +612,13 @@ fun DetailScreen(
                                 color = if (isLiked) sem.liked.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
                                 border = if (isLiked) BorderStroke(1.dp, sem.liked) else null,
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(44.dp)
                                     .clip(CircleShape)
+                                    .semantics {
+                                        contentDescription = "Liked"
+                                        role = Role.Checkbox
+                                        toggleableState = if (isLiked) ToggleableState.On else ToggleableState.Off
+                                    }
                                     .clickable {
                                         val next = if (isLiked) "None" else "Liked"
                                         scope.launch {
@@ -621,7 +631,7 @@ fun DetailScreen(
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.ThumbUp,
-                                        contentDescription = "Like",
+                                        contentDescription = null,
                                         tint = if (isLiked) sem.liked else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -634,8 +644,13 @@ fun DetailScreen(
                                 color = if (isDisliked) sem.disliked.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
                                 border = if (isDisliked) BorderStroke(1.dp, sem.disliked) else null,
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(44.dp)
                                     .clip(CircleShape)
+                                    .semantics {
+                                        contentDescription = "Disliked"
+                                        role = Role.Checkbox
+                                        toggleableState = if (isDisliked) ToggleableState.On else ToggleableState.Off
+                                    }
                                     .clickable {
                                         val next = if (isDisliked) "None" else "Disliked"
                                         scope.launch {
@@ -648,7 +663,7 @@ fun DetailScreen(
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.ThumbDown,
-                                        contentDescription = "Dislike",
+                                        contentDescription = null,
                                         tint = if (isDisliked) sem.disliked else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -1270,14 +1285,20 @@ fun EpisodeCard(
             }
 
             // Expandable Overview
-            if (expanded && episode.overview.isNotBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                Text(
-                    text = episode.overview,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            androidx.compose.animation.AnimatedVisibility(
+                visible = expanded && episode.overview.isNotBlank(),
+                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    Text(
+                        text = episode.overview,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

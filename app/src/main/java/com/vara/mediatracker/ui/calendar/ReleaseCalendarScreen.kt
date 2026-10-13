@@ -255,7 +255,7 @@ fun ReleaseCalendarScreen(
                                     }
                                     selectedDateString = null
                                 },
-                                modifier = Modifier.size(30.dp)
+                                modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Prev", modifier = Modifier.size(14.dp))
                             }
@@ -273,7 +273,7 @@ fun ReleaseCalendarScreen(
                                     }
                                     selectedDateString = null
                                 },
-                                modifier = Modifier.size(30.dp)
+                                modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = "Next", modifier = Modifier.size(12.dp))
                             }
@@ -318,12 +318,13 @@ fun ReleaseCalendarScreen(
                             color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .clickable {
-                                    isManuallyExpanded = if (isCompactWeek) true else false
-                                }
+                                .springClickable(
+                                    pressedScale = 0.92f,
+                                    onClick = { isManuallyExpanded = !isCompactWeek }
+                                )
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {

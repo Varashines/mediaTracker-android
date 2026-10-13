@@ -18,6 +18,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -630,7 +635,11 @@ fun SettingsScreen(
                             ) {
                                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                     Icon(
-                                        imageVector = if (currentThemeMode == 2) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                        imageVector = when (currentThemeMode) {
+                                            2 -> Icons.Default.LightMode
+                                            0 -> Icons.Default.BrightnessAuto
+                                            else -> Icons.Default.DarkMode
+                                        },
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(18.dp)
@@ -676,11 +685,11 @@ fun SettingsScreen(
                                         contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
-                                            Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(13.dp))
+                                            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(13.dp))
                                             Text(text = label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
@@ -758,7 +767,13 @@ fun SettingsScreen(
                                 shape = CircleShape,
                                 color = preset.primaryColor,
                                 border = if (isSelected) BorderStroke(2.5.dp, MaterialTheme.colorScheme.onSurface) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                                modifier = Modifier.size(if (isSelected) 36.dp else 30.dp)
+                                modifier = Modifier
+                                    .size(if (isSelected) 40.dp else 34.dp)
+                                    .semantics {
+                                        contentDescription = "${preset.name} theme"
+                                        selected = isSelected
+                                        role = Role.RadioButton
+                                    }
                             ) {
                                 if (isSelected) {
                                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {

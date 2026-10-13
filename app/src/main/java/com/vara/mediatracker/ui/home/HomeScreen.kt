@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.vara.mediatracker.ui.common.CollapsingHeader
 import com.vara.mediatracker.ui.common.SnapRail
+import com.vara.mediatracker.ui.common.SectionViewAllLink
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -590,18 +591,12 @@ fun HomeScreen(
                             )
                         }
 
-                        Text(
+                        SectionViewAllLink(
                             text = "View All (${resumeItems.size})",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    activeSectionListTitle = "Continue Watching"
-                                    activeSectionListItems = resumeItems
-                                }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                            onClick = {
+                                activeSectionListTitle = "Continue Watching"
+                                activeSectionListItems = resumeItems
+                            }
                         )
                     }
 
@@ -807,18 +802,12 @@ fun HomeScreen(
                             )
                         }
 
-                        Text(
+                        SectionViewAllLink(
                             text = "View All (${comingSoonItems.size})",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    activeSectionListTitle = "Coming Soon"
-                                    activeSectionListItems = comingSoonItems
-                                }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                            onClick = {
+                                activeSectionListTitle = "Coming Soon"
+                                activeSectionListItems = comingSoonItems
+                            }
                         )
                     }
                     Spacer(modifier = Modifier.height(12.dp))
@@ -856,18 +845,12 @@ fun HomeScreen(
                             horizontalPadding = 0.dp
                         )
 
-                        Text(
+                        SectionViewAllLink(
                             text = "View All (${recentlyAddedItems.size})",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    activeSectionListTitle = "Recently Added"
-                                    activeSectionListItems = recentlyAddedItems
-                                }
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                            onClick = {
+                                activeSectionListTitle = "Recently Added"
+                                activeSectionListItems = recentlyAddedItems
+                            }
                         )
                     }
                     Spacer(modifier = Modifier.height(12.dp))
