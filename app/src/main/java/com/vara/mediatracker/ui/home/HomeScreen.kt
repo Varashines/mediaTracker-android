@@ -58,9 +58,6 @@ import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import java.text.SimpleDateFormat
 import java.util.*
 
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.ui.common.TVShowProgress
@@ -81,7 +78,6 @@ fun HomeScreen(
 ) {
     val scope = rememberCoroutineScope()
     val sem = LocalSemanticColors.current
-    val hazeState = remember { HazeState() }
     // Everything below is derived once, off the UI thread, by the activity-scoped
     // ViewModel — grouping ~9k episodes, per-show sorts, eligibility scans and air-instant
     // resolution used to run here on the main thread and were redone on every tab switch.
@@ -183,13 +179,64 @@ fun HomeScreen(
 
     val listState = rememberLazyListState()
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Sticky Top App Bar matching M3E HTML showcase: "EXPLORE" / "MediaTracker" + Actions
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.85f))
+                .statusBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "EXPLORE",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 1.2.sp
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(sem.loved)
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "MediaTracker",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            IconButton(
+                onClick = onOpenSearch,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+        }
+
+
         LazyColumn(
             state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .hazeSource(state = hazeState),
-            contentPadding = PaddingValues(top = 96.dp, bottom = 140.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
             // Asymmetrical Hero Card matching HTML prototype
@@ -537,62 +584,9 @@ fun HomeScreen(
                 }
             }
         }
-
-        }
-
-        // Sticky top bar with a Haze backdrop blur (content scrolls under it).
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .fillMaxWidth()
-                .hazeEffect(state = hazeState) { blurRadius = 40.dp }
-                .statusBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "EXPLORE",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.2.sp
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(sem.loved)
-                    )
-                }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "MediaTracker",
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            IconButton(
-                onClick = onOpenSearch,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Search",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(19.dp)
-                )
-            }
-        }
     }
+    }
+
 }
 
 @Composable
