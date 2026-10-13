@@ -88,7 +88,7 @@ fun HubDiscoverContent(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 4.dp, bottom = 108.dp),
+        contentPadding = PaddingValues(top = 4.dp, bottom = 140.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item(key = "stats") { WatchStatsCard(stats) }

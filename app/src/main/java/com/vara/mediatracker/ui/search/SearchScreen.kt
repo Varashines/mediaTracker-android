@@ -194,7 +194,7 @@ fun SearchScreen(
 
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 112.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 140.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {

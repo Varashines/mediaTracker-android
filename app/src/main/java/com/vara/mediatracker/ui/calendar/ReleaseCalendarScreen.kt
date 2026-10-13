@@ -173,7 +173,7 @@ fun ReleaseCalendarScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 108.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 140.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // 1. Release Radar Top Header matching HTML

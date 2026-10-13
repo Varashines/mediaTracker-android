@@ -258,7 +258,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 108.dp),
+                .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 140.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // 1. Minimal Quick Sync Action Card
