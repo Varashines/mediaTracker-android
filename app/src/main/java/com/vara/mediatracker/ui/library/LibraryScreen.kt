@@ -30,6 +30,7 @@ import coil.compose.AsyncImage
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
+import com.vara.mediatracker.ui.common.ExpressiveToggleGroup
 import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBSearchItem
@@ -450,9 +451,7 @@ fun LibraryScreen(
 
                     LibraryFilterBar(
                         filters = filters,
-                        onFiltersClick = { showFilters = true },
-                        onGroupChange = { filters = filters.copy(groupBy = it) },
-                        onSortChange = { filters = filters.copy(sort = it) }
+                        onFiltersClick = { showFilters = true }
                     )
                 }
             }
@@ -603,20 +602,15 @@ private fun LibraryGroupHeader(title: String, count: Int) {
     }
 }
 
-/** Filters / Group / Sort controls above the grid. */
+/** The Filters entry point above the grid. Group-by and Sort live inside the sheet. */
 @Composable
 private fun LibraryFilterBar(
     filters: LibraryFilters,
-    onFiltersClick: () -> Unit,
-    onGroupChange: (String) -> Unit,
-    onSortChange: (String) -> Unit
+    onFiltersClick: () -> Unit
 ) {
-    var groupMenu by remember { mutableStateOf(false) }
-    var sortMenu by remember { mutableStateOf(false) }
-
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         FilterBarChip(
@@ -625,40 +619,16 @@ private fun LibraryFilterBar(
             highlighted = filters.activeCount > 0,
             onClick = onFiltersClick
         )
-
-        Box {
-            FilterBarChip(
-                label = if (filters.groupBy == LibraryFilters.GROUP_NONE) "Group" else "Group: ${filters.groupBy}",
-                icon = Icons.Default.ViewAgenda,
-                highlighted = filters.groupBy != LibraryFilters.GROUP_NONE,
-                onClick = { groupMenu = true }
-            )
-            DropdownMenu(expanded = groupMenu, onDismissRequest = { groupMenu = false }) {
-                LibraryFilters.GROUPS.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option) },
-                        onClick = { onGroupChange(option); groupMenu = false }
-                    )
-                }
-            }
-        }
-
-        Box {
-            FilterBarChip(
-                label = filters.sort,
-                icon = Icons.Default.SwapVert,
-                highlighted = false,
-                onClick = { sortMenu = true }
-            )
-            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                LibraryFilters.SORTS.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option) },
-                        onClick = { onSortChange(option); sortMenu = false }
-                    )
-                }
-            }
-        }
+        Text(
+            text = buildString {
+                if (filters.groupBy != LibraryFilters.GROUP_NONE) append("Grouped by ${filters.groupBy} · ")
+                append(filters.sort)
+            },
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -763,7 +733,39 @@ private fun LibraryFilterSheet(
                     }
                 }
             }
+
+            ToggleGroupSection(title = "Group by") {
+                ExpressiveToggleGroup(
+                    items = LibraryFilters.GROUPS,
+                    selectedItem = filters.groupBy,
+                    onItemSelected = { onFiltersChange(filters.copy(groupBy = it)) },
+                    labelProvider = { it }
+                )
+            }
+
+            ToggleGroupSection(title = "Sort") {
+                ExpressiveToggleGroup(
+                    items = LibraryFilters.SORTS,
+                    selectedItem = filters.sort,
+                    onItemSelected = { onFiltersChange(filters.copy(sort = it)) },
+                    labelProvider = { it }
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun ToggleGroupSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = title.uppercase(Locale.US),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.primary,
+            letterSpacing = 1.0.sp
+        )
+        content()
     }
 }
 

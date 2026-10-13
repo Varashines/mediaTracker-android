@@ -43,6 +43,7 @@ import com.vara.mediatracker.data.sync.CloudSyncManager
 import kotlinx.coroutines.launch
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
+import com.vara.mediatracker.ui.common.ExpressiveToggleGroup
 import com.vara.mediatracker.ui.common.springClickable
 import com.vara.mediatracker.util.AirTimeResolver
 import com.vara.mediatracker.util.NetworkResolver
@@ -481,7 +482,6 @@ fun DetailScreen(
                     Triple("Re-watching", "Re-watching", Icons.Default.Refresh)
                 )
 
-                var statusMenuExpanded by remember { mutableStateOf(false) }
                 val currentMatchedState = allStates.firstOrNull { 
                     it.first.equals(item.state, ignoreCase = true) || 
                     it.second.equals(item.state, ignoreCase = true) ||
@@ -498,89 +498,44 @@ fun DetailScreen(
                     ),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
                     ) {
-                        // Status Picker Dropdown
-                        Box {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .clickable { statusMenuExpanded = true }
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = currentMatchedState.third,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = currentMatchedState.second,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowDropDown,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                        // Status: an inline connected toggle group, replacing the dropdown.
+                        ExpressiveToggleGroup(
+                            items = allStates,
+                            selectedItem = currentMatchedState,
+                            onItemSelected = { (rawState, displayName, _) ->
+                                scope.launch {
+                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                    db.mediaDao().updateState(item.id, rawState, now)
+                                    mediaItem = item.copy(state = rawState)
+                                    syncManager.pushMediaUpdate(item.id, item.type, rawState, item.taste)
+                                    Toast.makeText(context, "Marked as $displayName", Toast.LENGTH_SHORT).show()
                                 }
-                            }
+                            },
+                            labelProvider = { it.second },
+                            iconProvider = { it.third }
+                        )
 
-                            DropdownMenu(
-                                expanded = statusMenuExpanded,
-                                onDismissRequest = { statusMenuExpanded = false }
-                            ) {
-                                allStates.forEach { (rawState, displayName, icon) ->
-                                    val isSelected = currentMatchedState.first == rawState
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                text = displayName,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                            )
-                                        },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = icon,
-                                                contentDescription = null,
-                                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        },
-                                        onClick = {
-                                            statusMenuExpanded = false
-                                            scope.launch {
-                                                val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                                db.mediaDao().updateState(item.id, rawState, now)
-                                                mediaItem = item.copy(state = rawState)
-                                                syncManager.pushMediaUpdate(item.id, item.type, rawState, item.taste)
-                                                Toast.makeText(context, "Marked as $displayName", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         // Taste Toggles (Loved / Liked / Disliked)
                         Row(
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Text(
+                                text = "TASTE",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
                             val isLoved = item.taste.equals("Loved", ignoreCase = true) || item.taste.equals("Love", ignoreCase = true)
                             val isLiked = item.taste.equals("Liked", ignoreCase = true) || item.taste.equals("Like", ignoreCase = true)
                             val isDisliked = item.taste.equals("Disliked", ignoreCase = true)
@@ -690,6 +645,7 @@ fun DetailScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(IntrinsicSize.Min)
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -742,14 +698,15 @@ fun DetailScreen(
                     if (isTV) {
                         // Pill 1: EPISODES
                         Surface(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         ) {
                             Column(
-                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                modifier = Modifier.fillMaxHeight().padding(vertical = 10.dp, horizontal = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
                                 Text(
                                     text = "EPISODES",
@@ -770,14 +727,15 @@ fun DetailScreen(
 
                         // Pill 2: RUN TIME
                         Surface(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         ) {
                             Column(
-                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                modifier = Modifier.fillMaxHeight().padding(vertical = 10.dp, horizontal = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
                                 Text(
                                     text = "RUN TIME",
@@ -798,14 +756,15 @@ fun DetailScreen(
 
                         // Pill 3: NETWORK
                         Surface(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         ) {
                             Column(
-                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                modifier = Modifier.fillMaxHeight().padding(vertical = 10.dp, horizontal = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
                                 NetworkPillLabel(logo = networkLogo, fallback = "NETWORK")
                                 Spacer(modifier = Modifier.height(2.dp))
@@ -823,14 +782,15 @@ fun DetailScreen(
                         // MOVIE LAYOUT: RUN TIME (1 tile) + PRODUCTION (2 tiles wide)
                         // Pill 1: RUN TIME
                         Surface(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         ) {
                             Column(
-                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                modifier = Modifier.fillMaxHeight().padding(vertical = 10.dp, horizontal = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
                                 Text(
                                     text = "RUN TIME",
@@ -856,14 +816,15 @@ fun DetailScreen(
 
                         // Pill 2: PRODUCTION (2 tiles wide)
                         Surface(
-                            modifier = Modifier.weight(2f),
+                            modifier = Modifier.weight(2f).fillMaxHeight(),
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         ) {
                             Column(
-                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                modifier = Modifier.fillMaxHeight().padding(vertical = 10.dp, horizontal = 12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
                                 NetworkPillLabel(logo = networkLogo, fallback = "PRODUCTION")
                                 Spacer(modifier = Modifier.height(2.dp))
@@ -1318,8 +1279,8 @@ private fun NetworkPillLabel(logo: String?, fallback: String) {
             contentDescription = null,
             contentScale = ContentScale.Fit,
             modifier = Modifier
-                .height(12.dp)
-                .widthIn(max = 72.dp)
+                .height(20.dp)
+                .widthIn(max = 92.dp)
         )
     } else {
         Text(

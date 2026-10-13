@@ -6,6 +6,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
@@ -227,11 +229,75 @@ fun <T> ExpressiveSegmentedControl(
     }
 }
 
+/**
+ * M3 Expressive connected toggle group: a wrapping row of pill toggles where the
+ * selected one fills with the accent colour and springs on tap. Used for the detail
+ * status picker and the Library's group-by / sort, replacing dropdown menus.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun <T> ExpressiveToggleGroup(
+    items: List<T>,
+    selectedItem: T,
+    onItemSelected: (T) -> Unit,
+    labelProvider: @Composable (T) -> String,
+    modifier: Modifier = Modifier,
+    iconProvider: (@Composable (T) -> ImageVector?)? = null
+) {
+    val motion = LocalMotion.current
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        items.forEach { item ->
+            val isSelected = item == selectedItem
+            val scale by animateFloatAsState(
+                targetValue = if (isSelected) 1f else 0.97f,
+                animationSpec = motion.snappy,
+                label = "toggleScale"
+            )
+
+            Surface(
+                onClick = { onItemSelected(item) },
+                shape = RoundedCornerShape(14.dp),
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                border = if (isSelected) null
+                else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val icon = iconProvider?.invoke(item)
+                    if (icon != null) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(
+                        text = labelProvider(item),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
+
 data class NavDestination(
     val label: String,
     val icon: ImageVector
 )
-
 /**
  * Stroked rounded rectangle, written out by corner so the path stays a single
  * closed contour the way the launcher icon draws it.
