@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
 import com.vara.mediatracker.ui.common.springClickable
+import com.vara.mediatracker.util.NetworkResolver
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -428,8 +429,9 @@ fun DetailScreen(
                 ) {
                     val watchedEpCount = episodes.count { it.isWatched }
                     val totalEpCount = episodes.size
-                    val runtimeMin = tmdbDetails?.runtime ?: 52
-                    val networkName = if (isTV) "HBO Max" else "Theatrical"
+                    val runtimeMin = tmdbDetails?.runtime ?: (if (isTV) 50 else 115)
+                    val networkInfo = remember(item) { NetworkResolver.resolve(item) }
+                    val networkName = networkInfo.name
 
                     // Pill 1: EPISODES
                     Surface(
