@@ -60,16 +60,12 @@ import java.util.*
 
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.prefs.PreferencesManager
+import com.vara.mediatracker.ui.common.TVShowProgress
+import com.vara.mediatracker.ui.theme.SemanticColors
 import com.vara.mediatracker.util.AirTimeResolver
 import com.vara.mediatracker.util.NetworkResolver
 import kotlinx.coroutines.launch
 
-data class TVShowProgress(
-    val totalEpisodes: Int,
-    val watchedEpisodes: Int,
-    val nextEpisode: EpisodeEntity?,
-    val nextAiringDate: String?
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -493,24 +489,15 @@ fun HomeScreen(
                             )
                         }
                         Spacer(modifier = Modifier.height(12.dp))
-                        SnapRail {
-                            items(resumeItems, key = { it.id }) { item ->
-                                val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-                                val nextEp = key?.let { HomeEligibility.nextAiringEpisode(episodesByShow[it].orEmpty(), todayDateStr) }
-                                HomePosterCard(
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            resumeItems.take(3).forEach { item ->
+                                HomeUpNextRow(
                                     item = item,
-                                    nextAirDate = if (key != null) {
-                                        HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
-                                    } else {
-                                        item.releaseDate?.take(10)
-                                    },
-                                    smartBadge = smartBadgesMap[item.id],
-                                    showCountdown = false,
-                                    airTime = nextEp?.airTime,
-                                    airstamp = nextEp?.airstamp,
-                                    timezone = item.timezone,
-                                    serviceName = AirTimeResolver.serviceHint(networkMap[item.id] ?: item.network, item.studios, item.genres),
-                                    onClick = { onSelectMedia(item.id) }
+                                    progress = showProgressMap[item.id],
+                                    networkMap = networkMap,
+                                    sem = sem,
+                                    onClick = { onSelectMedia(item.id) },
+                                    onQuickCheck = { nextEp -> markEpisodeWatched(nextEp, item, scope, container, onSelectMedia) }
                                 )
                             }
                         }
@@ -547,141 +534,14 @@ fun HomeScreen(
                     // Render vertical up next items
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         comingSoonItems.take(3).forEach { item ->
-                            val progress = showProgressMap[item.id]
-                            FlatCard(
+                            HomeUpNextRow(
+                                item = item,
+                                progress = showProgressMap[item.id],
+                                networkMap = networkMap,
+                                sem = sem,
                                 onClick = { onSelectMedia(item.id) },
-                                shape = ExpressiveShapes.Card,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // 74px poster thumb, matching the prototype row.
-                                    Box(
-                                        modifier = Modifier
-                                            .width(56.dp)
-                                            .height(74.dp)
-                                            .clip(ExpressiveShapes.SquircleSm)
-                                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                                    ) {
-                                        val poster = item.posterUrl ?: item.backdropUrl
-                                        if (poster != null) {
-                                            AsyncImage(
-                                                model = poster,
-                                                contentDescription = item.title,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier.fillMaxSize()
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(14.dp))
-
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        val realNet = networkMap[item.id]
-                                        val netInfo = if (!realNet.isNullOrBlank()) {
-                                            NetworkResolver.resolveByName(realNet, isTV = item.type.contains("TV", ignoreCase = true))
-                                        } else {
-                                            NetworkResolver.resolve(item)
-                                        }
-
-                                        val daysLeftLabel = remember(progress?.nextAiringDate) {
-                                            val d = progress?.nextAiringDate ?: return@remember "READY"
-                                            val target = runCatching { java.time.LocalDate.parse(d.take(10)) }.getOrNull()
-                                                ?: return@remember "READY"
-                                            val days = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), target)
-                                            when {
-                                                days < 0L -> "READY"
-                                                days == 0L -> "AIRING TODAY"
-                                                days == 1L -> "1 day left"
-                                                days <= 7L -> "$days days left"
-                                                else -> "READY"
-                                            }
-                                        }
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            MonoLabel(text = netInfo.name, color = MaterialTheme.colorScheme.primary)
-                                            Text(
-                                                text = daysLeftLabel,
-                                                style = AppTextStyles.MonoLabel,
-                                                color = if (daysLeftLabel == "READY") sem.success else MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-
-                                        Spacer(modifier = Modifier.height(2.dp))
-
-                                        Text(
-                                            text = item.title,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-
-                                        val subDesc = progress?.nextEpisode?.let {
-                                            "S${it.seasonNumber} E${it.episodeNumber} • \"${it.name.ifBlank { "Episode " + it.episodeNumber }}\""
-                                        } ?: "Ready to watch"
-
-                                        Text(
-                                            text = subDesc,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-
-                                        val total = progress?.totalEpisodes ?: 0
-                                        val watched = progress?.watchedEpisodes ?: 0
-                                        if (total > 0) {
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            ProgressLine(
-                                                fraction = watched.toFloat() / total.toFloat(),
-                                                label = "$watched/$total"
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(10.dp))
-
-                                    // Quick check: marks the next episode watched.
-                                    val nextEp = progress?.nextEpisode
-                                    Surface(
-                                        onClick = {
-                                            if (nextEp == null) {
-                                                onSelectMedia(item.id)
-                                            } else {
-                                                scope.launch {
-                                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                                    container.mediaDao.setEpisodeWatched(nextEp.uniqueId, true, now)
-                                                    val showTmdbId = MediaIds.tmdbIdOf(nextEp.showId).toString()
-                                                    container.syncManager().pushEpisodeWatch(showTmdbId, nextEp.seasonNumber, nextEp.episodeNumber, true)
-                                                    AppToast.show("Marked S${nextEp.seasonNumber} E${nextEp.episodeNumber} watched")
-                                                }
-                                            }
-                                        },
-                                        shape = ExpressiveShapes.SquircleSm,
-                                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                        modifier = Modifier.size(40.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = Icons.Default.Check,
-                                                contentDescription = "Mark next episode watched",
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+                                onQuickCheck = { nextEp -> markEpisodeWatched(nextEp, item, scope, container, onSelectMedia) }
+                            )
                         }
                     }
                 }
@@ -949,5 +809,169 @@ fun HomePosterCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * Shared Continue-Watching / Up-Next row: poster thumb, mono network, a days-left /
+ * READY label resolved from the service drop-time rules, the title, episode line, a
+ * progress bar, and a quick-check button. A past/negative gap reads READY.
+ */
+@Composable
+private fun HomeUpNextRow(
+    item: MediaItemEntity,
+    progress: TVShowProgress?,
+    networkMap: Map<String, String>,
+    sem: SemanticColors,
+    onClick: () -> Unit,
+    onQuickCheck: (EpisodeEntity?) -> Unit
+) {
+    val nextEp = progress?.nextEpisode
+    FlatCard(
+        onClick = onClick,
+        shape = ExpressiveShapes.Card,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(56.dp)
+                    .height(74.dp)
+                    .clip(ExpressiveShapes.SquircleSm)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            ) {
+                val poster = item.posterUrl ?: item.backdropUrl
+                if (poster != null) {
+                    AsyncImage(
+                        model = poster,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                val realNet = networkMap[item.id]
+                val netInfo = if (!realNet.isNullOrBlank()) {
+                    NetworkResolver.resolveByName(realNet, isTV = item.type.contains("TV", ignoreCase = true))
+                } else {
+                    NetworkResolver.resolve(item)
+                }
+
+                // Days-left from the resolved drop instant (rules), not the raw air date.
+                val daysLeftLabel = remember(nextEp?.uniqueId, item.timezone, item.network) {
+                    if (nextEp == null) return@remember "READY"
+                    val instant = AirTimeResolver.resolveAirInstant(
+                        dateString = nextEp.airDate?.take(10),
+                        time = nextEp.airTime,
+                        airstamp = nextEp.airstamp,
+                        timezone = item.timezone,
+                        serviceName = AirTimeResolver.serviceHint(
+                            networkMap[item.id] ?: item.network, item.studios, item.genres
+                        )
+                    ) ?: return@remember "READY"
+                    val hours = (instant.time - System.currentTimeMillis()) / 3_600_000.0
+                    when {
+                        hours < 0 -> "READY"
+                        hours < 24 -> "AIRING TODAY"
+                        hours < 48 -> "1 day left"
+                        else -> "${(hours / 24).toInt()} days left"
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MonoLabel(text = netInfo.name, color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        text = daysLeftLabel,
+                        style = AppTextStyles.MonoLabel,
+                        color = if (daysLeftLabel == "READY") sem.success else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                val subDesc = nextEp?.let {
+                    "S${it.seasonNumber} E${it.episodeNumber} • \"${it.name.ifBlank { "Episode " + it.episodeNumber }}\""
+                } ?: "Ready to watch"
+
+                Text(
+                    text = subDesc,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                val total = progress?.totalEpisodes ?: 0
+                val watched = progress?.watchedEpisodes ?: 0
+                if (total > 0) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ProgressLine(
+                        fraction = watched.toFloat() / total.toFloat(),
+                        label = "$watched/$total"
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Surface(
+                onClick = { onQuickCheck(nextEp) },
+                shape = ExpressiveShapes.SquircleSm,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Mark next episode watched",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Marks an episode watched + syncs it; opens the detail when there is no next episode. */
+private fun markEpisodeWatched(
+    episode: EpisodeEntity?,
+    item: MediaItemEntity,
+    scope: kotlinx.coroutines.CoroutineScope,
+    container: com.vara.mediatracker.di.AppContainer,
+    onSelectMedia: (String) -> Unit
+) {
+    if (episode == null) {
+        onSelectMedia(item.id)
+        return
+    }
+    scope.launch {
+        val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+        container.mediaDao.setEpisodeWatched(episode.uniqueId, true, now)
+        val showTmdbId = MediaIds.tmdbIdOf(episode.showId).toString()
+        container.syncManager().pushEpisodeWatch(showTmdbId, episode.seasonNumber, episode.episodeNumber, true)
+        AppToast.show("Marked S${episode.seasonNumber} E${episode.episodeNumber} watched")
     }
 }
