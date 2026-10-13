@@ -149,9 +149,24 @@ object Migrations {
         }
     }
 
+    /**
+     * v10 -> v11: force one metadata re-enrichment pass so the new facet logos fill in.
+     *
+     * `getItemsNeedingMetadataEnrichment` only selects rows whose genres/language/providers
+     * are NULL, so an already-enriched library would never re-fetch and the `facet_logos`
+     * table would stay empty. Clearing `providers` drops every row back into that query;
+     * the worker re-fetches details (region-specific providers included) and writes the
+     * logo rows alongside. Self-healing and one-time.
+     */
+    val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("UPDATE media_items SET providers = NULL")
+        }
+    }
+
     val ALL: Array<Migration> =
         arrayOf(
             MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-            MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10
+            MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11
         )
 }

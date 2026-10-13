@@ -180,7 +180,7 @@ interface BadgeDao {
         TVSeasonEntity::class,
         FacetLogoEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
