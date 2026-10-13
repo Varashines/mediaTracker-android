@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
 import com.vara.mediatracker.ui.common.springClickable
+import com.vara.mediatracker.util.AirTimeResolver
 import com.vara.mediatracker.util.NetworkResolver
 import java.text.SimpleDateFormat
 import java.util.*
@@ -1057,6 +1058,8 @@ fun DetailScreen(
                     items(currentSeasonEpisodes, key = { it.uniqueId }) { ep ->
                         EpisodeCard(
                             episode = ep,
+                            serviceHint = AirTimeResolver.serviceHint(item.network, item.studios, item.genres),
+                            timezone = item.timezone,
                             onToggleWatched = { watched ->
                                 scope.launch {
                                     val now = if (watched) SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date()) else null
@@ -1140,10 +1143,38 @@ fun DetailScreen(
     }
 }
 
+/**
+ * Episode date + the rule-based drop time, e.g. "Oct 13 • 9:00 PM ET". Uses the real
+ * airstamp/airtime when present, otherwise the streaming rule — so a Marvel show on
+ * Disney+ shows its 9 PM ET flagship drop rather than the bare date.
+ */
+private fun episodeAirLabel(
+    episode: EpisodeEntity,
+    serviceHint: String,
+    timezone: String?
+): String? {
+    val date = episode.airDate?.take(10) ?: return null
+    val dateLabel = runCatching {
+        SimpleDateFormat("MMM d", Locale.getDefault())
+            .format(SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(date))
+    }.getOrNull() ?: date
+
+    val hasRealTime = !episode.airTime.isNullOrBlank() || !episode.airstamp.isNullOrBlank()
+    val timeLabel = if (hasRealTime) {
+        AirTimeResolver.resolveAirInstant(date, episode.airTime, episode.airstamp, timezone, serviceHint)
+            ?.let { SimpleDateFormat("h:mm a", Locale.getDefault()).format(it) }
+    } else {
+        AirTimeResolver.formatAirTime(date, serviceHint)
+    }
+    return if (timeLabel != null) "$dateLabel • $timeLabel" else dateLabel
+}
+
 @Composable
 fun EpisodeCard(
     episode: EpisodeEntity,
-    onToggleWatched: (Boolean) -> Unit
+    onToggleWatched: (Boolean) -> Unit,
+    serviceHint: String = "",
+    timezone: String? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
     val sem = LocalSemanticColors.current
@@ -1242,9 +1273,9 @@ fun EpisodeCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                         }
-                        if (!episode.airDate.isNullOrBlank()) {
+                        episodeAirLabel(episode, serviceHint, timezone)?.let { label ->
                             Text(
-                                text = episode.airDate,
+                                text = label,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
