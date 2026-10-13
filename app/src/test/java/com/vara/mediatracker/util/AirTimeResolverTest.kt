@@ -177,6 +177,51 @@ class AirTimeResolverTest {
         }
     }
 
+    // ---------- studio-aware service hint (Disney+ flagships) ----------
+
+    @Test
+    fun `live-action marvel keeps the studio hint and drops 9pm ET`() {
+        val hint = AirTimeResolver.serviceHint(
+            network = "Disney+",
+            studios = "Marvel Studios, Kevin Feige Productions",
+            genres = "Sci-Fi & Fantasy, Drama"
+        )
+        val d = AirTimeResolver.resolveAirInstant("2026-10-13", serviceName = hint)!!
+        assertEquals(21, hourIn(d, "America/New_York"))
+        assertEquals(13, dayIn(d, "America/New_York"))
+    }
+
+    @Test
+    fun `lucasfilm live-action uses the flagship 9pm ET rule`() {
+        val hint = AirTimeResolver.serviceHint(
+            network = "Disney+",
+            studios = "Lucasfilm Ltd.",
+            genres = "Sci-Fi & Fantasy, Action & Adventure"
+        )
+        assertEquals(21, hourIn(AirTimeResolver.resolveAirInstant("2026-10-13", serviceName = hint)!!, "America/New_York"))
+    }
+
+    @Test
+    fun `animated marvel withholds the studio and drops midnight PT`() {
+        // X-Men '97 / What If…? are Marvel Studios titles but follow the standard
+        // Disney+ midnight-PT drop, so the studio hint must not leak through.
+        val hint = AirTimeResolver.serviceHint(
+            network = "Disney+",
+            studios = "Marvel Studios",
+            genres = "Animation, Action & Adventure, Sci-Fi & Fantasy"
+        )
+        val d = AirTimeResolver.resolveAirInstant("2026-10-13", serviceName = hint)!!
+        assertEquals(0, hourIn(d, "America/Los_Angeles"))
+        assertEquals(13, dayIn(d, "America/Los_Angeles"))
+    }
+
+    @Test
+    fun `plain disney title without a studio still drops midnight PT`() {
+        val hint = AirTimeResolver.serviceHint("Disney+", null, "Comedy")
+        val d = AirTimeResolver.resolveAirInstant("2026-10-13", serviceName = hint)!!
+        assertEquals(0, hourIn(d, "America/Los_Angeles"))
+    }
+
     // ---------- formatAirTime ----------
 
     @Test

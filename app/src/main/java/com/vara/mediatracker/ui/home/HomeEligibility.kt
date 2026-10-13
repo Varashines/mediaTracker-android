@@ -273,7 +273,7 @@ object HomeEligibility {
             time = ep.airTime,
             airstamp = ep.airstamp,
             timezone = item.timezone,
-            serviceName = item.network
+            serviceName = AirTimeResolver.serviceHint(item.network, item.studios, item.genres)
         )
 
     private fun storedInstant(item: MediaItemEntity): Date? =
@@ -282,7 +282,7 @@ object HomeEligibility {
                 dateString = iso.take(10),
                 airstamp = iso,
                 timezone = item.timezone,
-                serviceName = item.network
+                serviceName = AirTimeResolver.serviceHint(item.network, item.studios, item.genres)
             )
         }
 

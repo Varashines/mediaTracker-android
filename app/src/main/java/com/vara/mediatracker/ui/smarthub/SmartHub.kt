@@ -120,10 +120,10 @@ object SmartCategoryMatcher {
                 dateString = iso.take(10),
                 airstamp = iso,
                 timezone = item.timezone,
-                serviceName = item.network
+                serviceName = AirTimeResolver.serviceHint(item.network, item.studios, item.genres)
             )
         } ?: item.releaseDate?.let { release ->
-            AirTimeResolver.resolveAirInstant(release, serviceName = item.network)
+            AirTimeResolver.resolveAirInstant(release, serviceName = AirTimeResolver.serviceHint(item.network, item.studios, item.genres))
         }
         return instant != null && instant.time <= now.time
     }

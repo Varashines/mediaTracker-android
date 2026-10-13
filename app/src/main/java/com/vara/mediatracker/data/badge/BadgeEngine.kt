@@ -119,7 +119,7 @@ object BadgeEngine {
 
         val isTv = item.type.contains("TV", ignoreCase = true)
         val scan = if (isTv) {
-            scanEpisodes(episodes, now, declaredSeasonCounts, item.timezone, item.network)
+            scanEpisodes(episodes, now, declaredSeasonCounts, item.timezone, AirTimeResolver.serviceHint(item.network, item.studios, item.genres))
         } else {
             null
         }
@@ -290,7 +290,7 @@ object BadgeEngine {
                 dateString = iso.take(10),
                 airstamp = iso,
                 timezone = item.timezone,
-                serviceName = item.network
+                serviceName = AirTimeResolver.serviceHint(item.network, item.studios, item.genres)
             )
         }
 

@@ -46,6 +46,7 @@ import com.vara.mediatracker.ui.home.SectionHeader
 import com.vara.mediatracker.ui.home.SmartBadgePill
 import com.vara.mediatracker.ui.theme.AppColors
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
+import com.vara.mediatracker.util.AirTimeResolver
 import com.vara.mediatracker.util.NetworkResolver
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.ReleaseAlertScheduler
@@ -435,11 +436,14 @@ fun CalendarReleaseCard(
         mutableStateOf(prefs.isReleaseAlertSet(item.id, event.dateString))
     }
     val netInfo = remember(item) { NetworkResolver.resolve(item) }
-    val airTimeLabel = remember(event.dateString, event.airTime, event.airstamp, netInfo.name, item.timezone) {
-        resolveEventAirTimeLabel(event, netInfo.name, item.timezone)
+    val serviceHint = remember(item, netInfo.name) {
+        AirTimeResolver.serviceHint(item.network ?: netInfo.name, item.studios, item.genres)
     }
-    val alertInstant = remember(event.dateString, event.airTime, event.airstamp, netInfo.name, item.timezone) {
-        parseAirInstant(event.dateString, event.airTime, event.airstamp, item.timezone, netInfo.name)
+    val airTimeLabel = remember(event.dateString, event.airTime, event.airstamp, serviceHint, item.timezone) {
+        resolveEventAirTimeLabel(event, serviceHint, item.timezone)
+    }
+    val alertInstant = remember(event.dateString, event.airTime, event.airstamp, serviceHint, item.timezone) {
+        parseAirInstant(event.dateString, event.airTime, event.airstamp, item.timezone, serviceHint)
     }
     val canAlert = alertInstant != null && alertInstant.time > System.currentTimeMillis()
 

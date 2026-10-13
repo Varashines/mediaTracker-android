@@ -53,6 +53,7 @@ import java.util.*
 
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.prefs.PreferencesManager
+import com.vara.mediatracker.util.AirTimeResolver
 import com.vara.mediatracker.util.NetworkResolver
 import kotlinx.coroutines.launch
 
@@ -805,7 +806,7 @@ fun HomeScreen(
                                 airTime = nextEp?.airTime,
                                 airstamp = nextEp?.airstamp,
                                 timezone = item.timezone,
-                                serviceName = networkMap[item.id] ?: item.network,
+                                serviceName = AirTimeResolver.serviceHint(networkMap[item.id] ?: item.network, item.studios, item.genres),
                                 onClick = { onSelectMedia(item.id) }
                             )
                         }

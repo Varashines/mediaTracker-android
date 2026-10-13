@@ -43,8 +43,10 @@ object AirTimeResolver {
     val defaultStreamingRules: List<StreamingServiceRule> = listOf(
         // Apple TV Originals: 9 PM ET the evening before the listed date.
         StreamingServiceRule(listOf("apple"), "21:00", "America/New_York", -1),
-        // Disney+ flagships (Marvel / Star Wars): 9 PM ET on the listed date.
-        StreamingServiceRule(listOf("star wars", "marvel"), "21:00", "America/New_York", 0),
+        // Disney+ live-action flagships (Marvel Studios / Lucasfilm): 6 PM PT / 9 PM ET.
+        // Animated Marvel/Star Wars follow the standard midnight-PT drop below, so
+        // [serviceHint] only feeds the studio through for live-action titles.
+        StreamingServiceRule(listOf("star wars", "lucasfilm", "marvel"), "21:00", "America/New_York", 0),
         // Disney+ standard: midnight PT.
         StreamingServiceRule(listOf("disney"), "00:00", "America/Los_Angeles", 0),
         // Netflix: midnight PT.
@@ -68,6 +70,29 @@ object AirTimeResolver {
         return defaultStreamingRules.firstOrNull { rule ->
             rule.patterns.any { query.contains(it) }
         }
+    }
+
+    /**
+     * Combined network + studio hint for streaming-rule matching.
+     *
+     * A Marvel or Lucasfilm show sits on a generic "Disney+" network, so matching on the
+     * network alone picks the Disney+ midnight-PT rule. Its production company carries
+     * the "marvel"/"lucasfilm" signal, so including the studio lets the flagship 9 PM ET
+     * rule win. That rule is **live-action only**: animated Marvel/Star Wars
+     * (X-Men '97, What If…?) still drop at midnight PT, so the studio is withheld when
+     * the title is animated.
+     */
+    fun serviceHint(network: String?, studios: String?, genres: String?): String {
+        val isAnimation = genres?.contains("animation", ignoreCase = true) == true
+        val parts = buildList {
+            network?.takeIf { it.isNotBlank() }?.let { add(it) }
+            if (!isAnimation) studios?.takeIf { it.isNotBlank() }?.let { add(it) }
+        }
+        return parts
+            .flatMap { it.split(',') }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString(" ")
     }
 
     /** Parses an ISO-8601 instant, tolerating malformed input. */
