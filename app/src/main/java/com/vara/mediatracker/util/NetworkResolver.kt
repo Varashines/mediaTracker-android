@@ -26,6 +26,50 @@ object NetworkResolver {
     private val FX = NetworkInfo("FX", "FX", Color(0xFF3F3F46), Color(0xFFF4F4F5))
 
     /**
+     * Resolves styling for a given network name or falls back to standard theme tokens.
+     */
+    fun resolveByName(networkName: String?, isTV: Boolean = true): NetworkInfo {
+        if (networkName.isNullOrBlank()) {
+            return if (isTV) {
+                NetworkInfo("TV Series", "TV", Color(0xFF2E1065), Color(0xFFE9D5FF))
+            } else {
+                NetworkInfo("Theatrical", "FILM", Color(0xFF1E293B), Color(0xFF94A3B8))
+            }
+        }
+
+        val lower = networkName.lowercase().trim()
+        return when {
+            lower.contains("apple") -> APPLE
+            lower.contains("hbo") || lower.contains("max") -> HBO
+            lower.contains("netflix") -> NETFLIX
+            lower.contains("disney") || lower.contains("marvel") || lower.contains("lucasfilm") -> DISNEY
+            lower.contains("prime") || lower.contains("amazon") -> AMAZON
+            lower.contains("amc") -> AMC
+            lower.contains("fx") -> FX
+            lower.contains("hulu") -> HULU
+            lower.contains("bbc") -> BBC
+            lower.contains("paramount") -> PARAMOUNT
+            lower.contains("peacock") -> PEACOCK
+            lower.contains("showtime") -> SHOWTIME
+            lower.contains("ena") -> NetworkInfo("ENA", "ENA", Color(0xFF0284C7), Color(0xFFE0F2FE))
+            lower.contains("tvn") -> NetworkInfo("tvN", "tvN", Color(0xFFDC2626), Color(0xFFFEE2E2))
+            lower.contains("jtbc") -> NetworkInfo("JTBC", "JTBC", Color(0xFF4338CA), Color(0xFFE0E7FF))
+            lower.contains("kbs") -> NetworkInfo("KBS", "KBS", Color(0xFF1D4ED8), Color(0xFFDBEAFE))
+            lower.contains("sbs") -> NetworkInfo("SBS", "SBS", Color(0xFF0369A1), Color(0xFFE0F2FE))
+            lower.contains("mbc") -> NetworkInfo("MBC", "MBC", Color(0xFF047857), Color(0xFFD1FAE5))
+            else -> {
+                // Dynamic clean badge for any TMDB network/studio
+                NetworkInfo(
+                    name = networkName,
+                    shortName = networkName.take(5).uppercase(),
+                    badgeColor = Color(0xFF332038),
+                    textColor = Color(0xFFFFD7F5)
+                )
+            }
+        }
+    }
+
+    /**
      * Resolves the network name and styling for a media item.
      * Uses title keywords, overview keywords, and item type heuristics.
      */
@@ -35,58 +79,65 @@ object NetworkResolver {
         val combined = "$title $overview"
 
         return when {
-            // Apple TV+ originals
+            // Explicit network mentions in title/overview
+            combined.contains("apple tv") || combined.contains("apple original") -> APPLE
+            combined.contains("hbo") || combined.contains("max original") -> HBO
+            combined.contains("netflix") -> NETFLIX
+            combined.contains("disney+") || combined.contains("marvel studios") || combined.contains("lucasfilm") -> DISNEY
+            combined.contains("amazon prime") || combined.contains("prime video") -> AMAZON
+            combined.contains("amc") -> AMC
+            combined.contains("fx on hulu") || combined.contains(" fx ") -> FX
+            combined.contains("hulu original") -> HULU
+            combined.contains("bbc") -> BBC
+            combined.contains("paramount+") -> PARAMOUNT
+
+            // Signature titles
             title.contains("severance") || title.contains("ted lasso") || title.contains("morning show") ||
             title.contains("slow horses") || title.contains("silo") || title.contains("foundation") ||
-            title.contains("black bird") || title.contains("bad sisters") || title.contains("for all mankind") ||
-            combined.contains("apple tv") || combined.contains("apple original") -> APPLE
+            title.contains("black bird") || title.contains("bad sisters") || title.contains("for all mankind") -> APPLE
 
-            // HBO / Max originals
             title.contains("last of us") || title.contains("succession") || title.contains("white lotus") ||
             title.contains("house of the dragon") || title.contains("game of thrones") || title.contains("euphoria") ||
             title.contains("true detective") || title.contains("sopranos") || title.contains("wire") ||
-            title.contains("dune: prophecy") || combined.contains("hbo") || combined.contains("max original") -> HBO
+            title.contains("dune: prophecy") -> HBO
 
-            // Netflix originals
             title.contains("stranger things") || title.contains("squid game") || title.contains("wednesday") ||
             title.contains("witcher") || title.contains("bridgerton") || title.contains("crown") ||
             title.contains("black mirror") || title.contains("arcane") || title.contains("ozark") ||
-            title.contains("narcos") || combined.contains("netflix") -> NETFLIX
+            title.contains("narcos") -> NETFLIX
 
-            // Disney+ / Marvel / Star Wars
             title.contains("mandalorian") || title.contains("andor") || title.contains("loki") ||
-            title.contains("wandavision") || title.contains("ahsoka") || title.contains("falcon") ||
-            combined.contains("disney+") || combined.contains("marvel studios") || combined.contains("lucasfilm") -> DISNEY
+            title.contains("wandavision") || title.contains("ahsoka") || title.contains("falcon") -> DISNEY
 
-            // Amazon Prime
             title.contains("boys") || title.contains("rings of power") || title.contains("reacher") ||
             title.contains("invincible") || title.contains("fallout") || title.contains("wheel of time") ||
-            title.contains("fleabag") || combined.contains("amazon prime") || combined.contains("prime video") -> AMAZON
+            title.contains("fleabag") -> AMAZON
 
-            // AMC
             title.contains("breaking bad") || title.contains("better call saul") || title.contains("walking dead") ||
-            title.contains("mad men") || combined.contains("amc") -> AMC
+            title.contains("mad men") -> AMC
 
-            // FX
             title.contains("bear") || title.contains("shogun") || title.contains("fargo") ||
-            title.contains("always sunny") || combined.contains("fx on hulu") -> FX
+            title.contains("always sunny") -> FX
 
-            // Hulu
-            title.contains("handmaid") || title.contains("only murders") || combined.contains("hulu") -> HULU
+            title.contains("handmaid") || title.contains("only murders") -> HULU
 
-            // BBC
-            title.contains("peaky blinders") || title.contains("doctor who") || title.contains("sherlock") ||
-            combined.contains("bbc") -> BBC
+            title.contains("peaky blinders") || title.contains("doctor who") || title.contains("sherlock") -> BBC
 
-            // Paramount+
-            title.contains("yellowstone") || title.contains("star trek") || title.contains("tulsa king") ||
-            combined.contains("paramount+") -> PARAMOUNT
+            title.contains("yellowstone") || title.contains("star trek") || title.contains("tulsa king") -> PARAMOUNT
 
-            // Defaults based on type & hash for visual variety
+            // Korean broadcasting clues
+            combined.contains("ena") -> resolveByName("ENA", isTV = true)
+            combined.contains("tvn") -> resolveByName("tvN", isTV = true)
+            combined.contains("jtbc") -> resolveByName("JTBC", isTV = true)
+
+            // Safe fallback without guessing wrong networks
             item.type.contains("TV", ignoreCase = true) -> {
-                val fallbacks = listOf(APPLE, HBO, NETFLIX, AMAZON, DISNEY, FX)
-                val idx = (item.title.hashCode() and 0x7FFFFFFF) % fallbacks.size
-                fallbacks[idx]
+                NetworkInfo(
+                    name = "TV Series",
+                    shortName = "TV",
+                    badgeColor = Color(0xFF2E1065),
+                    textColor = Color(0xFFE9D5FF)
+                )
             }
             else -> {
                 NetworkInfo(

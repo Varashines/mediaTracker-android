@@ -106,28 +106,6 @@ fun MainAppScreen(container: AppContainer) {
     }
 
     Scaffold(
-        topBar = {
-            // Home and Radar draw their own expressive headers.
-            // Other screens get a compact bar here.
-            if (selectedTab != 0 && selectedTab != 1) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = when (selectedTab) {
-                                2 -> "Library"
-                                else -> "Settings"
-                            },
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface
-                    ),
-                    modifier = Modifier.statusBarsPadding()
-                )
-            }
-        },
         bottomBar = {
             ExpressiveNavigationBar(
                 selectedIndex = selectedTab,
@@ -143,7 +121,6 @@ fun MainAppScreen(container: AppContainer) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = paddingValues.calculateTopPadding())
         ) {
             // Direction-aware slide so moving between tabs feels spatial rather than a
             // crossfade, which made the whole screen feel like it was reloading.

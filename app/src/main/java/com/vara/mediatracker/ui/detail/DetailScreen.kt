@@ -105,6 +105,16 @@ fun DetailScreen(
                                 mediaItem = updatedItem
                             }
 
+                            // Cache resolved network or production company
+                            val net = if (isMovie) {
+                                details?.production_companies?.firstOrNull()?.name
+                            } else {
+                                details?.networks?.firstOrNull()?.name
+                            }
+                            if (!net.isNullOrBlank()) {
+                                prefs.setCachedNetwork(item.id, net)
+                            }
+
                             // Fetch Credits (Cast)
                             val creditsRes = if (isMovie) tmdbClient.getMovieCredits(tmdbId) else tmdbClient.getTVCredits(tmdbId)
                             castMembers = creditsRes.getOrNull()?.cast?.take(15) ?: emptyList()
@@ -419,7 +429,7 @@ fun DetailScreen(
                 }
             }
 
-            // Quick Stats 3-Pill Grid (EPISODES / RUN TIME / NETWORK)
+            // Quick Stats Grid: 3 pills for TV (EPISODES / RUN TIME / NETWORK); 2 pills for Movies (RUN TIME / PRODUCTION 2x size)
             item {
                 Row(
                     modifier = Modifier
@@ -430,92 +440,165 @@ fun DetailScreen(
                     val watchedEpCount = episodes.count { it.isWatched }
                     val totalEpCount = episodes.size
                     val runtimeMin = tmdbDetails?.runtime ?: (if (isTV) 50 else 115)
-                    val networkInfo = remember(item) { NetworkResolver.resolve(item) }
+                    val tmdbNetName = if (isTV) {
+                        tmdbDetails?.networks?.firstOrNull()?.name ?: prefs.getCachedNetwork(item.id)
+                    } else {
+                        tmdbDetails?.production_companies?.firstOrNull()?.name ?: prefs.getCachedNetwork(item.id)
+                    }
+                    val networkInfo = remember(item, tmdbNetName) {
+                        if (!tmdbNetName.isNullOrBlank()) {
+                            NetworkResolver.resolveByName(tmdbNetName, isTV = isTV)
+                        } else {
+                            NetworkResolver.resolve(item)
+                        }
+                    }
                     val networkName = networkInfo.name
 
-                    // Pill 1: EPISODES
-                    Surface(
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                    if (isTV) {
+                        // Pill 1: EPISODES
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         ) {
-                            Text(
-                                text = "EPISODES",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                letterSpacing = 0.5.sp
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = if (totalEpCount > 0) "$watchedEpCount / $totalEpCount" else "1 / 1",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            Column(
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "EPISODES",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = if (totalEpCount > 0) "$watchedEpCount / $totalEpCount" else "1 / 1",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
-                    }
 
-                    // Pill 2: RUN TIME
-                    Surface(
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        // Pill 2: RUN TIME
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         ) {
-                            Text(
-                                text = "RUN TIME",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                letterSpacing = 0.5.sp
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "${runtimeMin}m / ep",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            Column(
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "RUN TIME",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "${runtimeMin}m / ep",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
-                    }
 
-                    // Pill 3: NETWORK / TYPE
-                    Surface(
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        // Pill 3: NETWORK
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                         ) {
-                            Text(
-                                text = "NETWORK",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                letterSpacing = 0.5.sp
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = networkName,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
+                            Column(
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "NETWORK",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = networkName,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    } else {
+                        // MOVIE LAYOUT: RUN TIME (1 tile) + PRODUCTION (2 tiles wide)
+                        // Pill 1: RUN TIME
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "RUN TIME",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                val runtimeText = if (runtimeMin > 60) "${runtimeMin / 60}h ${runtimeMin % 60}m" else "${runtimeMin}m"
+                                Text(
+                                    text = runtimeText,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        // Pill 2: PRODUCTION (2 tiles wide)
+                        Surface(
+                            modifier = Modifier.weight(2f),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "PRODUCTION",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = if (!networkName.equals("Theatrical", ignoreCase = true) && !networkName.equals("FILM", ignoreCase = true)) networkName else "Studio Production",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }

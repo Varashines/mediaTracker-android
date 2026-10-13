@@ -1,9 +1,11 @@
 package com.vara.mediatracker.ui.settings
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -12,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -130,256 +133,385 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 88.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
-
-        // Supabase Cloud Sync Card
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            modifier = Modifier.fillMaxWidth()
+        // 1. Sticky M3E Top Header matching HTML: "PREFERENCES" / "Settings & Sync"
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.CloudSync,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Cross-Device Cloud Sync",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
+                        text = "PREFERENCES",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 1.2.sp
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFE086D3))
                     )
                 }
-
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Pair this device with your macOS MediaTracker app via your personal Supabase project.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                )
-
-                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                // Project URL
-                OutlinedTextField(
-                    value = current.supabaseUrl,
-                    onValueChange = { draft.value = draft.value.copy(supabaseUrl = it) },
-                    label = { Text("Supabase Project URL") },
-                    placeholder = { Text("https://xyz.supabase.co") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Anon Key
-                OutlinedTextField(
-                    value = current.supabaseAnonKey,
-                    onValueChange = { draft.value = draft.value.copy(supabaseAnonKey = it) },
-                    label = { Text("Supabase Anon Key") },
-                    placeholder = { Text("sb_publishable_...") },
-                    singleLine = true,
-                    visualTransformation = if (showAnonKey) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { showAnonKey = !showAnonKey }) {
-                            Icon(
-                                imageVector = if (showAnonKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = "Toggle key visibility"
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Secret Sync Key
-                OutlinedTextField(
-                    value = current.syncKey,
-                    onValueChange = { draft.value = draft.value.copy(syncKey = it) },
-                    label = { Text("Secret Sync Key (from Mac Settings)") },
-                    placeholder = { Text("mt_sync_...") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Sync Now Button
-                Button(
-                    onClick = {
-                        if (current.supabaseUrl.isBlank() || current.supabaseAnonKey.isBlank() || current.syncKey.isBlank()) {
-                            Toast.makeText(context, "Please fill in all sync credentials", Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        isSyncing = true
-                        scope.launch {
-                            val manager = container.syncManager()
-                            val result = manager.pullFromCloud()
-                            isSyncing = false
-                            if (result.isSuccess) {
-                                SyncScheduler.recordSyncCompletion(context)
-                                val count = result.getOrNull() ?: 0
-                                val now = System.currentTimeMillis()
-                                prefs.lastSyncTimestamp = now
-                                lastSyncTime = now
-                                Toast.makeText(context, "Sync successful! Pulled $count items", Toast.LENGTH_LONG).show()
-                            } else {
-                                Toast.makeText(context, "Sync failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    },
-                    enabled = !isSyncing,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    if (isSyncing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Syncing with Cloud...")
-                    } else {
-                        Icon(Icons.Default.Sync, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Sync Now")
-                    }
-                }
-
-                Text(
-                    text = lastSyncLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                    text = "Settings & Sync",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
-        }
 
-        // TMDB API Key Card
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Movie,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "TMDB Metadata & Artwork",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                Text(
-                    text = "Used to fetch official posters, backdrops, season episodes, and air dates.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                )
-
-                OutlinedTextField(
-                    value = current.tmdbApiKey,
-                    onValueChange = { draft.value = draft.value.copy(tmdbApiKey = it) },
-                    label = { Text("TMDB API Key (v3 Key or v4 Read Token)") },
-                    placeholder = { Text("Enter v3 key or v4 Bearer token (ey...)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-
-        // Background sync + notifications card
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            // Sync Status Indicator Pill
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.CloudSync,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Automatic Updates",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                Text(
-                    text = "Keeps your library and smart badges current on a schedule, " +
-                        "so there's nothing to refresh by hand.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                )
-
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Background Sync", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            text = if (SyncScheduler.isEnabled(context)) "Every 30 minutes while on Wi-Fi or mobile data"
-                            else "Paused",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = backgroundSyncEnabled,
-                        onCheckedChange = {
-                            backgroundSyncEnabled = it
-                            SyncScheduler.setEnabled(context, it)
-                            if (it) SyncScheduler.syncNow(context)
-                        }
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (current.supabaseUrl.isNotBlank() && current.syncKey.isNotBlank()) Color(0xFF6DDFB8) else Color(0xFFFFB300))
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (current.supabaseUrl.isNotBlank() && current.syncKey.isNotBlank()) "CONNECTED" else "SETUP REQ",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        letterSpacing = 0.5.sp
                     )
                 }
+            }
+        }
 
-                if (backgroundSyncEnabled && !notificationsAllowed) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 108.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Supabase Cloud Sync Card
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                tonalElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudSync,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Cross-Device Cloud Sync",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Supabase PostgreSQL bridge",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
                     Text(
-                        text = "Allow notifications to hear about premieres and upcoming episodes.",
+                        text = "Sync your active library, watches, and smart-badge history in real time with macOS MediaTracker.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Button(
-                        onClick = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Allow Notifications")
-                    }
-                }
 
-                Text(
-                    text = syncStatusLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                    // Project URL
+                    OutlinedTextField(
+                        value = current.supabaseUrl,
+                        onValueChange = { draft.value = draft.value.copy(supabaseUrl = it) },
+                        label = { Text("Supabase Project URL") },
+                        placeholder = { Text("https://xyz.supabase.co") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // Anon Key
+                    OutlinedTextField(
+                        value = current.supabaseAnonKey,
+                        onValueChange = { draft.value = draft.value.copy(supabaseAnonKey = it) },
+                        label = { Text("Supabase Anon Key") },
+                        placeholder = { Text("sb_publishable_...") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        visualTransformation = if (showAnonKey) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showAnonKey = !showAnonKey }) {
+                                Icon(
+                                    imageVector = if (showAnonKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = "Toggle key visibility"
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // Secret Sync Key
+                    OutlinedTextField(
+                        value = current.syncKey,
+                        onValueChange = { draft.value = draft.value.copy(syncKey = it) },
+                        label = { Text("Secret Sync Key (from Mac Settings)") },
+                        placeholder = { Text("mt_sync_...") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Sync Now Button (Tactile M3E Plum Fill)
+                    Button(
+                        onClick = {
+                            if (current.supabaseUrl.isBlank() || current.supabaseAnonKey.isBlank() || current.syncKey.isBlank()) {
+                                Toast.makeText(context, "Please fill in all sync credentials", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            isSyncing = true
+                            scope.launch {
+                                val manager = container.syncManager()
+                                val result = manager.pullFromCloud()
+                                isSyncing = false
+                                if (result.isSuccess) {
+                                    SyncScheduler.recordSyncCompletion(context)
+                                    val count = result.getOrNull() ?: 0
+                                    val now = System.currentTimeMillis()
+                                    prefs.lastSyncTimestamp = now
+                                    lastSyncTime = now
+                                    Toast.makeText(context, "Sync successful! Pulled $count items", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, "Sync failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
+                        enabled = !isSyncing,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Syncing with Cloud...", fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Trigger Cloud Sync", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Text(
+                        text = lastSyncLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+                }
+            }
+
+            // TMDB API Key Card
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                tonalElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Icon(
+                                    imageVector = Icons.Default.Movie,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "TMDB Metadata & Artwork",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "High-res posters, logos, and broadcasting networks",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Used to fetch official posters, backdrops, season episodes, genuine broadcasting networks, and release air dates.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = current.tmdbApiKey,
+                        onValueChange = { draft.value = draft.value.copy(tmdbApiKey = it) },
+                        label = { Text("TMDB API Key or v4 Read Token") },
+                        placeholder = { Text("Enter v3 key or Bearer token...") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            // Automatic Updates / Background Sync Card
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                tonalElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Icon(
+                                    imageVector = Icons.Default.Schedule,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Automatic Background Sync",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Periodic workers & release radar",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Keeps your library and smart badges current on a schedule so there's nothing to refresh by hand.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Background Worker", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (SyncScheduler.isEnabled(context)) "Every 30 minutes on Wi-Fi or Cellular" else "Paused",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = backgroundSyncEnabled,
+                            onCheckedChange = {
+                                backgroundSyncEnabled = it
+                                SyncScheduler.setEnabled(context, it)
+                                if (it) SyncScheduler.syncNow(context)
+                            }
+                        )
+                    }
+
+                    if (backgroundSyncEnabled && !notificationsAllowed) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                        Text(
+                            text = "Allow notifications to hear about live airings, premieres, and countdown reminders.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(
+                            onClick = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Grant Notification Access", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Text(
+                        text = syncStatusLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+                }
             }
         }
     }

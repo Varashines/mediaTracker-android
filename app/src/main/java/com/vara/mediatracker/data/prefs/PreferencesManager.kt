@@ -35,6 +35,18 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putBoolean("episode_key_migration_v3_done", value).apply()
 
     /**
+     * Caches the resolved network or production company for a media item so it's
+     * immediately available everywhere without making repetitive TMDB calls.
+     */
+    fun getCachedNetwork(mediaId: String): String? {
+        return prefs.getString("network_$mediaId", null)
+    }
+
+    fun setCachedNetwork(mediaId: String, networkName: String) {
+        prefs.edit().putString("network_$mediaId", networkName).apply()
+    }
+
+    /**
      * Persists every credential in a single atomic edit. Called on a debounce rather
      * than per keystroke, so four keys commit together instead of racing each other.
      */

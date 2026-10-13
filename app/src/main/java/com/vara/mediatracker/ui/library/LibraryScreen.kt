@@ -1,11 +1,14 @@
 package com.vara.mediatracker.ui.library
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -13,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -23,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
+import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBSearchItem
 import com.vara.mediatracker.data.db.AppDatabase
@@ -97,49 +102,146 @@ fun LibraryScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Search Bar + Online Mode Toggle
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        // 1. Sticky M3E Top Header matching HTML: "COLLECTION" / "Media Library" + count badge
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { 
-                    Text(if (searchOnlineTMDB) "Search TMDB online..." else "Search ${items.size} library titles...") 
-                },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (searchQuery.isNotBlank()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "COLLECTION",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 1.2.sp
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF6DDFB8))
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Media Library",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            // Interactive count pill
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+            ) {
+                Text(
+                    text = "${filteredItems.size} TITLES",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 0.5.sp,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
+        }
+
+        // 2. M3E Tactile Search Bar + Online TMDB mode pill
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        modifier = Modifier.weight(1f),
+                        decorationBox = { innerTextField ->
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = if (searchOnlineTMDB) "Search TMDB online..." else "Filter library titles...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(
+                            onClick = { searchQuery = "" },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "Clear",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
                     }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.weight(1f)
-            )
+                }
+            }
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // TMDB Global Toggle Button
-            FilledIconToggleButton(
-                checked = searchOnlineTMDB,
-                onCheckedChange = { searchOnlineTMDB = it },
-                shape = RoundedCornerShape(12.dp),
-                colors = IconButtonDefaults.filledIconToggleButtonColors(
-                    checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                    checkedContentColor = MaterialTheme.colorScheme.primary
-                )
+            // TMDB Global Toggle Button (M3E squircle)
+            Surface(
+                onClick = { searchOnlineTMDB = !searchOnlineTMDB },
+                shape = RoundedCornerShape(16.dp),
+                color = if (searchOnlineTMDB) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.size(48.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Public,
-                    contentDescription = "Search Online TMDB"
-                )
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        imageVector = Icons.Default.Public,
+                        contentDescription = "Search Online TMDB",
+                        tint = if (searchOnlineTMDB) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 
@@ -148,25 +250,26 @@ fun LibraryScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "TMDB Online Results",
+                    text = "TMDB DISCOVERY RESULTS",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.5.sp
                 )
                 if (isSearchingOnline) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                 }
             }
 
             if (onlineResults.isEmpty() && !isSearchingOnline) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = if (searchQuery.length < 2) "Type at least 2 characters to search TMDB" else "No TMDB results found",
+                        text = if (searchQuery.length < 2) "Type at least 2 characters to discover on TMDB" else "No TMDB results found",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -174,7 +277,7 @@ fun LibraryScreen(
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(3),
-                    contentPadding = PaddingValues(12.dp),
+                    contentPadding = PaddingValues(start = 14.dp, top = 8.dp, end = 14.dp, bottom = 108.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -184,11 +287,8 @@ fun LibraryScreen(
                         val title = res.title ?: res.name ?: "Untitled"
                         val inLibrary = items.any { it.id == mediaId }
 
-                        Card(
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-                            modifier = Modifier.clickable {
+                        ExpressiveCard(
+                            onClick = {
                                 if (inLibrary) {
                                     onSelectMedia(mediaId)
                                 } else {
@@ -213,7 +313,12 @@ fun LibraryScreen(
                                         onSelectMedia(mediaId)
                                     }
                                 }
-                            }
+                            },
+                            shape = RoundedCornerShape(18.dp),
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                            tonalElevation = 2.dp,
+                            pressedScale = 0.96f
                         ) {
                             Column {
                                 Box(
@@ -232,14 +337,14 @@ fun LibraryScreen(
 
                                     // Type Tag
                                     Surface(
-                                        color = Color.Black.copy(alpha = 0.7f),
-                                        shape = RoundedCornerShape(bottomEnd = 8.dp),
+                                        color = Color.Black.copy(alpha = 0.75f),
+                                        shape = RoundedCornerShape(bottomEnd = 10.dp),
                                         modifier = Modifier.align(Alignment.TopStart)
                                     ) {
                                         Text(
-                                            text = if (isMovie) "MOVIE" else "TV",
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
+                                            text = if (isMovie) "FILM" else "TV",
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Black,
                                             color = Color.White,
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
@@ -249,13 +354,13 @@ fun LibraryScreen(
                                     if (inLibrary) {
                                         Surface(
                                             color = MaterialTheme.colorScheme.primary,
-                                            shape = RoundedCornerShape(bottomStart = 8.dp),
+                                            shape = RoundedCornerShape(bottomStart = 10.dp),
                                             modifier = Modifier.align(Alignment.TopEnd)
                                         ) {
                                             Icon(
                                                 Icons.Default.Check,
                                                 contentDescription = null,
-                                                tint = Color.White,
+                                                tint = MaterialTheme.colorScheme.onPrimary,
                                                 modifier = Modifier
                                                     .padding(4.dp)
                                                     .size(12.dp)
@@ -269,7 +374,7 @@ fun LibraryScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.SemiBold,
+                                    fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                                 )
                             }
@@ -278,50 +383,61 @@ fun LibraryScreen(
                 }
             }
         } else {
-            // Local Library Filter Pills (All / Movies / TV Shows)
-            Row(
+            // 3. M3E Segmented Controls: Type Switcher (All / Movies / TV Shows)
+            ExpressiveSegmentedControl(
+                items = listOf("All", "Movies", "TV Shows"),
+                selectedItem = selectedType,
+                onItemSelected = { selectedType = it },
+                labelProvider = { it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+
+            // 4. M3E Horizontal Scrolling Status Filter Pills
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf("All", "Movies", "TV Shows").forEach { type ->
-                    FilterChip(
-                        selected = selectedType == type,
-                        onClick = { selectedType = type },
-                        label = { Text(type, fontSize = 12.sp) }
-                    )
-                }
-            }
-
-            // Status Filter Chips
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                listOf("All", "Watching", "Wishlist", "Completed", "Loved").forEach { filter ->
-                    FilterChip(
-                        selected = selectedFilter == filter,
+                val filters = listOf("All", "Watching", "Wishlist", "Completed", "Loved")
+                items(filters.size) { idx ->
+                    val filter = filters[idx]
+                    val isSelected = selectedFilter == filter
+                    Surface(
                         onClick = { selectedFilter = filter },
-                        label = { Text(filter, fontSize = 11.sp) }
-                    )
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(
+                            1.dp,
+                            if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                        )
+                    ) {
+                        Text(
+                            text = filter,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                        )
+                    }
                 }
             }
 
-            // Grid of Library Titles
+            // 5. Grid of Library Titles with M3E Asymmetric Squircle Cards
             if (filteredItems.isEmpty()) {
                 EmptyState(
                     icon = if (searchQuery.isNotBlank()) Icons.Default.SearchOff else Icons.Default.VideoLibrary,
-                    title = if (searchQuery.isNotBlank()) "No matches" else "Nothing here yet",
-                    body = if (searchQuery.isNotBlank()) "Nothing matches \"$searchQuery\". Try a different search or filter."
-                           else "No titles match this filter yet."
+                    title = if (searchQuery.isNotBlank()) "No matches found" else "Empty Collection",
+                    body = if (searchQuery.isNotBlank()) "No titles match \"$searchQuery\" in this filter."
+                           else "Add titles by searching online TMDB or sync from Mac."
                 )
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(3),
-                    contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 108.dp),
+                    contentPadding = PaddingValues(start = 14.dp, top = 8.dp, end = 14.dp, bottom = 108.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -338,10 +454,11 @@ fun LibraryScreen(
 fun LibraryPosterCard(item: MediaItemEntity, onClick: () -> Unit) {
     ExpressiveCard(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 1.dp,
-        pressedScale = 0.96f
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+        tonalElevation = 2.dp,
+        pressedScale = 0.95f
     ) {
         Column {
             Box(
@@ -356,12 +473,41 @@ fun LibraryPosterCard(item: MediaItemEntity, onClick: () -> Unit) {
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Movie,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+
+                // Status or Type Badge
+                Surface(
+                    color = Color.Black.copy(alpha = 0.70f),
+                    shape = RoundedCornerShape(bottomEnd = 10.dp),
+                    modifier = Modifier.align(Alignment.TopStart)
+                ) {
+                    Text(
+                        text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
                 }
 
                 if (item.taste == "Loved" || item.taste == "Love") {
                     Surface(
-                        color = Color(0xFFE91E63).copy(alpha = 0.9f),
-                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                        color = Color(0xFFFF2D55),
+                        shape = RoundedCornerShape(bottomStart = 10.dp),
                         modifier = Modifier.align(Alignment.TopEnd)
                     ) {
                         Icon(
@@ -376,14 +522,23 @@ fun LibraryPosterCard(item: MediaItemEntity, onClick: () -> Unit) {
                 }
             }
 
-            Text(
-                text = item.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-            )
+            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                Text(
+                    text = item.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = item.state.uppercase(),
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (item.state.equals("Watching", ignoreCase = true)) Color(0xFF6DDFB8) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    letterSpacing = 0.4.sp
+                )
+            }
         }
     }
 }

@@ -207,29 +207,63 @@ fun HomeScreen(
         )
     }
 
-    // Pre-fetch logos for visible continue watching items
-    LaunchedEffect(continueWatching, container.preferences.tmdbApiKey) {
+    // Network name cache: mediaId -> realNetworkName (initialized from persistent prefs cache)
+    val networkMap = remember {
+        mutableStateMapOf<String, String>().apply {
+            items.forEach { item ->
+                container.preferences.getCachedNetwork(item.id)?.let { put(item.id, it) }
+            }
+        }
+    }
+
+    // Force network refresh trigger state
+    var forceNetworkRefreshCount by remember { mutableIntStateOf(0) }
+
+    // Pre-fetch logos & real TMDB networks for all prominent items across Home
+    val itemsToEnrich = remember(continueWatching, heroItems, items) {
+        (continueWatching + heroItems + items.take(15)).distinctBy { it.id }
+    }
+
+    LaunchedEffect(itemsToEnrich, container.preferences.tmdbApiKey, forceNetworkRefreshCount) {
         val apiKey = container.preferences.tmdbApiKey
         if (!apiKey.isNullOrBlank()) {
             val tmdbClient = TMDBClient(apiKey)
-            for (item in continueWatching) {
-                if (logoMap.containsKey(item.id)) continue
+            for (item in itemsToEnrich) {
                 val tmdbId = MediaIds.tmdbIdOf(item.id)
                 if (tmdbId <= 0) continue
                 val isMovie = item.type.contains("Movie", ignoreCase = true)
-                val imagesRes = if (isMovie) tmdbClient.getMovieImages(tmdbId) else tmdbClient.getTVImages(tmdbId)
-                val bestLogo = imagesRes.getOrNull()?.logos?.let { logos ->
-                    logos.sortedWith(
-                        compareBy<com.vara.mediatracker.data.api.TMDBImageItem> { logo ->
-                            when (logo.iso_639_1) {
-                                "en" -> 0
-                                null -> 1
-                                else -> 2
-                            }
-                        }.thenByDescending { it.width }
-                    ).firstOrNull()?.file_path?.let { TMDBClient.buildLogoUrl(it) }
+
+                // Fetch details for network if not already cached or on force refresh
+                if (!networkMap.containsKey(item.id) || forceNetworkRefreshCount > 0) {
+                    val detailsRes = if (isMovie) tmdbClient.getMovieDetails(tmdbId) else tmdbClient.getTVDetails(tmdbId)
+                    val details = detailsRes.getOrNull()
+                    val net = if (isMovie) {
+                        details?.production_companies?.firstOrNull()?.name
+                    } else {
+                        details?.networks?.firstOrNull()?.name
+                    }
+                    if (!net.isNullOrBlank()) {
+                        networkMap[item.id] = net
+                        container.preferences.setCachedNetwork(item.id, net)
+                    }
                 }
-                logoMap[item.id] = bestLogo
+
+                // Fetch logo if not already cached
+                if (!logoMap.containsKey(item.id)) {
+                    val imagesRes = if (isMovie) tmdbClient.getMovieImages(tmdbId) else tmdbClient.getTVImages(tmdbId)
+                    val bestLogo = imagesRes.getOrNull()?.logos?.let { logos ->
+                        logos.sortedWith(
+                            compareBy<com.vara.mediatracker.data.api.TMDBImageItem> { logo ->
+                                when (logo.iso_639_1) {
+                                    "en" -> 0
+                                    null -> 1
+                                    else -> 2
+                                }
+                            }.thenByDescending { it.width }
+                        ).firstOrNull()?.file_path?.let { TMDBClient.buildLogoUrl(it) }
+                    }
+                    logoMap[item.id] = bestLogo
+                }
             }
         }
     }
@@ -363,7 +397,7 @@ fun HomeScreen(
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.background)
                 .statusBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 8.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -411,6 +445,7 @@ fun HomeScreen(
 
                 IconButton(
                     onClick = {
+                        forceNetworkRefreshCount++
                         scope.launch {
                             container.syncManager().pullFromCloud()
                         }
@@ -597,7 +632,12 @@ fun HomeScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        val heroNetwork = NetworkResolver.resolve(spotlightItem)
+                                        val realHeroNet = networkMap[spotlightItem.id]
+                                        val heroNetwork = if (!realHeroNet.isNullOrBlank()) {
+                                            NetworkResolver.resolveByName(realHeroNet, isTV = spotlightItem.type.contains("TV", ignoreCase = true))
+                                        } else {
+                                            NetworkResolver.resolve(spotlightItem)
+                                        }
                                         val heroProgress = showProgressMap[spotlightItem.id]
                                         val epTag = if (spotlightItem.type.contains("TV", ignoreCase = true)) {
                                             heroProgress?.nextEpisode?.let { " • S${it.seasonNumber} E${it.episodeNumber}" } ?: " • S1 E1"
@@ -800,7 +840,12 @@ fun HomeScreen(
                                     Spacer(modifier = Modifier.width(14.dp))
 
                                     Column(modifier = Modifier.weight(1f)) {
-                                        val netInfo = NetworkResolver.resolve(item)
+                                        val realNet = networkMap[item.id]
+                                        val netInfo = if (!realNet.isNullOrBlank()) {
+                                            NetworkResolver.resolveByName(realNet, isTV = item.type.contains("TV", ignoreCase = true))
+                                        } else {
+                                            NetworkResolver.resolve(item)
+                                        }
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -997,7 +1042,12 @@ fun HomeScreen(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        val antNet = NetworkResolver.resolve(item)
+                                        val realAntNet = networkMap[item.id]
+                                        val antNet = if (!realAntNet.isNullOrBlank()) {
+                                            NetworkResolver.resolveByName(realAntNet, isTV = item.type.contains("TV", ignoreCase = true))
+                                        } else {
+                                            NetworkResolver.resolve(item)
+                                        }
                                         Text(
                                             text = if (item.type.contains("TV", ignoreCase = true)) "${antNet.name} Original" else "${antNet.name} Theatrical",
                                             style = MaterialTheme.typography.bodySmall,

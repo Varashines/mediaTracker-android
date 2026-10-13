@@ -61,6 +61,22 @@ data class TMDBSearchResponse(
 )
 
 @Serializable
+data class TMDBNetwork(
+    val id: Int? = null,
+    val name: String,
+    val logo_path: String? = null,
+    val origin_country: String? = null
+)
+
+@Serializable
+data class TMDBProductionCompany(
+    val id: Int? = null,
+    val name: String,
+    val logo_path: String? = null,
+    val origin_country: String? = null
+)
+
+@Serializable
 data class TMDBDetailsResponse(
     val title: String? = null,
     val name: String? = null,
@@ -74,7 +90,9 @@ data class TMDBDetailsResponse(
     val genres: List<TMDBGenre>? = null,
     val number_of_seasons: Int? = null,
     val number_of_episodes: Int? = null,
-    val seasons: List<TMDBSeasonInfo>? = null
+    val seasons: List<TMDBSeasonInfo>? = null,
+    val networks: List<TMDBNetwork>? = null,
+    val production_companies: List<TMDBProductionCompany>? = null
 )
 
 @Serializable
