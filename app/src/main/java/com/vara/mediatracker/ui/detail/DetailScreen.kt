@@ -115,6 +115,26 @@ fun DetailScreen(
                                 prefs.setCachedNetwork(item.id, net)
                             }
 
+                            // Cache runtime, genres, and vote average
+                            val rt = if (isMovie) {
+                                details?.runtime
+                            } else {
+                                details?.episode_run_time?.firstOrNull { it > 0 } ?: details?.runtime
+                            }
+                            if (rt != null && rt > 0) {
+                                prefs.setCachedRuntime(item.id, rt)
+                            }
+
+                            val genreStr = details?.genres?.map { it.name }?.joinToString(", ")
+                            if (!genreStr.isNullOrBlank()) {
+                                prefs.setCachedGenres(item.id, genreStr)
+                            }
+
+                            val voteAvg = details?.vote_average
+                            if (voteAvg != null && voteAvg > 0) {
+                                prefs.setCachedVoteAverage(item.id, voteAvg.toFloat())
+                            }
+
                             // Fetch Credits (Cast)
                             val creditsRes = if (isMovie) tmdbClient.getMovieCredits(tmdbId) else tmdbClient.getTVCredits(tmdbId)
                             castMembers = creditsRes.getOrNull()?.cast?.take(15) ?: emptyList()
@@ -216,16 +236,12 @@ fun DetailScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = onBack,
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        modifier = Modifier.padding(start = 4.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 },
@@ -239,16 +255,12 @@ fun DetailScreen(
                             }
                             context.startActivity(android.content.Intent.createChooser(sendIntent, null))
                         },
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        modifier = Modifier.padding(end = 4.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
                             contentDescription = "Share",
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 },
@@ -264,68 +276,69 @@ fun DetailScreen(
                 .padding(padding),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            // M3E Hero Backdrop Artwork with Asymmetric Edge Scrim
+            // Mac-style Atmospheric Hero Header with High-Res Poster Card
             item {
-                val coverBackgroundUrl = remember(item.backdropUrl, nextUpEpisode?.stillPath, tmdbDetails?.backdrop_path) {
-                    item.backdropUrl
-                        ?: TMDBClient.buildPosterUrl(tmdbDetails?.backdrop_path)
-                        ?: nextUpEpisode?.stillPath?.let { if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/w780$it" }
-                        ?: item.posterUrl
+                val posterUrl = remember(item.posterUrl, tmdbDetails?.poster_path) {
+                    item.posterUrl ?: TMDBClient.buildPosterUrl(tmdbDetails?.poster_path)
                 }
 
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(260.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
-                    if (coverBackgroundUrl != null) {
-                        AsyncImage(
-                            model = coverBackgroundUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                        )
-                    }
-
-                    // Multi-layer Scrim Gradient
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Black.copy(alpha = 0.20f),
-                                        Color.Black.copy(alpha = 0.60f),
-                                        MaterialTheme.colorScheme.background
-                                    )
-                                )
-                            )
-                    )
-
-                    // Bottom info block inside hero
                     Row(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Bottom
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.Top
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            // Category Tag Pill
+                        // High-Res Poster Card with Bloom & Rounded Corners
+                        Surface(
+                            modifier = Modifier
+                                .width(135.dp)
+                                .height(200.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shadowElevation = 8.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                        ) {
+                            if (posterUrl != null) {
+                                AsyncImage(
+                                    model = posterUrl,
+                                    contentDescription = item.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (isTV) Icons.Default.Tv else Icons.Default.Movie,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Editorial Title, Badges, and Details
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 200.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Type Badge Pill
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                             ) {
                                 Text(
-                                    text = if (isTV) "SEASON 2 RETURNING" else "FEATURE FILM",
+                                    text = if (isTV) "TV SHOW" else "MOVIE",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     letterSpacing = 0.5.sp,
@@ -333,99 +346,268 @@ fun DetailScreen(
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(6.dp))
-
+                            // Title
                             Text(
                                 text = item.title,
-                                style = MaterialTheme.typography.headlineMedium,
+                                style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Black,
-                                color = Color.White,
-                                maxLines = 2,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                maxLines = 3,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
 
-                            val genres = tmdbDetails?.genres?.map { it.name } ?: emptyList()
-                            val releaseYear = item.releaseDate?.take(4) ?: "2026"
-                            val subtitleText = if (genres.isNotEmpty()) {
-                                "${genres.take(2).joinToString(", ")} • $releaseYear"
-                            } else {
-                                if (isTV) "TV Series • $releaseYear" else "Movie • $releaseYear"
+                            // Rating and Year Row
+                            val releaseYear = item.releaseDate?.take(4) 
+                                ?: tmdbDetails?.release_date?.take(4) 
+                                ?: tmdbDetails?.first_air_date?.take(4) 
+                                ?: "2026"
+                            val vote = tmdbDetails?.vote_average ?: prefs.getCachedVoteAverage(item.id)?.toDouble()
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (vote != null && vote > 0) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Star,
+                                            contentDescription = null,
+                                            tint = AppColors.Gold,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = String.format(Locale.US, "%.1f", vote),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = MaterialTheme.colorScheme.onBackground
+                                        )
+                                    }
+                                    Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                                }
+                                Text(
+                                    text = releaseYear,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
 
-                            Text(
-                                text = subtitleText,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.75f),
-                                maxLines = 1
-                            )
-                        }
-
-                        val vote = tmdbDetails?.vote_average
-                        if (vote != null && vote > 0) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color.Black.copy(alpha = 0.70f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = AppColors.Gold,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = String.format(Locale.US, "%.1f", vote),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        color = AppColors.Gold
-                                    )
-                                }
+                            // Genres
+                            val genres = tmdbDetails?.genres?.map { it.name }
+                                ?: prefs.getCachedGenres(item.id)?.split(",")?.map { it.trim() }
+                                ?: emptyList()
+                            if (genres.isNotEmpty()) {
+                                Text(
+                                    text = genres.take(3).joinToString(" • "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
                             }
                         }
                     }
                 }
             }
 
-            // M3E Connected Status Bar (Watching / Plan / Done)
+            // Unified macOS-Style Action Bar: Status Menu + Taste Toggle
             item {
-                val statusList = listOf("Watching", "Wishlist", "Completed")
-                val matched = statusList.firstOrNull { it.equals(item.state, ignoreCase = true) } ?: "Watching"
+                val allStates = listOf(
+                    Triple("Wishlist", "Watchlist", Icons.Default.Schedule),
+                    Triple("Active", "In Progress", Icons.Default.PlayArrow),
+                    Triple("Completed", "Completed", Icons.Default.Check),
+                    Triple("On Hold", "On Hold", Icons.Default.Pause),
+                    Triple("Dropped", "Dropped", Icons.Default.Close),
+                    Triple("Re-watching", "Re-watching", Icons.Default.Refresh)
+                )
 
-                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                    ExpressiveSegmentedControl(
-                        items = statusList,
-                        selectedItem = matched,
-                        onItemSelected = { stateName ->
-                            scope.launch {
-                                val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                db.mediaDao().updateState(item.id, stateName, now)
-                                mediaItem = item.copy(state = stateName)
-                                syncManager.pushMediaUpdate(item.id, item.type, stateName, item.taste)
-                                Toast.makeText(context, "Marked as $stateName", Toast.LENGTH_SHORT).show()
+                var statusMenuExpanded by remember { mutableStateOf(false) }
+                val currentMatchedState = allStates.firstOrNull { 
+                    it.first.equals(item.state, ignoreCase = true) || 
+                    it.second.equals(item.state, ignoreCase = true) ||
+                    (it.first == "Active" && item.state.equals("Watching", ignoreCase = true))
+                } ?: allStates[0]
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Status Picker Dropdown
+                        Box {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { statusMenuExpanded = true }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = currentMatchedState.third,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = currentMatchedState.second,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
-                        },
-                        labelProvider = { state ->
-                            when (state) {
-                                "Watching" -> "Watching"
-                                "Wishlist" -> "Plan"
-                                "Completed" -> "Done"
-                                else -> state
-                            }
-                        },
-                        iconProvider = { state ->
-                            when (state) {
-                                "Watching" -> Icons.Default.PlayArrow
-                                "Wishlist" -> Icons.Default.Bookmark
-                                "Completed" -> Icons.Default.Check
-                                else -> null
+
+                            DropdownMenu(
+                                expanded = statusMenuExpanded,
+                                onDismissRequest = { statusMenuExpanded = false }
+                            ) {
+                                allStates.forEach { (rawState, displayName, icon) ->
+                                    val isSelected = currentMatchedState.first == rawState
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = displayName,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = null,
+                                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            statusMenuExpanded = false
+                                            scope.launch {
+                                                val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                                db.mediaDao().updateState(item.id, rawState, now)
+                                                mediaItem = item.copy(state = rawState)
+                                                syncManager.pushMediaUpdate(item.id, item.type, rawState, item.taste)
+                                                Toast.makeText(context, "Marked as $displayName", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
-                    )
+
+                        // Taste Toggles (Loved / Liked / Disliked)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val isLoved = item.taste.equals("Loved", ignoreCase = true) || item.taste.equals("Love", ignoreCase = true)
+                            val isLiked = item.taste.equals("Liked", ignoreCase = true) || item.taste.equals("Like", ignoreCase = true)
+                            val isDisliked = item.taste.equals("Disliked", ignoreCase = true)
+
+                            // Loved Pill
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isLoved) AppColors.Loved.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
+                                border = if (isLoved) BorderStroke(1.dp, AppColors.Loved) else null,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val next = if (isLoved) "None" else "Loved"
+                                        scope.launch {
+                                            db.mediaDao().updateTaste(item.id, next)
+                                            mediaItem = item.copy(taste = next)
+                                            syncManager.pushMediaUpdate(item.id, item.type, item.state, next)
+                                        }
+                                    }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Favorite,
+                                        contentDescription = "Love",
+                                        tint = if (isLoved) AppColors.Loved else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
+                            // Liked Pill
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isLiked) AppColors.Liked.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
+                                border = if (isLiked) BorderStroke(1.dp, AppColors.Liked) else null,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val next = if (isLiked) "None" else "Liked"
+                                        scope.launch {
+                                            db.mediaDao().updateTaste(item.id, next)
+                                            mediaItem = item.copy(taste = next)
+                                            syncManager.pushMediaUpdate(item.id, item.type, item.state, next)
+                                        }
+                                    }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.ThumbUp,
+                                        contentDescription = "Like",
+                                        tint = if (isLiked) AppColors.Liked else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
+                            // Disliked Pill
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isDisliked) AppColors.Disliked.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant,
+                                border = if (isDisliked) BorderStroke(1.dp, AppColors.Disliked) else null,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val next = if (isDisliked) "None" else "Disliked"
+                                        scope.launch {
+                                            db.mediaDao().updateTaste(item.id, next)
+                                            mediaItem = item.copy(taste = next)
+                                            syncManager.pushMediaUpdate(item.id, item.type, item.state, next)
+                                        }
+                                    }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.ThumbDown,
+                                        contentDescription = "Dislike",
+                                        tint = if (isDisliked) AppColors.Disliked else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -439,7 +621,17 @@ fun DetailScreen(
                 ) {
                     val watchedEpCount = episodes.count { it.isWatched }
                     val totalEpCount = episodes.size
-                    val runtimeMin = tmdbDetails?.runtime ?: (if (isTV) 50 else 115)
+                    
+                    // Dynamic runtime with NA fallback
+                    val runtimeMin: Int? = if (isTV) {
+                        tmdbDetails?.episode_run_time?.firstOrNull { it > 0 }
+                            ?: episodes.firstOrNull { (it.runtime ?: 0) > 0 }?.runtime
+                            ?: tmdbDetails?.runtime
+                            ?: prefs.getCachedRuntime(item.id)
+                    } else {
+                        tmdbDetails?.runtime ?: prefs.getCachedRuntime(item.id)
+                    }
+
                     val tmdbNetName = if (isTV) {
                         tmdbDetails?.networks?.firstOrNull()?.name ?: prefs.getCachedNetwork(item.id)
                     } else {
@@ -452,7 +644,17 @@ fun DetailScreen(
                             NetworkResolver.resolve(item)
                         }
                     }
-                    val networkName = networkInfo.name
+                    val resolvedName = networkInfo.name
+                    val displayNetwork = if (resolvedName.isNotBlank() && 
+                        !resolvedName.equals("Theatrical", ignoreCase = true) && 
+                        !resolvedName.equals("FILM", ignoreCase = true) &&
+                        !resolvedName.equals("Digital", ignoreCase = true)) {
+                        resolvedName
+                    } else if (tmdbNetName?.isNotBlank() == true) {
+                        tmdbNetName
+                    } else {
+                        "NA"
+                    }
 
                     if (isTV) {
                         // Pill 1: EPISODES
@@ -475,7 +677,7 @@ fun DetailScreen(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = if (totalEpCount > 0) "$watchedEpCount / $totalEpCount" else "1 / 1",
+                                    text = if (totalEpCount > 0) "$watchedEpCount / $totalEpCount" else if (tmdbDetails?.number_of_episodes != null) "0 / ${tmdbDetails?.number_of_episodes}" else "NA",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -503,7 +705,7 @@ fun DetailScreen(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "${runtimeMin}m / ep",
+                                    text = if (runtimeMin != null && runtimeMin > 0) "${runtimeMin}m / ep" else "NA",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -531,7 +733,7 @@ fun DetailScreen(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = networkName,
+                                    text = displayNetwork,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = MaterialTheme.colorScheme.onSurface,
@@ -561,7 +763,11 @@ fun DetailScreen(
                                     letterSpacing = 0.5.sp
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
-                                val runtimeText = if (runtimeMin > 60) "${runtimeMin / 60}h ${runtimeMin % 60}m" else "${runtimeMin}m"
+                                val runtimeText = if (runtimeMin != null && runtimeMin > 0) {
+                                    if (runtimeMin > 60) "${runtimeMin / 60}h ${runtimeMin % 60}m" else "${runtimeMin}m"
+                                } else {
+                                    "NA"
+                                }
                                 Text(
                                     text = runtimeText,
                                     fontSize = 13.sp,
@@ -591,7 +797,7 @@ fun DetailScreen(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = if (!networkName.equals("Theatrical", ignoreCase = true) && !networkName.equals("FILM", ignoreCase = true)) networkName else "Studio Production",
+                                    text = displayNetwork,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = MaterialTheme.colorScheme.onSurface,
@@ -604,185 +810,7 @@ fun DetailScreen(
                 }
             }
 
-            // Rich Metadata Strip (Year, Rating, Runtime, Genres)
-            item {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Rating Pill
-                        val vote = tmdbDetails?.vote_average
-                        if (vote != null && vote > 0) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = com.vara.mediatracker.ui.theme.AppColors.Gold.copy(alpha = 0.15f)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = com.vara.mediatracker.ui.theme.AppColors.Gold,
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = String.format(Locale.US, "%.1f", vote),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        color = com.vara.mediatracker.ui.theme.AppColors.Gold
-                                    )
-                                }
-                            }
-                        }
 
-                        // Release Year Pill
-                        val date = item.releaseDate ?: tmdbDetails?.release_date ?: tmdbDetails?.first_air_date
-                        if (!date.isNullOrBlank()) {
-                            val year = date.take(4)
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant
-                            ) {
-                                Text(
-                                    text = year,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        // Runtime or Seasons
-                        val runtime = tmdbDetails?.runtime
-                        val numSeasons = tmdbDetails?.number_of_seasons
-                        val durationText = when {
-                            runtime != null && runtime > 0 -> "${runtime / 60}h ${runtime % 60}m"
-                            numSeasons != null && numSeasons > 0 -> "$numSeasons Season" + if (numSeasons > 1) "s" else ""
-                            else -> null
-                        }
-                        if (durationText != null) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant
-                            ) {
-                                Text(
-                                    text = durationText,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // Genres Row
-                    val genres = tmdbDetails?.genres
-                    if (!genres.isNullOrEmpty()) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = genres.joinToString(" • ") { it.name },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            // Controls: State & Taste Ratings with Instant Cloud Push
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text("Affinity & Taste", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            TasteButton(
-                                label = "Loved",
-                                icon = Icons.Default.Favorite,
-                                isSelected = item.taste == "Loved" || item.taste == "Love",
-                                color = com.vara.mediatracker.ui.theme.AppColors.Loved
-                            ) {
-                                val next = if (item.taste == "Loved") "None" else "Loved"
-                                scope.launch {
-                                    db.mediaDao().updateTaste(item.id, next)
-                                    mediaItem = item.copy(taste = next)
-                                    syncManager.pushMediaUpdate(item.id, item.type, item.state, next)
-                                }
-                            }
-                            TasteButton(
-                                label = "Liked",
-                                icon = Icons.Default.ThumbUp,
-                                isSelected = item.taste == "Liked" || item.taste == "Like",
-                                color = com.vara.mediatracker.ui.theme.AppColors.Liked
-                            ) {
-                                val next = if (item.taste == "Liked") "None" else "Liked"
-                                scope.launch {
-                                    db.mediaDao().updateTaste(item.id, next)
-                                    mediaItem = item.copy(taste = next)
-                                    syncManager.pushMediaUpdate(item.id, item.type, item.state, next)
-                                }
-                            }
-                            TasteButton(
-                                label = "Disliked",
-                                icon = Icons.Default.ThumbDown,
-                                isSelected = item.taste == "Disliked",
-                                color = com.vara.mediatracker.ui.theme.AppColors.Disliked
-                            ) {
-                                val next = if (item.taste == "Disliked") "None" else "Disliked"
-                                scope.launch {
-                                    db.mediaDao().updateTaste(item.id, next)
-                                    mediaItem = item.copy(taste = next)
-                                    syncManager.pushMediaUpdate(item.id, item.type, item.state, next)
-                                }
-                            }
-                        }
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-
-                        Text("Status", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        val statusList = listOf("Wishlist", "Watching", "Completed", "Dropped")
-                        val currentMatchedState = statusList.firstOrNull { it.equals(item.state, ignoreCase = true) } ?: "Wishlist"
-
-                        ExpressiveSegmentedControl(
-                            items = statusList,
-                            selectedItem = currentMatchedState,
-                            onItemSelected = { stateName ->
-                                scope.launch {
-                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                    db.mediaDao().updateState(item.id, stateName, now)
-                                    mediaItem = item.copy(state = stateName)
-                                    syncManager.pushMediaUpdate(item.id, item.type, stateName, item.taste)
-                                    Toast.makeText(context, "Marked as $stateName", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            labelProvider = { it },
-                            iconProvider = { stateName ->
-                                when (stateName) {
-                                    "Wishlist" -> Icons.Default.Bookmark
-                                    "Watching" -> Icons.Default.PlayArrow
-                                    "Completed" -> Icons.Default.Check
-                                    "Dropped" -> Icons.Default.Close
-                                    else -> null
-                                }
-                            }
-                        )
-                    }
-                }
-            }
 
             // Overview Section
             if (item.overview.isNotBlank()) {
@@ -796,73 +824,6 @@ fun DetailScreen(
                             lineHeight = 21.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    }
-                }
-            }
-
-            // Top Cast Gallery Section
-            if (castMembers.isNotEmpty()) {
-                item {
-                    Column(modifier = Modifier.padding(top = 10.dp)) {
-                        Text(
-                            text = "Top Cast",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                        )
-                        androidx.compose.foundation.lazy.LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            items(castMembers, key = { it.id }) { actor ->
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.width(72.dp)
-                                ) {
-                                    if (actor.profile_path != null) {
-                                        AsyncImage(
-                                            model = com.vara.mediatracker.data.api.TMDBClient.buildProfileUrl(actor.profile_path),
-                                            contentDescription = actor.name,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .size(60.dp)
-                                                .clip(CircleShape)
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(60.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Person,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = actor.name,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                    )
-                                    if (!actor.character.isNullOrBlank()) {
-                                        Text(
-                                            text = actor.character,
-                                            fontSize = 9.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -891,14 +852,15 @@ fun DetailScreen(
                                     Text(
                                         text = "UP NEXT",
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        letterSpacing = 0.5.sp
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = "S${nextUpEpisode.seasonNumber} E${nextUpEpisode.episodeNumber} • ${nextUpEpisode.name.ifBlank { "Episode ${nextUpEpisode.episodeNumber}" }}",
                                         style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
                                 Button(
@@ -915,7 +877,7 @@ fun DetailScreen(
                                 ) {
                                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Mark Watched", fontSize = 12.sp)
+                                    Text("Mark Watched", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -934,7 +896,7 @@ fun DetailScreen(
                         Text(
                             text = "Episodes (${episodes.count { it.isWatched }}/${episodes.size})",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.ExtraBold
                         )
                         if (isLoadingEpisodes) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -957,7 +919,7 @@ fun DetailScreen(
                                     selected = isSelected,
                                     onClick = { selectedSeason = sNum },
                                     label = {
-                                        Text("Season $sNum ($watchedCount/${sEps.size})", fontSize = 12.sp)
+                                        Text("Season $sNum ($watchedCount/${sEps.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     },
                                     leadingIcon = if (watchedCount == sEps.size && sEps.isNotEmpty()) {
                                         { Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF4CAF50)) }
@@ -1002,7 +964,7 @@ fun DetailScreen(
                                 Text(
                                     text = if (allSeasonWatched) "Mark Season Unwatched" else "Mark Season Watched",
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         }
@@ -1031,6 +993,73 @@ fun DetailScreen(
                                 }
                             }
                         )
+                    }
+                }
+            }
+
+            // Top Cast Gallery Section (Moved below episodes)
+            if (castMembers.isNotEmpty()) {
+                item {
+                    Column(modifier = Modifier.padding(top = 16.dp)) {
+                        Text(
+                            text = "Top Cast",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                        )
+                        androidx.compose.foundation.lazy.LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            items(castMembers, key = { it.id }) { actor ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.width(72.dp)
+                                ) {
+                                    if (actor.profile_path != null) {
+                                        AsyncImage(
+                                            model = com.vara.mediatracker.data.api.TMDBClient.buildProfileUrl(actor.profile_path),
+                                            contentDescription = actor.name,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(60.dp)
+                                                .clip(CircleShape)
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(60.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Person,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = actor.name,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    if (!actor.character.isNullOrBlank()) {
+                                        Text(
+                                            text = actor.character,
+                                            fontSize = 9.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

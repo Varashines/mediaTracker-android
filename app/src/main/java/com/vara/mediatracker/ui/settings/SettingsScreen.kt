@@ -3,6 +3,7 @@ package com.vara.mediatracker.ui.settings
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -59,24 +60,18 @@ private data class CredentialDraft(
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun SettingsScreen(
-    container: AppContainer
+    container: AppContainer,
+    onThemePresetChanged: (Int) -> Unit = {},
+    onThemeModeChanged: (Int) -> Unit = {},
+    onOpenSearch: (() -> Unit)? = null
 ) {
     val prefs = container.preferences
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var currentPresetIndex by remember { mutableIntStateOf(prefs.themePreset) }
+    var currentThemeMode by remember { mutableIntStateOf(prefs.themeMode) }
 
-    var showAnonKey by remember { mutableStateOf(false) }
-    var isSyncing by remember { mutableStateOf(false) }
-    var lastSyncTime by remember { mutableLongStateOf(prefs.lastSyncTimestamp) }
-
-    val lastSyncLabel = remember(lastSyncTime) {
-        if (lastSyncTime == 0L) "Never synced"
-        else "Last synced: " + SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(lastSyncTime))
-    }
-
-    // Credentials were previously written to SharedPreferences on every keystroke,
-    // costing a disk write per character. Stage them locally and commit once the user
-    // pauses typing.
+    // Credentials staging
     val draft = remember {
         mutableStateOf(
             CredentialDraft(
@@ -96,6 +91,22 @@ fun SettingsScreen(
 
     val current = draft.value
 
+    var showAnonKey by remember { mutableStateOf(false) }
+    var showSyncKey by remember { mutableStateOf(false) }
+    var showTmdbKey by remember { mutableStateOf(false) }
+    var isSyncing by remember { mutableStateOf(false) }
+    var isConfigExpanded by remember { mutableStateOf(false) }
+    var isTmdbExpanded by remember { mutableStateOf(false) }
+    var lastSyncTime by remember { mutableLongStateOf(prefs.lastSyncTimestamp) }
+
+    val isCloudConnected = current.supabaseUrl.isNotBlank() && current.syncKey.isNotBlank()
+    val isTmdbConnected = current.tmdbApiKey.isNotBlank()
+
+    val lastSyncLabel = remember(lastSyncTime) {
+        if (lastSyncTime == 0L) "Never synced"
+        else "Last synced: " + SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(lastSyncTime))
+    }
+
     // --- Background sync / notification permission ---
     var backgroundSyncEnabled by remember { mutableStateOf(SyncScheduler.isEnabled(context)) }
     var notificationsAllowed by remember {
@@ -112,8 +123,6 @@ fun SettingsScreen(
         if (granted) SyncScheduler.syncNow(context)
     }
 
-    // Reflects background runs, not just the manual button. Polled only while this
-    // screen is on the back stack, so it costs nothing once the user leaves Settings.
     var lastSyncAt by remember { mutableLongStateOf(SyncScheduler.lastSyncTimestamp(context)) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -125,8 +134,8 @@ fun SettingsScreen(
 
     val syncStatusLabel = remember(lastSyncAt, current) {
         val base = if (lastSyncAt == 0L) "Not synced yet"
-        else "Last synced " + SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(lastSyncAt))
-        if (current.supabaseUrl.isBlank() || current.syncKey.isBlank()) "$base — add credentials above"
+        else "Synced " + SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(lastSyncAt))
+        if (!isCloudConnected) "$base • Credentials required"
         else base
     }
 
@@ -135,7 +144,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // 1. Sticky M3E Top Header matching HTML: "PREFERENCES" / "Settings & Sync"
+        // Sticky Header: "PREFERENCES" / "Settings"
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -164,37 +173,59 @@ fun SettingsScreen(
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Settings & Sync",
+                    text = "Settings",
                     style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
-            // Sync Status Indicator Pill
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
+                if (onOpenSearch != null) {
+                    IconButton(
+                        onClick = onOpenSearch,
                         modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(if (current.supabaseUrl.isNotBlank() && current.syncKey.isNotBlank()) Color(0xFF6DDFB8) else Color(0xFFFFB300))
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (current.supabaseUrl.isNotBlank() && current.syncKey.isNotBlank()) "CONNECTED" else "SETUP REQ",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        letterSpacing = 0.5.sp
-                    )
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Status Pill
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (isCloudConnected) Color(0xFF6DDFB8) else Color(0xFFFFB300))
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isCloudConnected) "CONNECTED" else "STANDALONE",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
                 }
             }
         }
@@ -204,110 +235,61 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 108.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Supabase Cloud Sync Card
+            // 1. Minimal Quick Sync Action Card
             Surface(
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(18.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                tonalElevation = 2.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
+                tonalElevation = 1.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                    Icon(
-                                        imageVector = Icons.Default.CloudSync,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "Cross-Device Cloud Sync",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Supabase PostgreSQL bridge",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudSync,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Cloud Library Sync",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = lastSyncLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
-                    Text(
-                        text = "Sync your active library, watches, and smart-badge history in real time with macOS MediaTracker.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-
-                    // Project URL
-                    OutlinedTextField(
-                        value = current.supabaseUrl,
-                        onValueChange = { draft.value = draft.value.copy(supabaseUrl = it) },
-                        label = { Text("Supabase Project URL") },
-                        placeholder = { Text("https://xyz.supabase.co") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    // Anon Key
-                    OutlinedTextField(
-                        value = current.supabaseAnonKey,
-                        onValueChange = { draft.value = draft.value.copy(supabaseAnonKey = it) },
-                        label = { Text("Supabase Anon Key") },
-                        placeholder = { Text("sb_publishable_...") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        visualTransformation = if (showAnonKey) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { showAnonKey = !showAnonKey }) {
-                                Icon(
-                                    imageVector = if (showAnonKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = "Toggle key visibility"
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    // Secret Sync Key
-                    OutlinedTextField(
-                        value = current.syncKey,
-                        onValueChange = { draft.value = draft.value.copy(syncKey = it) },
-                        label = { Text("Secret Sync Key (from Mac Settings)") },
-                        placeholder = { Text("mt_sync_...") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Sync Now Button (Tactile M3E Plum Fill)
                     Button(
                         onClick = {
-                            if (current.supabaseUrl.isBlank() || current.supabaseAnonKey.isBlank() || current.syncKey.isBlank()) {
-                                Toast.makeText(context, "Please fill in all sync credentials", Toast.LENGTH_SHORT).show()
+                            if (!isCloudConnected) {
+                                isConfigExpanded = true
+                                Toast.makeText(context, "Configure credentials below first", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
                             isSyncing = true
@@ -321,164 +303,284 @@ fun SettingsScreen(
                                     val now = System.currentTimeMillis()
                                     prefs.lastSyncTimestamp = now
                                     lastSyncTime = now
-                                    Toast.makeText(context, "Sync successful! Pulled $count items", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "Sync complete ($count items)", Toast.LENGTH_SHORT).show()
                                 } else {
                                     Toast.makeText(context, "Sync failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
                                 }
                             }
                         },
                         enabled = !isSyncing,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         ),
-                        shape = RoundedCornerShape(16.dp)
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                     ) {
                         if (isSyncing) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(16.dp),
                                 color = MaterialTheme.colorScheme.onPrimary,
                                 strokeWidth = 2.dp
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Syncing with Cloud...", fontWeight = FontWeight.Bold)
                         } else {
-                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Trigger Cloud Sync", fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Sync", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-
-                    Text(
-                        text = lastSyncLabel,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    )
                 }
             }
 
-            // TMDB API Key Card
+            // 2. Minimal Collapsible Cloud Sync Credentials
             Surface(
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(18.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                tonalElevation = 2.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
+                tonalElevation = 1.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer,
-                            modifier = Modifier.size(38.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                Icon(
-                                    imageVector = Icons.Default.Movie,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(20.dp)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isConfigExpanded = !isConfigExpanded },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = Icons.Default.Key,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Supabase Credentials",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (isCloudConnected) "Configured & hidden" else "Setup required",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isCloudConnected) Color(0xFF6DDFB8) else Color(0xFFFFB300)
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "TMDB Metadata & Artwork",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "High-res posters, logos, and broadcasting networks",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                        IconButton(onClick = { isConfigExpanded = !isConfigExpanded }) {
+                            Icon(
+                                imageVector = if (isConfigExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = if (isConfigExpanded) "Collapse" else "Expand",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
 
-                    Text(
-                        text = "Used to fetch official posters, backdrops, season episodes, genuine broadcasting networks, and release air dates.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (isConfigExpanded) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                    OutlinedTextField(
-                        value = current.tmdbApiKey,
-                        onValueChange = { draft.value = draft.value.copy(tmdbApiKey = it) },
-                        label = { Text("TMDB API Key or v4 Read Token") },
-                        placeholder = { Text("Enter v3 key or Bearer token...") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            // Supabase Project URL
+                            OutlinedTextField(
+                                value = current.supabaseUrl,
+                                onValueChange = { draft.value = draft.value.copy(supabaseUrl = it) },
+                                label = { Text("Project URL", fontSize = 12.sp) },
+                                placeholder = { Text("https://xyz.supabase.co", fontSize = 12.sp) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            // Supabase Anon Key (Masked by default)
+                            OutlinedTextField(
+                                value = current.supabaseAnonKey,
+                                onValueChange = { draft.value = draft.value.copy(supabaseAnonKey = it) },
+                                label = { Text("Anon Key", fontSize = 12.sp) },
+                                placeholder = { Text("sb_publishable_...", fontSize = 12.sp) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                visualTransformation = if (showAnonKey) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { showAnonKey = !showAnonKey }) {
+                                        Icon(
+                                            imageVector = if (showAnonKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = "Toggle visibility",
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                },
+                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            // Secret Sync Key (Masked by default)
+                            OutlinedTextField(
+                                value = current.syncKey,
+                                onValueChange = { draft.value = draft.value.copy(syncKey = it) },
+                                label = { Text("Sync Secret Key", fontSize = 12.sp) },
+                                placeholder = { Text("mt_sync_...", fontSize = 12.sp) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                visualTransformation = if (showSyncKey) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { showSyncKey = !showSyncKey }) {
+                                        Icon(
+                                            imageVector = if (showSyncKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = "Toggle visibility",
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                },
+                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
                 }
             }
 
-            // Automatic Updates / Background Sync Card
+            // 3. Minimal Collapsible TMDB API Metadata
             Surface(
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(18.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                tonalElevation = 2.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
+                tonalElevation = 1.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.tertiaryContainer,
-                            modifier = Modifier.size(38.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                Icon(
-                                    imageVector = Icons.Default.Schedule,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.tertiary,
-                                    modifier = Modifier.size(20.dp)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isTmdbExpanded = !isTmdbExpanded },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = Icons.Default.Movie,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "TMDB Artwork & Network API",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (isTmdbConnected) "API key configured & masked" else "Optional key for higher limits",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isTmdbConnected) Color(0xFF6DDFB8) else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Automatic Background Sync",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Periodic workers & release radar",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                        IconButton(onClick = { isTmdbExpanded = !isTmdbExpanded }) {
+                            Icon(
+                                imageVector = if (isTmdbExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = if (isTmdbExpanded) "Collapse" else "Expand",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
 
-                    Text(
-                        text = "Keeps your library and smart badges current on a schedule so there's nothing to refresh by hand.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (isTmdbExpanded) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                        Spacer(modifier = Modifier.height(12.dp))
 
+                        OutlinedTextField(
+                            value = current.tmdbApiKey,
+                            onValueChange = { draft.value = draft.value.copy(tmdbApiKey = it) },
+                            label = { Text("TMDB API Key / Token", fontSize = 12.sp) },
+                            placeholder = { Text("Enter v3 key or Bearer token...", fontSize = 12.sp) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            visualTransformation = if (showTmdbKey) VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { showTmdbKey = !showTmdbKey }) {
+                                    Icon(
+                                        imageVector = if (showTmdbKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = "Toggle visibility",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
+            // 4. Background Sync & Periodic Workers (Clean Toggle Card)
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
+                tonalElevation = 1.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Background Worker", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                            Text(
-                                text = if (SyncScheduler.isEnabled(context)) "Every 30 minutes on Wi-Fi or Cellular" else "Paused",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = Icons.Default.Schedule,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Automatic Sync Worker",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (backgroundSyncEnabled) "Every 30m in background" else "Off",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
+
                         Switch(
                             checked = backgroundSyncEnabled,
                             onCheckedChange = {
@@ -490,26 +592,221 @@ fun SettingsScreen(
                     }
 
                     if (backgroundSyncEnabled && !notificationsAllowed) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                        Text(
-                            text = "Allow notifications to hear about live airings, premieres, and countdown reminders.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                         Button(
                             onClick = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(vertical = 6.dp)
                         ) {
-                            Text("Grant Notification Access", fontWeight = FontWeight.Bold)
+                            Text("Allow Airing Notifications", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // 5. Appearance & Theme Palette Selector (Same 6 presets as Mac App)
+            val activePreset = com.vara.mediatracker.ui.theme.ThemePresets.getPreset(currentPresetIndex)
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
+                tonalElevation = 1.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // Dark / Light / System Mode Toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = if (currentThemeMode == 2) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Appearance",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = when (currentThemeMode) {
+                                        1 -> "Dark Mode"
+                                        2 -> "Light Mode"
+                                        else -> "System Mode"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // Segmented control for Auto (0), Dark (1), Light (2)
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest
+                        ) {
+                            Row(modifier = Modifier.padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                val modes = listOf(Triple(0, "Auto", Icons.Default.BrightnessAuto), Triple(1, "Dark", Icons.Default.DarkMode), Triple(2, "Light", Icons.Default.LightMode))
+                                modes.forEach { (mode, label, icon) ->
+                                    val isSelected = currentThemeMode == mode
+                                    Surface(
+                                        onClick = {
+                                            currentThemeMode = mode
+                                            prefs.themeMode = mode
+                                            onThemeModeChanged(mode)
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(13.dp))
+                                            Text(text = label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = Icons.Default.Palette,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Theme Palette",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = activePreset.name,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // Hex badge
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest
+                        ) {
+                            Text(
+                                text = activePreset.accentHex,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    // Row of 6 color dots matching Mac (Mac, Trippy, Chill, Epic, Emotional, Sunset)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        com.vara.mediatracker.ui.theme.ThemePresets.presets.forEachIndexed { index, preset ->
+                            val isSelected = currentPresetIndex == index
+                            Surface(
+                                onClick = {
+                                    currentPresetIndex = index
+                                    onThemePresetChanged(index)
+                                },
+                                shape = CircleShape,
+                                color = preset.primaryColor,
+                                border = if (isSelected) BorderStroke(2.5.dp, MaterialTheme.colorScheme.onSurface) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                modifier = Modifier.size(if (isSelected) 36.dp else 30.dp)
+                            ) {
+                                if (isSelected) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 6. Minimal M3E Spec Footer Badge
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "MediaTracker • ${activePreset.name}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
                     Text(
-                        text = syncStatusLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                        text = "macOS Palettes • v9.6",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

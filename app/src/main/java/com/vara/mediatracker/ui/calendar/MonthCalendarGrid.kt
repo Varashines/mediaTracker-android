@@ -1,8 +1,8 @@
 package com.vara.mediatracker.ui.calendar
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,15 +10,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import com.vara.mediatracker.ui.common.springClickable
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,22 +25,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vara.mediatracker.ui.common.springClickable
 import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
 import java.util.Locale
 
 /**
- * Month grid with one consistent cell geometry.
+ * Breathable Calendar Grid matching macOS ReleaseCalendarView aesthetic.
  *
- * The header and the day rows previously used different arrangements and different
- * fixed widths (SpaceAround at 36dp vs SpaceBetween at 38dp), so the weekday letters
- * sat visibly off from the columns beneath them.
- *
- * Event density is encoded in the marker rather than just its presence. Nearly every
- * day in an actively-watched library has *something* airing, so a single dot on 28 of
- * 31 days carries no information; scaling and fading by count makes a busy day read
- * as busy instead of making every day look identical.
+ * Supports both full month view and compact single-week view (e.g. when scrolling
+ * down or toggled by the user) to keep viewport focused on release items.
  */
 @Composable
 fun MonthCalendarGrid(
@@ -56,16 +45,35 @@ fun MonthCalendarGrid(
     onSelectDate: (String?) -> Unit,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isCompactWeek: Boolean = false
 ) {
-    val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
     val dayFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
-
     val days = remember(month) { buildMonthDays(month, dayFormat) }
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        // Weekday header uses the same seven equal columns as the day rows.
-        Row(modifier = Modifier.fillMaxWidth()) {
+    // In compact week mode, find the 7-day row containing selectedDate or todayString
+    val displayWeeks = remember(days, isCompactWeek, selectedDate, todayString) {
+        val weeks = days.chunked(7)
+        if (!isCompactWeek) {
+            weeks
+        } else {
+            val targetDate = selectedDate ?: todayString
+            val matchingWeek = weeks.firstOrNull { week -> week.contains(targetDate) }
+            if (matchingWeek != null) listOf(matchingWeek) else weeks.take(1)
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize()
+    ) {
+        // Weekday header with generous breathing room
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 6.dp)
+        ) {
             listOf("M", "T", "W", "T", "F", "S", "S").forEach { label ->
                 Box(
                     modifier = Modifier.weight(1f),
@@ -74,16 +82,17 @@ fun MonthCalendarGrid(
                     Text(
                         text = label,
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 }
             }
         }
 
-        Spacer(Modifier.height(2.dp))
-
-        days.chunked(7).forEach { week ->
+        displayWeeks.forEachIndexed { index, week ->
+            if (index > 0) {
+                Spacer(Modifier.height(8.dp))
+            }
             Row(modifier = Modifier.fillMaxWidth()) {
                 week.forEach { dateString ->
                     Box(
@@ -91,7 +100,7 @@ fun MonthCalendarGrid(
                         contentAlignment = Alignment.Center
                     ) {
                         if (dateString == null) {
-                            Spacer(Modifier.size(40.dp))
+                            Spacer(Modifier.size(42.dp))
                         } else {
                             DayCell(
                                 dateString = dateString,
@@ -117,45 +126,68 @@ private fun DayCell(
     onClick: () -> Unit
 ) {
     val dayNum = dateString.takeLast(2).toIntOrNull()?.toString() ?: ""
-    val accent = MaterialTheme.colorScheme.primary
-
     val isEventDay = eventCount > 0
     val isFilledActive = isSelected || isToday
 
     Box(
         modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
+            .size(width = 42.dp, height = 44.dp)
+            .clip(RoundedCornerShape(14.dp))
             .background(
-                if (isFilledActive) MaterialTheme.colorScheme.primary
-                else Color.Transparent
+                when {
+                    isSelected -> MaterialTheme.colorScheme.primary
+                    isToday -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                    else -> Color.Transparent
+                }
             )
             .then(
-                if (!isFilledActive && isEventDay) {
-                    Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f), CircleShape)
-                } else Modifier
+                when {
+                    isSelected -> Modifier
+                    isToday -> Modifier.border(
+                        1.5.dp,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                        RoundedCornerShape(14.dp)
+                    )
+                    isEventDay -> Modifier.border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        RoundedCornerShape(14.dp)
+                    )
+                    else -> Modifier
+                }
             )
             .springClickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
             Text(
                 text = dayNum,
                 fontSize = 13.sp,
-                fontWeight = if (isFilledActive) FontWeight.ExtraBold else FontWeight.SemiBold,
-                color = if (isFilledActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                fontWeight = if (isFilledActive) FontWeight.Black else FontWeight.SemiBold,
+                color = when {
+                    isSelected -> MaterialTheme.colorScheme.onPrimary
+                    isToday -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurface
+                }
             )
             if (isEventDay) {
-                Spacer(Modifier.height(1.dp))
+                Spacer(Modifier.height(3.dp))
                 Box(
                     modifier = Modifier
-                        .size(4.dp)
+                        .size(if (eventCount >= 3) 5.dp else 4.dp)
                         .clip(CircleShape)
                         .background(
-                            if (isFilledActive) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.primary
+                            if (isSelected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.primary.copy(
+                                alpha = if (eventCount >= 3) 1f else 0.75f
+                            )
                         )
                 )
+            } else {
+                Spacer(Modifier.height(7.dp))
             }
         }
     }

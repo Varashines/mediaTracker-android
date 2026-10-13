@@ -87,6 +87,7 @@ data class TMDBDetailsResponse(
     val first_air_date: String? = null,
     val vote_average: Double? = null,
     val runtime: Int? = null,
+    val episode_run_time: List<Int>? = null,
     val genres: List<TMDBGenre>? = null,
     val number_of_seasons: Int? = null,
     val number_of_episodes: Int? = null,
@@ -240,17 +241,22 @@ class TMDBClient(
 
         fun buildPosterUrl(path: String?): String? {
             if (path.isNullOrBlank()) return null
-            return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w500$path"
+            return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w780$path"
+        }
+
+        fun buildBackdropUrl(path: String?): String? {
+            if (path.isNullOrBlank()) return null
+            return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w1280$path"
         }
 
         fun buildLogoUrl(path: String?): String? {
             if (path.isNullOrBlank()) return null
-            return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w500$path"
+            return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w780$path"
         }
 
         fun buildProfileUrl(path: String?): String? {
             if (path.isNullOrBlank()) return null
-            return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w185$path"
+            return if (path.startsWith("http")) path else "https://image.tmdb.org/t/p/w342$path"
         }
     }
 }

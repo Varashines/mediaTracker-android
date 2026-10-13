@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -76,7 +77,8 @@ data class CalendarReleaseEvent(
 fun ReleaseCalendarScreen(
     items: List<MediaItemEntity>,
     container: AppContainer,
-    onSelectMedia: (String) -> Unit
+    onSelectMedia: (String) -> Unit,
+    onOpenSearch: (() -> Unit)? = null
 ) {
     val allEpisodes by container.mediaDao.getAllEpisodesFlow().collectAsState(initial = emptyList())
 
@@ -161,7 +163,24 @@ fun ReleaseCalendarScreen(
         }
     }
 
+    // Track scrolling to shrink calendar to single-week mode when browsing releases
+    val listState = rememberLazyListState()
+    var isManuallyExpanded by remember { mutableStateOf<Boolean?>(null) }
+    
+    // Automatically collapse if scrolled down past top, unless manually overridden
+    val isCompactWeek by remember {
+        derivedStateOf {
+            val manual = isManuallyExpanded
+            if (manual != null) {
+                !manual
+            } else {
+                listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 80
+            }
+        }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
@@ -195,80 +214,155 @@ fun ReleaseCalendarScreen(
                     )
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    if (onOpenSearch != null) {
                         IconButton(
-                            onClick = {
-                                selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
-                                    add(Calendar.MONTH, -1)
-                                }
-                                selectedDateString = null
-                            },
-                            modifier = Modifier.size(30.dp)
+                            onClick = onOpenSearch,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Prev", modifier = Modifier.size(14.dp))
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(19.dp)
+                            )
                         }
-                        Text(
-                            text = SimpleDateFormat("MMM yyyy", Locale.US).format(selectedYearMonth.time).uppercase(),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 0.5.sp,
-                            modifier = Modifier.padding(horizontal = 6.dp)
-                        )
-                        IconButton(
-                            onClick = {
-                                selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
-                                    add(Calendar.MONTH, 1)
-                                }
-                                selectedDateString = null
-                            },
-                            modifier = Modifier.size(30.dp)
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = "Next", modifier = Modifier.size(12.dp))
+                            IconButton(
+                                onClick = {
+                                    selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
+                                        add(Calendar.MONTH, -1)
+                                    }
+                                    selectedDateString = null
+                                },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Prev", modifier = Modifier.size(14.dp))
+                            }
+                            Text(
+                                text = SimpleDateFormat("MMM yyyy", Locale.US).format(selectedYearMonth.time).uppercase(),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 0.5.sp,
+                                modifier = Modifier.padding(horizontal = 6.dp)
+                            )
+                            IconButton(
+                                onClick = {
+                                    selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
+                                        add(Calendar.MONTH, 1)
+                                    }
+                                    selectedDateString = null
+                                },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = "Next", modifier = Modifier.size(12.dp))
+                            }
                         }
                     }
                 }
             }
         }
 
-        // 2. Month grid Card
+        // 2. Month grid Card (with breathable spacing & collapse/expand toggle)
         item {
             Card(
                 shape = RoundedCornerShape(26.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f)
                 ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                MonthCalendarGrid(
-                    month = selectedYearMonth,
-                    todayString = todayString,
-                    eventsByDate = monthEventsMap,
-                    selectedDate = selectedDateString,
-                    onSelectDate = { selectedDateString = it },
-                    onPreviousMonth = {
-                        selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
-                            add(Calendar.MONTH, -1)
+                Column(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp)
+                ) {
+                    // Top sub-bar with Mode Toggle indicator ("Week Strip" vs "Full Month")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isCompactWeek) "WEEK OVERVIEW" else "MONTH OVERVIEW",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 1.sp
+                        )
+
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable {
+                                    isManuallyExpanded = if (isCompactWeek) true else false
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = if (isCompactWeek) "Expand" else "Shrink",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Icon(
+                                    imageVector = if (isCompactWeek) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                                    contentDescription = if (isCompactWeek) "Expand to Month" else "Shrink to Week",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
                         }
-                        selectedDateString = null
-                    },
-                    onNextMonth = {
-                        selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
-                            add(Calendar.MONTH, 1)
-                        }
-                        selectedDateString = null
-                    },
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)
-                )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    MonthCalendarGrid(
+                        month = selectedYearMonth,
+                        todayString = todayString,
+                        eventsByDate = monthEventsMap,
+                        selectedDate = selectedDateString,
+                        onSelectDate = { selectedDateString = it },
+                        onPreviousMonth = {
+                            selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
+                                add(Calendar.MONTH, -1)
+                            }
+                            selectedDateString = null
+                        },
+                        onNextMonth = {
+                            selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
+                                add(Calendar.MONTH, 1)
+                            }
+                            selectedDateString = null
+                        },
+                        isCompactWeek = isCompactWeek,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
 

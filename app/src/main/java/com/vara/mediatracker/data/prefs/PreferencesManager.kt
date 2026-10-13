@@ -27,6 +27,24 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putLong("last_sync_timestamp", value).apply()
 
     /**
+     * Theme Preset (0: Mac, 1: Trippy, 2: Chill, 3: Epic, 4: Emotional, 5: Sunset)
+     * Matches the macOS AppThemeCoordinator presets.
+     */
+    var themePreset: Int
+        get() = prefs.getInt("theme_preset", 0)
+        set(value) = prefs.edit().putInt("theme_preset", value).apply()
+
+    /**
+     * Theme Mode:
+     * 0: System / Auto
+     * 1: Dark
+     * 2: Light
+     */
+    var themeMode: Int
+        get() = prefs.getInt("theme_mode", 1) // default to dark
+        set(value) = prefs.edit().putInt("theme_mode", value).apply()
+
+    /**
      * Set once the one-shot episode key reconciliation has completed successfully.
      * The reconciler is idempotent, so a stale `false` only costs a cheap no-op scan.
      */
@@ -44,6 +62,32 @@ class PreferencesManager(context: Context) {
 
     fun setCachedNetwork(mediaId: String, networkName: String) {
         prefs.edit().putString("network_$mediaId", networkName).apply()
+    }
+
+    fun getCachedRuntime(mediaId: String): Int? {
+        val rt = prefs.getInt("runtime_$mediaId", -1)
+        return if (rt > 0) rt else null
+    }
+
+    fun setCachedRuntime(mediaId: String, runtimeMinutes: Int) {
+        prefs.edit().putInt("runtime_$mediaId", runtimeMinutes).apply()
+    }
+
+    fun getCachedGenres(mediaId: String): String? {
+        return prefs.getString("genres_$mediaId", null)
+    }
+
+    fun setCachedGenres(mediaId: String, genres: String) {
+        prefs.edit().putString("genres_$mediaId", genres).apply()
+    }
+
+    fun getCachedVoteAverage(mediaId: String): Float? {
+        val vote = prefs.getFloat("vote_$mediaId", -1f)
+        return if (vote > 0f) vote else null
+    }
+
+    fun setCachedVoteAverage(mediaId: String, vote: Float) {
+        prefs.edit().putFloat("vote_$mediaId", vote).apply()
     }
 
     /**

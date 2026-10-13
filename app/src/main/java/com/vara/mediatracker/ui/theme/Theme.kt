@@ -116,108 +116,94 @@ val AppFontFamily = FontFamily(
 val AppTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.ExtraBold,
+        fontWeight = FontWeight.Black,
         fontSize = 34.sp,
         lineHeight = 40.sp,
-        letterSpacing = (-0.8).sp,
-        color = AppColors.TextPrimary
+        letterSpacing = (-0.8).sp
     ),
     displayMedium = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.ExtraBold,
+        fontWeight = FontWeight.Black,
         fontSize = 28.sp,
         lineHeight = 34.sp,
-        letterSpacing = (-0.6).sp,
-        color = AppColors.TextPrimary
+        letterSpacing = (-0.6).sp
     ),
     headlineLarge = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.ExtraBold,
+        fontWeight = FontWeight.Black,
         fontSize = 26.sp,
         lineHeight = 32.sp,
-        letterSpacing = (-0.5).sp,
-        color = AppColors.TextPrimary
+        letterSpacing = (-0.5).sp
     ),
     headlineMedium = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.ExtraBold,
         fontSize = 22.sp,
         lineHeight = 28.sp,
-        letterSpacing = (-0.2).sp,
-        color = AppColors.TextPrimary
+        letterSpacing = (-0.2).sp
     ),
     headlineSmall = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.ExtraBold,
         fontSize = 19.sp,
         lineHeight = 25.sp,
-        letterSpacing = (-0.1).sp,
-        color = AppColors.TextPrimary
+        letterSpacing = (-0.1).sp
     ),
     titleLarge = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.ExtraBold,
         fontSize = 18.sp,
         lineHeight = 24.sp,
-        letterSpacing = (-0.2).sp,
-        color = AppColors.TextPrimary
+        letterSpacing = (-0.2).sp
     ),
     titleMedium = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 16.sp,
         lineHeight = 22.sp,
-        letterSpacing = (-0.1).sp,
-        color = AppColors.TextPrimary
+        letterSpacing = (-0.1).sp
     ),
     titleSmall = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Bold,
         fontSize = 14.sp,
-        lineHeight = 19.sp,
-        color = AppColors.TextPrimary
+        lineHeight = 19.sp
     ),
     bodyLarge = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Normal,
+        fontWeight = FontWeight.Medium,
         fontSize = 15.sp,
-        lineHeight = 22.sp,
-        color = AppColors.TextPrimary
+        lineHeight = 22.sp
     ),
     bodyMedium = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Normal,
+        fontWeight = FontWeight.Medium,
         fontSize = 13.5.sp,
-        lineHeight = 20.sp,
-        color = AppColors.TextSecondary
+        lineHeight = 20.sp
     ),
     bodySmall = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
-        lineHeight = 16.sp,
-        color = AppColors.TextTertiary
+        lineHeight = 16.sp
     ),
     labelLarge = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.ExtraBold,
         fontSize = 13.sp,
-        letterSpacing = 0.1.sp,
-        color = AppColors.TextPrimary
+        letterSpacing = 0.2.sp
     ),
     labelMedium = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Bold,
         fontSize = 12.sp,
-        letterSpacing = 0.2.sp,
-        color = AppColors.TextSecondary
+        letterSpacing = 0.2.sp
     ),
     labelSmall = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.ExtraBold,
         fontSize = 10.5.sp,
-        letterSpacing = 0.4.sp,
-        color = AppColors.TextTertiary
+        letterSpacing = 0.5.sp
     )
 )
 
@@ -237,68 +223,223 @@ val AppShapes = Shapes(
 )
 
 object ExpressiveShapes {
-    /** Asymmetrical hero card corner radii (e.g. 32dp top-left & bottom-right, 10dp opposing) */
-    val AsymHero = RoundedCornerShape(
-        topStart = 32.dp,
-        topEnd = 10.dp,
-        bottomEnd = 32.dp,
-        bottomStart = 10.dp
-    )
+    /** Uniform hero card shape */
+    val Hero = RoundedCornerShape(22.dp)
+    val AsymHero = RoundedCornerShape(22.dp)
 
-    /** Asymmetrical media card corner radii */
-    val AsymCard = RoundedCornerShape(
-        topStart = 22.dp,
-        topEnd = 8.dp,
-        bottomEnd = 22.dp,
-        bottomStart = 8.dp
-    )
+    /** Uniform media card shape */
+    val Card = RoundedCornerShape(16.dp)
+    val AsymCard = RoundedCornerShape(16.dp)
 
     /** Squircle tag / badge shape */
-    val SquircleTag = RoundedCornerShape(12.dp)
+    val SquircleTag = RoundedCornerShape(10.dp)
 
     /** Connected pill control container */
-    val PillContainer = RoundedCornerShape(26.dp)
+    val PillContainer = RoundedCornerShape(24.dp)
 
     /** Inner active squircle pill */
-    val ActivePill = RoundedCornerShape(16.dp)
+    val ActivePill = RoundedCornerShape(14.dp)
 }
 
-private val M3EPlumDark = darkColorScheme(
-    primary = Color(0xFFF4B8E4), // M3E Expressive Plum Pink
-    onPrimary = Color(0xFF4E1E48),
-    primaryContainer = Color(0xFF67355F),
-    onPrimaryContainer = Color(0xFFFFD7F3),
-    secondary = Color(0xFFDDA6CE),
-    onSecondary = Color(0xFF3F1F39),
-    secondaryContainer = Color(0xFF4B324D),
-    onSecondaryContainer = Color(0xFFFFD7F3),
-    tertiary = Color(0xFFFFD60A), // Gold star
-    onTertiary = Color.Black,
-    tertiaryContainer = Color(0xFF3E2D00),
-    onTertiaryContainer = Color(0xFFFFE082),
-    background = Color(0xFF120E13), // Deep Plum-tinted OLED
-    onBackground = Color(0xFFEBDFE8),
-    surface = Color(0xFF161217), // M3E Surface
-    onSurface = Color(0xFFEBDFE8),
-    surfaceVariant = Color(0xFF211B22), // M3E Surface Container
-    onSurfaceVariant = Color(0xFFCFC2CD),
-    surfaceContainer = Color(0xFF211B22),
-    surfaceContainerHigh = Color(0xFF2C252D),
-    surfaceContainerHighest = Color(0xFF372F38),
-    outline = Color(0xFF9B8E9B),
-    outlineVariant = Color(0xFF463C46),
-    error = Color(0xFFFF5252),
-    onError = Color.White
+data class ThemePreset(
+    val name: String,
+    val accentHex: String,
+    val darkBGHex: String,
+    val darkSurfaceHex: String,
+    val primaryColor: Color,
+    val onPrimaryColor: Color,
+    val primaryContainerColor: Color,
+    val onPrimaryContainerColor: Color,
+    val backgroundColor: Color,
+    val surfaceColor: Color,
+    val surfaceContainerHighColor: Color,
+    val surfaceContainerHighestColor: Color
 )
+
+object ThemePresets {
+    val presets = listOf(
+        // 0: Mac (Native Azure / Deep Slate)
+        ThemePreset(
+            name = "Mac",
+            accentHex = "#0A84FF",
+            darkBGHex = "#1C1D20",
+            darkSurfaceHex = "#222428",
+            primaryColor = Color(0xFF0A84FF),
+            onPrimaryColor = Color.White,
+            primaryContainerColor = Color(0xFF004080),
+            onPrimaryContainerColor = Color(0xFFD0E4FF),
+            backgroundColor = Color(0xFF131417),
+            surfaceColor = Color(0xFF1C1D20),
+            surfaceContainerHighColor = Color(0xFF24262B),
+            surfaceContainerHighestColor = Color(0xFF2D3036)
+        ),
+        // 1: Trippy (Cyan / Teal)
+        ThemePreset(
+            name = "Trippy",
+            accentHex = "#3E9DB0",
+            darkBGHex = "#1A1D1F",
+            darkSurfaceHex = "#212426",
+            primaryColor = Color(0xFF3E9DB0),
+            onPrimaryColor = Color.White,
+            primaryContainerColor = Color(0xFF1A4750),
+            onPrimaryContainerColor = Color(0xFFBCE8F0),
+            backgroundColor = Color(0xFF121516),
+            surfaceColor = Color(0xFF1A1D1F),
+            surfaceContainerHighColor = Color(0xFF222629),
+            surfaceContainerHighestColor = Color(0xFF2B3034)
+        ),
+        // 2: Chill (Nordic Emerald / Forest Green)
+        ThemePreset(
+            name = "Chill",
+            accentHex = "#67A06B",
+            darkBGHex = "#1A1E1B",
+            darkSurfaceHex = "#212621",
+            primaryColor = Color(0xFF67A06B),
+            onPrimaryColor = Color.White,
+            primaryContainerColor = Color(0xFF264828),
+            onPrimaryContainerColor = Color(0xFFC7EBC8),
+            backgroundColor = Color(0xFF121613),
+            surfaceColor = Color(0xFF1A1E1B),
+            surfaceContainerHighColor = Color(0xFF222723),
+            surfaceContainerHighestColor = Color(0xFF2A312B)
+        ),
+        // 3: Epic (Violet / Royal Purple)
+        ThemePreset(
+            name = "Epic",
+            accentHex = "#8C66A8",
+            darkBGHex = "#1B1A21",
+            darkSurfaceHex = "#222130",
+            primaryColor = Color(0xFF8C66A8),
+            onPrimaryColor = Color.White,
+            primaryContainerColor = Color(0xFF452D5A),
+            onPrimaryContainerColor = Color(0xFFEADBFA),
+            backgroundColor = Color(0xFF131218),
+            surfaceColor = Color(0xFF1B1A21),
+            surfaceContainerHighColor = Color(0xFF24222D),
+            surfaceContainerHighestColor = Color(0xFF2D2B39)
+        ),
+        // 4: Emotional (Rose Pink / Vivid Berry)
+        ThemePreset(
+            name = "Emotional",
+            accentHex = "#D06A93",
+            darkBGHex = "#1F1A1D",
+            darkSurfaceHex = "#262024",
+            primaryColor = Color(0xFFD06A93),
+            onPrimaryColor = Color.White,
+            primaryContainerColor = Color(0xFF5E273F),
+            onPrimaryContainerColor = Color(0xFFFFD9E6),
+            backgroundColor = Color(0xFF161214),
+            surfaceColor = Color(0xFF1F1A1D),
+            surfaceContainerHighColor = Color(0xFF282125),
+            surfaceContainerHighestColor = Color(0xFF33292F)
+        ),
+        // 5: Sunset (Amber / Warm Tangerine)
+        ThemePreset(
+            name = "Sunset",
+            accentHex = "#E07A48",
+            darkBGHex = "#1F1B19",
+            darkSurfaceHex = "#27221F",
+            primaryColor = Color(0xFFE07A48),
+            onPrimaryColor = Color.White,
+            primaryContainerColor = Color(0xFF663014),
+            onPrimaryContainerColor = Color(0xFFFFDBCC),
+            backgroundColor = Color(0xFF161311),
+            surfaceColor = Color(0xFF1F1B19),
+            surfaceContainerHighColor = Color(0xFF29231F),
+            surfaceContainerHighestColor = Color(0xFF342C27)
+        )
+    )
+
+    fun getPreset(index: Int): ThemePreset = presets.getOrElse(index) { presets[0] }
+}
+
+fun createColorSchemeForPreset(preset: ThemePreset, isDark: Boolean = true): ColorScheme {
+    return if (isDark) {
+        darkColorScheme(
+            primary = preset.primaryColor,
+            onPrimary = preset.onPrimaryColor,
+            primaryContainer = preset.primaryContainerColor,
+            onPrimaryContainer = preset.onPrimaryContainerColor,
+            secondary = preset.primaryColor.copy(alpha = 0.85f),
+            onSecondary = Color.White,
+            secondaryContainer = preset.primaryContainerColor.copy(alpha = 0.7f),
+            onSecondaryContainer = preset.onPrimaryContainerColor,
+            tertiary = Color(0xFFFFD60A), // Gold star
+            onTertiary = Color.Black,
+            tertiaryContainer = Color(0xFF3E2D00),
+            onTertiaryContainer = Color(0xFFFFE082),
+            background = preset.backgroundColor,
+            onBackground = Color(0xFFF2EFF4),
+            surface = preset.surfaceColor,
+            onSurface = Color(0xFFF2EFF4),
+            surfaceVariant = preset.surfaceColor,
+            onSurfaceVariant = Color(0xFFA5A0AB),
+            surfaceContainer = preset.surfaceColor,
+            surfaceContainerHigh = preset.surfaceContainerHighColor,
+            surfaceContainerHighest = preset.surfaceContainerHighestColor,
+            outline = Color(0xFF484550),
+            outlineVariant = Color(0xFF2C2A33),
+            error = Color(0xFFFF5252),
+            onError = Color.White
+        )
+    } else {
+        // Light mode adaptation: clean white/off-white background with preset-tinted surfaces & high-contrast dark text
+        lightColorScheme(
+            primary = preset.primaryColor,
+            onPrimary = Color.White,
+            primaryContainer = preset.primaryColor.copy(alpha = 0.14f),
+            onPrimaryContainer = preset.primaryColor,
+            secondary = preset.primaryColor.copy(alpha = 0.85f),
+            onSecondary = Color.White,
+            secondaryContainer = preset.primaryColor.copy(alpha = 0.10f),
+            onSecondaryContainer = Color(0xFF1B1B1E),
+            tertiary = Color(0xFFD49B00),
+            onTertiary = Color.White,
+            tertiaryContainer = Color(0xFFFFF3CD),
+            onTertiaryContainer = Color(0xFF4A3700),
+            background = Color(0xFFF7F8FA),
+            onBackground = Color(0xFF131418),
+            surface = Color(0xFFFFFFFF),
+            onSurface = Color(0xFF131418),
+            surfaceVariant = Color(0xFFEEF0F5),
+            onSurfaceVariant = Color(0xFF555966),
+            surfaceContainer = Color(0xFFF2F4F8),
+            surfaceContainerHigh = Color(0xFFE9ECF2),
+            surfaceContainerHighest = Color(0xFFDFE3EB),
+            outline = Color(0xFFC4C8D4),
+            outlineVariant = Color(0xFFE2E5ED),
+            error = Color(0xFFD32F2F),
+            onError = Color.White
+        )
+    }
+}
+
+val LocalThemePreset = staticCompositionLocalOf { 0 }
+val LocalIsDarkTheme = staticCompositionLocalOf { true }
 
 @Composable
 fun MediaTrackerTheme(
-    darkTheme: Boolean = true, // Stick strictly to dark mode as requested
+    presetIndex: Int = 0,
+    themeMode: Int = 1, // 0: System, 1: Dark, 2: Light
     content: @Composable () -> Unit
 ) {
-    CompositionLocalProvider(LocalMotion provides AppMotion) {
+    val isSystemDark = isSystemInDarkTheme()
+    val isDark = when (themeMode) {
+        1 -> true
+        2 -> false
+        else -> isSystemDark
+    }
+
+    val preset = ThemePresets.getPreset(presetIndex)
+    val colorScheme = createColorSchemeForPreset(preset, isDark = isDark)
+
+    CompositionLocalProvider(
+        LocalMotion provides AppMotion,
+        LocalThemePreset provides presetIndex,
+        LocalIsDarkTheme provides isDark
+    ) {
         MaterialTheme(
-            colorScheme = M3EPlumDark,
+            colorScheme = colorScheme,
             typography = AppTypography,
             shapes = AppShapes,
             content = content

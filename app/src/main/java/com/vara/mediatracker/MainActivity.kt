@@ -72,11 +72,27 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MediaTrackerTheme {
+            var currentThemePreset by remember { mutableIntStateOf(container.preferences.themePreset) }
+            var currentThemeMode by remember { mutableIntStateOf(container.preferences.themeMode) }
+
+            MediaTrackerTheme(
+                presetIndex = currentThemePreset,
+                themeMode = currentThemeMode
+            ) {
                 // Single app-wide clock so countdown labels stay live without each
                 // card owning its own ticker coroutine.
                 CompositionLocalProvider(LocalNowMillis provides rememberNowMillis()) {
-                    MainAppScreen(container = container)
+                    MainAppScreen(
+                        container = container,
+                        onThemePresetChanged = { newPreset ->
+                            container.preferences.themePreset = newPreset
+                            currentThemePreset = newPreset
+                        },
+                        onThemeModeChanged = { newMode ->
+                            container.preferences.themeMode = newMode
+                            currentThemeMode = newMode
+                        }
+                    )
                 }
             }
         }
@@ -86,14 +102,23 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainAppScreen(container: AppContainer) {
+fun MainAppScreen(
+    container: AppContainer,
+    onThemePresetChanged: (Int) -> Unit = {},
+    onThemeModeChanged: (Int) -> Unit = {}
+) {
     val mediaItems by container.mediaDao.getAllActiveMedia().collectAsState(initial = emptyList())
     var selectedTab by remember { mutableIntStateOf(0) }
     var activeDetailMediaId by remember { mutableStateOf<String?>(null) }
+    var isSearchActive by remember { mutableStateOf(false) }
 
-    // Hardware / gesture back closes an open detail before it exits the tab.
-    BackHandler(enabled = activeDetailMediaId != null) {
-        activeDetailMediaId = null
+    // Hardware / gesture back closes an open detail or search before exiting tab.
+    BackHandler(enabled = isSearchActive || activeDetailMediaId != null) {
+        if (activeDetailMediaId != null) {
+            activeDetailMediaId = null
+        } else if (isSearchActive) {
+            isSearchActive = false
+        }
     }
 
     if (activeDetailMediaId != null) {
@@ -101,6 +126,19 @@ fun MainAppScreen(container: AppContainer) {
             mediaId = activeDetailMediaId!!,
             container = container,
             onBack = { activeDetailMediaId = null }
+        )
+        return
+    }
+
+    if (isSearchActive) {
+        com.vara.mediatracker.ui.search.SearchScreen(
+            items = mediaItems,
+            container = container,
+            onSelectMedia = {
+                activeDetailMediaId = it
+                isSearchActive = false
+            },
+            onBack = { isSearchActive = false }
         )
         return
     }
@@ -146,19 +184,26 @@ fun MainAppScreen(container: AppContainer) {
                         container = container,
                         onSelectMedia = { activeDetailMediaId = it },
                         onOpenCalendar = { selectedTab = 1 },
-                        onOpenSearch = { selectedTab = 2 }
+                        onOpenSearch = { isSearchActive = true }
                     )
                     1 -> ReleaseCalendarScreen(
                         items = mediaItems,
                         container = container,
-                        onSelectMedia = { activeDetailMediaId = it }
+                        onSelectMedia = { activeDetailMediaId = it },
+                        onOpenSearch = { isSearchActive = true }
                     )
                     2 -> LibraryScreen(
                         items = mediaItems,
                         container = container,
-                        onSelectMedia = { activeDetailMediaId = it }
+                        onSelectMedia = { activeDetailMediaId = it },
+                        onOpenSearch = { isSearchActive = true }
                     )
-                    else -> SettingsScreen(container = container)
+                    else -> SettingsScreen(
+                        container = container,
+                        onThemePresetChanged = onThemePresetChanged,
+                        onThemeModeChanged = onThemeModeChanged,
+                        onOpenSearch = { isSearchActive = true }
+                    )
                 }
             }
         }

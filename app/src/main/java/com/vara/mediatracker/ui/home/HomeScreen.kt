@@ -82,6 +82,8 @@ fun HomeScreen(
         .collectAsState(initial = emptyList())
 
     var activeFocusSection by remember { mutableStateOf<HomeFocusSection?>(null) }
+    var activeSectionListTitle by remember { mutableStateOf<String?>(null) }
+    var activeSectionListItems by remember { mutableStateOf<List<MediaItemEntity>>(emptyList()) }
 
     // Map showId -> List<EpisodeEntity>
     val episodesByShow = remember(allEpisodes) {
@@ -365,6 +367,26 @@ fun HomeScreen(
             ?: items.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
     }
 
+    if (activeSectionListTitle != null) {
+        androidx.activity.compose.BackHandler {
+            activeSectionListTitle = null
+            activeSectionListItems = emptyList()
+        }
+        com.vara.mediatracker.ui.common.SectionListScreen(
+            title = activeSectionListTitle!!,
+            items = activeSectionListItems,
+            showProgressMap = showProgressMap,
+            smartBadgesMap = smartBadgesMap,
+            networkMap = networkMap,
+            onSelectMedia = onSelectMedia,
+            onBack = {
+                activeSectionListTitle = null
+                activeSectionListItems = emptyList()
+            }
+        )
+        return
+    }
+
     if (items.isEmpty()) {
         EmptyState(
             icon = Icons.Default.CloudSync,
@@ -429,15 +451,15 @@ fun HomeScreen(
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 IconButton(
-                    onClick = onOpenCalendar,
+                    onClick = onOpenSearch,
                     modifier = Modifier
                         .size(40.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.CalendarMonth,
-                        contentDescription = "Radar",
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search",
                         tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(19.dp)
                     )
@@ -465,50 +487,6 @@ fun HomeScreen(
             }
         }
 
-        // Top Search Bar (M3E squircle container with tactile spring click)
-        Surface(
-            onClick = onOpenSearch,
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp)
-                .height(48.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Search",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = "Search movies, series, or library...",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                    modifier = Modifier.weight(1f)
-                )
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest
-                ) {
-                    Text(
-                        text = "FIND",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                    )
-                }
-            }
-        }
 
         // --- Section membership, all decided by HomeEligibility (ported macOS rules) ---
         val resumeItems = remember(items, episodesByShow, smartBadgesMap, todayDateStr) {
@@ -588,7 +566,8 @@ fun HomeScreen(
                                         )
                                 )
 
-                                // Floating Live Airing Expressive Pill Badge
+                                // Floating Dynamic Spotlight Pill Badge
+                                val heroBadge = smartBadgesMap[spotlightItem.id]?.badge?.label ?: spotlightItem.state.uppercase()
                                 Row(
                                     modifier = Modifier
                                         .align(Alignment.TopStart)
@@ -608,11 +587,11 @@ fun HomeScreen(
                                                 modifier = Modifier
                                                     .size(7.dp)
                                                     .clip(CircleShape)
-                                                    .background(Color.White)
+                                                    .background(MaterialTheme.colorScheme.onPrimary)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
-                                                text = "AIRING TONIGHT",
+                                                text = heroBadge,
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = MaterialTheme.colorScheme.onPrimary,
@@ -655,20 +634,22 @@ fun HomeScreen(
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
                                         }
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = Icons.Default.Star,
-                                                contentDescription = null,
-                                                tint = AppColors.Gold,
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(3.dp))
-                                            Text(
-                                                text = "9.3",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = AppColors.Gold
-                                            )
+                                        if (!spotlightItem.taste.isNullOrBlank() && spotlightItem.taste != "None") {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Star,
+                                                    contentDescription = null,
+                                                    tint = AppColors.Gold,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                                Text(
+                                                    text = spotlightItem.taste.uppercase(),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = AppColors.Gold
+                                                )
+                                            }
                                         }
                                     }
 
@@ -777,7 +758,14 @@ fun HomeScreen(
                             text = "View All (${resumeItems.size})",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    activeSectionListTitle = "Continue Watching"
+                                    activeSectionListItems = resumeItems
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
 
@@ -820,6 +808,7 @@ fun HomeScreen(
                                                     .background(MaterialTheme.colorScheme.surfaceVariant)
                                             )
                                         }
+                                        val isTvItem = item.type.contains("TV", ignoreCase = true)
                                         Surface(
                                             color = Color.Black.copy(alpha = 0.75f),
                                             shape = RoundedCornerShape(4.dp),
@@ -827,13 +816,24 @@ fun HomeScreen(
                                                 .align(Alignment.BottomEnd)
                                                 .padding(4.dp)
                                         ) {
-                                            Text(
-                                                text = "4K",
-                                                fontSize = 8.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White,
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                            )
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isTvItem) Icons.Default.Tv else Icons.Default.Movie,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(9.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(2.dp))
+                                                Text(
+                                                    text = if (isTvItem) "TV" else "FILM",
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White
+                                                )
+                                            }
                                         }
                                     }
 
@@ -891,30 +891,31 @@ fun HomeScreen(
 
                                         Spacer(modifier = Modifier.height(6.dp))
 
-                                        // Progress bar
-                                        val watched = progress?.watchedEpisodes ?: 1
-                                        val total = progress?.totalEpisodes ?: 1
-                                        val ratio = (watched.toFloat() / total.toFloat()).coerceIn(0f, 1f)
-
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            LinearProgressIndicator(
-                                                progress = { ratio },
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(5.dp)
-                                                    .clip(RoundedCornerShape(3.dp)),
-                                                color = MaterialTheme.colorScheme.primary,
-                                                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                                            )
-                                            Text(
-                                                text = "$watched/$total",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                        // Progress bar for TV shows with episodes
+                                        val total = progress?.totalEpisodes ?: 0
+                                        val watched = progress?.watchedEpisodes ?: 0
+                                        if (total > 0) {
+                                            val ratio = (watched.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                LinearProgressIndicator(
+                                                    progress = { ratio },
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(5.dp)
+                                                        .clip(RoundedCornerShape(3.dp)),
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                                                )
+                                                Text(
+                                                    text = "$watched/$total",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
                                         }
                                     }
 
@@ -969,8 +970,11 @@ fun HomeScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
+                            val currentMonthYear = remember {
+                                SimpleDateFormat("MMM yyyy", Locale.US).format(Date())
+                            }
                             Text(
-                                text = "Oct 2026",
+                                text = currentMonthYear,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -1014,7 +1018,38 @@ fun HomeScreen(
                                                 )
                                             }
 
-                                            // Countdown Badge Pill
+                                            // Dynamic Countdown / Release Date Badge Pill
+                                            val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+                                            val airDate = if (key != null) {
+                                                HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
+                                            } else {
+                                                item.releaseDate?.take(10)
+                                            }
+                                            val badgeText = remember(airDate, todayDateStr) {
+                                                if (airDate != null) {
+                                                    try {
+                                                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                                                        val target = sdf.parse(airDate)
+                                                        val today = sdf.parse(todayDateStr)
+                                                        if (target != null && today != null) {
+                                                            val diffDays = ((target.time - today.time) / (1000 * 60 * 60 * 24)).toInt()
+                                                            when {
+                                                                diffDays == 0 -> "TODAY"
+                                                                diffDays == 1 -> "TOMORROW"
+                                                                diffDays in 2..30 -> "IN $diffDays DAYS"
+                                                                else -> SimpleDateFormat("MMM d", Locale.US).format(target).uppercase()
+                                                            }
+                                                        } else {
+                                                            airDate
+                                                        }
+                                                    } catch (_: Exception) {
+                                                        airDate
+                                                    }
+                                                } else {
+                                                    "COMING SOON"
+                                                }
+                                            }
+
                                             Surface(
                                                 color = AppColors.Gold,
                                                 shape = RoundedCornerShape(8.dp),
@@ -1023,7 +1058,7 @@ fun HomeScreen(
                                                     .padding(6.dp)
                                             ) {
                                                 Text(
-                                                    text = "IN 4 DAYS",
+                                                    text = badgeText,
                                                     fontSize = 9.sp,
                                                     fontWeight = FontWeight.Black,
                                                     color = Color.Black,
@@ -1070,18 +1105,35 @@ fun HomeScreen(
                 Column {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        SectionHeader(
-                            title = "Coming Soon",
-                            accent = AppColors.Gold,
-                            horizontalPadding = 0.dp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SectionHeader(
+                                title = "Coming Soon",
+                                accent = AppColors.Gold,
+                                horizontalPadding = 0.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Next 30 days",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
                         Text(
-                            text = "Next 30 days",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "View All (${comingSoonItems.size})",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    activeSectionListTitle = "Coming Soon"
+                                    activeSectionListItems = comingSoonItems
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                     Spacer(modifier = Modifier.height(12.dp))
@@ -1108,10 +1160,31 @@ fun HomeScreen(
         if (recentlyAddedItems.isNotEmpty()) {
             item {
                 Column {
-                    SectionHeader(
-                        title = "Recently Added",
-                        accent = AppColors.TextSecondary
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SectionHeader(
+                            title = "Recently Added",
+                            accent = AppColors.TextSecondary,
+                            horizontalPadding = 0.dp
+                        )
+
+                        Text(
+                            text = "View All (${recentlyAddedItems.size})",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    activeSectionListTitle = "Recently Added"
+                                    activeSectionListItems = recentlyAddedItems
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(12.dp))
                     SnapRail {
                         items(recentlyAddedItems, key = { it.id }) { item ->
@@ -1235,14 +1308,15 @@ fun ContinueWatchingBackdropCard(
                 } else {
                     Surface(
                         color = Color.Black.copy(alpha = 0.72f),
-                        shape = RoundedCornerShape(6.dp)
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text(
-                            text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.9f),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        Icon(
+                            imageVector = if (item.type.contains("TV", ignoreCase = true)) Icons.Default.Tv else Icons.Default.Movie,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier
+                                .padding(horizontal = 5.dp, vertical = 3.dp)
+                                .size(13.dp)
                         )
                     }
                 }
@@ -1442,17 +1516,18 @@ fun HomePosterCard(
             } else {
                 Surface(
                     color = Color.Black.copy(alpha = 0.72f),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(6.dp)
                 ) {
-                    Text(
-                        text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.9f),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    Icon(
+                        imageVector = if (item.type.contains("TV", ignoreCase = true)) Icons.Default.Tv else Icons.Default.Movie,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier
+                            .padding(horizontal = 5.dp, vertical = 3.dp)
+                            .size(13.dp)
                     )
                 }
             }
