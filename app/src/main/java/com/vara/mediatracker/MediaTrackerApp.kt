@@ -30,6 +30,7 @@ class MediaTrackerApp : Application() {
             // independent of the cloud sync one.
             SyncScheduler.scheduleBadgeRefresh(this)
             SyncScheduler.scheduleEpisodeEnrichment(this)
+            SyncScheduler.scheduleMetadataEnrichment(this)
         }
 
         appScope.launch {

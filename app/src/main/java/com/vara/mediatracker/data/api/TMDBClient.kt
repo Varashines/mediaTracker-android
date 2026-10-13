@@ -89,6 +89,7 @@ data class TMDBDetailsResponse(
     val runtime: Int? = null,
     val episode_run_time: List<Int>? = null,
     val genres: List<TMDBGenre>? = null,
+    val original_language: String? = null,
     val number_of_seasons: Int? = null,
     val number_of_episodes: Int? = null,
     val seasons: List<TMDBSeasonInfo>? = null,
@@ -144,6 +145,28 @@ data class TMDBImagesResponse(
     val logos: List<TMDBImageItem> = emptyList(),
     val backdrops: List<TMDBImageItem> = emptyList(),
     val posters: List<TMDBImageItem> = emptyList()
+)
+
+@Serializable
+data class TMDBWatchProvider(
+    val provider_id: Int? = null,
+    val provider_name: String,
+    val logo_path: String? = null,
+    val display_priority: Int = 0
+)
+
+@Serializable
+data class TMDBWatchRegion(
+    val link: String? = null,
+    val flatrate: List<TMDBWatchProvider>? = null,
+    val rent: List<TMDBWatchProvider>? = null,
+    val buy: List<TMDBWatchProvider>? = null
+)
+
+@Serializable
+data class TMDBWatchProvidersResponse(
+    val id: Int? = null,
+    val results: Map<String, TMDBWatchRegion> = emptyMap()
 )
 
 /**
@@ -222,6 +245,18 @@ class TMDBClient(
             applyAuth()
             parameter("query", query)
             parameter("include_adult", false)
+        }.body()
+    }
+
+    suspend fun getMovieWatchProviders(id: Int): Result<TMDBWatchProvidersResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/movie/$id/watch/providers") {
+            applyAuth()
+        }.body()
+    }
+
+    suspend fun getTVWatchProviders(id: Int): Result<TMDBWatchProvidersResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/tv/$id/watch/providers") {
+            applyAuth()
         }.body()
     }
 

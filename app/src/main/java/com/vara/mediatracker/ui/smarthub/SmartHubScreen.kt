@@ -5,7 +5,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -28,17 +27,25 @@ import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.ExpressiveCard
+import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
 import com.vara.mediatracker.ui.common.SectionListScreen
 import com.vara.mediatracker.ui.common.rememberTodayDateString
+import com.vara.mediatracker.ui.discovery.DiscoveryHubContent
 import com.vara.mediatracker.ui.home.TVShowProgress
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 
+/** The two hubs hosted by the Smart tab. */
+private enum class HubTab(val label: String) {
+    SMART("Smart"),
+    DISCOVER("Discover")
+}
+
 /**
- * Smart Hub: the macOS smart categories as a grid of live-count cards.
+ * Hub screen hosting the Smart collections and the Discovery Hub behind one tab.
  *
- * Counts and membership are computed from data Android already stores — persisted
- * badges, state, taste, release dates, plus the cached runtimes for Quick Bites — so
- * there is no schema or sync work behind this screen.
+ * Smart counts and membership come from data Android already stores (persisted badges,
+ * state, taste, release dates, cached runtimes); Discovery aggregates the facet columns
+ * backfilled by MetadataEnrichmentWorker. Both open the shared SectionListScreen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +55,7 @@ fun SmartHubScreen(
     onSelectMedia: (String) -> Unit,
     onOpenSearch: (() -> Unit)? = null
 ) {
+    var hubTab by remember { mutableStateOf(HubTab.SMART) }
     var activeTitle by remember { mutableStateOf<String?>(null) }
     var activeItems by remember { mutableStateOf<List<MediaItemEntity>>(emptyList()) }
 
@@ -107,6 +115,11 @@ fun SmartHubScreen(
         }
     }
 
+    fun openSection(title: String, filtered: List<MediaItemEntity>) {
+        activeTitle = title
+        activeItems = filtered
+    }
+
     val title = activeTitle
     if (title != null) {
         BackHandler { activeTitle = null; activeItems = emptyList() }
@@ -154,7 +167,7 @@ fun SmartHubScreen(
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Smart Hub",
+                    text = if (hubTab == HubTab.SMART) "Smart Hub" else "Discovery Hub",
                     style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
@@ -179,24 +192,43 @@ fun SmartHubScreen(
             }
         }
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, top = 6.dp, end = 16.dp, bottom = 108.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(SmartCategory.values().toList(), key = { it.name }) { category ->
-                val members = memberships[category].orEmpty()
-                SmartCategoryCard(
-                    category = category,
-                    count = members.size,
-                    onClick = {
-                        activeTitle = category.title
-                        activeItems = members
-                    }
-                )
+        ExpressiveSegmentedControl(
+            items = HubTab.values().toList(),
+            selectedItem = hubTab,
+            onItemSelected = { hubTab = it },
+            labelProvider = { it.label },
+            iconProvider = { if (it == HubTab.SMART) Icons.Default.AutoAwesome else Icons.Default.Explore },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 2.dp)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        when (hubTab) {
+            HubTab.SMART -> LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 108.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(SmartCategory.values().toList(), key = { it.name }) { category ->
+                    val members = memberships[category].orEmpty()
+                    SmartCategoryCard(
+                        category = category,
+                        count = members.size,
+                        onClick = { openSection(category.title, members) }
+                    )
+                }
             }
+
+            HubTab.DISCOVER -> DiscoveryHubContent(
+                items = items,
+                badgeRows = badgeRows,
+                smartBadgesMap = smartBadgesMap,
+                onSelectNode = { sectionTitle, filtered -> openSection(sectionTitle, filtered) }
+            )
         }
     }
 }

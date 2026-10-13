@@ -36,6 +36,8 @@ object SyncScheduler {
     const val BADGE_ONESHOT_WORK_NAME = "mediatracker-badge-refresh-now"
     const val ENRICHMENT_WORK_NAME = "mediatracker-episode-enrichment"
     const val ENRICHMENT_ONESHOT_WORK_NAME = "mediatracker-episode-enrichment-now"
+    const val METADATA_WORK_NAME = "mediatracker-metadata-enrichment"
+    const val METADATA_ONESHOT_WORK_NAME = "mediatracker-metadata-enrichment-now"
     const val ONESHOT_WORK_NAME = "mediatracker-immediate-sync"
 
     /** WorkManager's floor for periodic work is 15 minutes. */
@@ -66,6 +68,7 @@ object SyncScheduler {
             schedulePeriodic(context)
             scheduleBadgeRefresh(context)
             scheduleEpisodeEnrichment(context)
+            scheduleMetadataEnrichment(context)
         } else {
             cancelAll(context)
         }
@@ -151,6 +154,37 @@ object SyncScheduler {
         )
     }
 
+    /**
+     * Discovery-facet backfill schedule (genres / language / studios / providers).
+     * Separate cadence from the episode backfill; both are TMDB-bound.
+     */
+    fun scheduleMetadataEnrichment(context: Context) {
+        val request = PeriodicWorkRequestBuilder<MetadataEnrichmentWorker>(
+            METADATA_INTERVAL_HOURS, TimeUnit.HOURS
+        )
+            .setConstraints(networkConstraints())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
+            .addTag(TAG_METADATA)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            METADATA_WORK_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            request
+        )
+    }
+
+    /** Runs one discovery-facet backfill pass immediately. */
+    fun enrichMetadataNow(context: Context) {
+        val request = OneTimeWorkRequestBuilder<MetadataEnrichmentWorker>()
+            .setConstraints(networkConstraints())
+            .addTag(TAG_METADATA)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            METADATA_ONESHOT_WORK_NAME, ExistingWorkPolicy.REPLACE, request
+        )
+    }
+
     /** Runs a badge pass immediately — used on install and after a cloud sync. */
     fun refreshBadgesNow(context: Context) {
         val request = OneTimeWorkRequestBuilder<BadgeUpdateWorker>()
@@ -169,6 +203,8 @@ object SyncScheduler {
             cancelUniqueWork(BADGE_ONESHOT_WORK_NAME)
             cancelUniqueWork(ENRICHMENT_WORK_NAME)
             cancelUniqueWork(ENRICHMENT_ONESHOT_WORK_NAME)
+            cancelUniqueWork(METADATA_WORK_NAME)
+            cancelUniqueWork(METADATA_ONESHOT_WORK_NAME)
         }
     }
 
@@ -225,11 +261,13 @@ object SyncScheduler {
         if (now - last < throttleMs) return
         prefs(context).edit().putLong(KEY_LAST_FOREGROUND_ENRICH, now).apply()
         enrichEpisodesNow(context)
+        enrichMetadataNow(context)
     }
 
     const val TAG_SYNC = "mediatracker-sync"
     const val TAG_BADGE = "mediatracker-badge"
     const val TAG_ENRICH = "mediatracker-enrichment"
+    const val TAG_METADATA = "mediatracker-metadata"
 
     /** Not user-visible; lets Settings show a "last synced" time for background runs. */
     fun recordSyncCompletion(context: Context, atMillis: Long = System.currentTimeMillis()) {
@@ -248,4 +286,7 @@ object SyncScheduler {
 
     /** Episode backfill is heavier, so it runs at most every 30 minutes on foreground. */
     private const val FOREGROUND_ENRICH_THROTTLE_MS = 30 * 60 * 1000L
+
+    /** Discovery-facet backfill cadence. */
+    private const val METADATA_INTERVAL_HOURS = 2L
 }

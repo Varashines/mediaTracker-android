@@ -81,6 +81,21 @@ interface MediaDao {
     )
     suspend fun getShowsNeedingEpisodeEnrichment(limit: Int): List<MediaItemEntity>
 
+    /**
+     * Titles missing Discovery Hub facets (genres / language / providers). One pass
+     * fills them from TMDB details + watch providers; once set the row drops out.
+     */
+    @Query(
+        """
+        SELECT * FROM media_items
+        WHERE isSoftDeleted = 0
+          AND (genres IS NULL OR language IS NULL OR providers IS NULL)
+        ORDER BY lastInteractionDate DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun getItemsNeedingMetadataEnrichment(limit: Int): List<MediaItemEntity>
+
     // --- Used by EpisodeKeyReconciler to rewrite legacy primary keys ---
     @Query("SELECT * FROM tv_episodes")
     suspend fun getAllEpisodesList(): List<EpisodeEntity>
@@ -146,7 +161,7 @@ interface BadgeDao {
         MediaBadgeEntity::class,
         TVSeasonEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

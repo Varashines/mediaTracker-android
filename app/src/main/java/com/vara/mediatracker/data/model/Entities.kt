@@ -36,6 +36,16 @@ data class MediaItemEntity(
      * macOS keeps this as `cachedNetwork`.
      */
     val network: String? = null,
+    /**
+     * Discovery facets, comma-joined where a title has several. Backed by
+     * `MetadataEnrichmentWorker` so the Discovery Hub can aggregate without extra
+     * network calls at read time. macOS stores these as `cachedGenres`,
+     * `cachedLanguage`, and the Network/Genre/Language/Provider entities.
+     */
+    val genres: String? = null,
+    val language: String? = null,
+    val studios: String? = null,
+    val providers: String? = null,
     val isSoftDeleted: Boolean = false,
     val lastInteractionDate: String? = null,
     val lastStateChangeDate: String? = null,

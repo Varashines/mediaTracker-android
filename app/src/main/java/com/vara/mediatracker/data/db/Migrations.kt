@@ -93,6 +93,19 @@ object Migrations {
         }
     }
 
+    /**
+     * v7 -> v8: discovery facets for the Discovery Hub (genres, language, studios,
+     * watch providers). Stored as plain columns and backfilled by the metadata worker.
+     */
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `media_items` ADD COLUMN `genres` TEXT")
+            db.execSQL("ALTER TABLE `media_items` ADD COLUMN `language` TEXT")
+            db.execSQL("ALTER TABLE `media_items` ADD COLUMN `studios` TEXT")
+            db.execSQL("ALTER TABLE `media_items` ADD COLUMN `providers` TEXT")
+        }
+    }
+
     val ALL: Array<Migration> =
-        arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+        arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
 }
