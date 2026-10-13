@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.vara.mediatracker.ui.common.SnapRail
+import com.vara.mediatracker.ui.common.AppToast
+import com.vara.mediatracker.ui.common.FlatCard
+import com.vara.mediatracker.ui.common.MonoLabel
+import com.vara.mediatracker.ui.common.ProgressLine
 import com.vara.mediatracker.ui.common.SectionViewAllLink
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -48,6 +52,7 @@ import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.ui.common.rememberTodayDateString
 import com.vara.mediatracker.ui.common.springClickable
+import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import java.text.SimpleDateFormat
@@ -493,11 +498,9 @@ fun HomeScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         resumeItems.take(3).forEach { item ->
                             val progress = showProgressMap[item.id]
-                            ExpressiveCard(
+                            FlatCard(
                                 onClick = { onSelectMedia(item.id) },
                                 shape = ExpressiveShapes.Card,
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -506,12 +509,13 @@ fun HomeScreen(
                                         .padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Thumbnail with 4K badge
+                                    // 74px poster thumb, matching the prototype row.
                                     Box(
                                         modifier = Modifier
-                                            .width(58.dp)
-                                            .height(76.dp)
-                                            .clip(RoundedCornerShape(16.dp))
+                                            .width(56.dp)
+                                            .height(74.dp)
+                                            .clip(ExpressiveShapes.SquircleSm)
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                                     ) {
                                         val poster = item.posterUrl ?: item.backdropUrl
                                         if (poster != null) {
@@ -521,39 +525,6 @@ fun HomeScreen(
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier.fillMaxSize()
                                             )
-                                        } else {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                            )
-                                        }
-                                        val isTvItem = item.type.contains("TV", ignoreCase = true)
-                                        Surface(
-                                            color = Color.Black.copy(alpha = 0.75f),
-                                            shape = RoundedCornerShape(4.dp),
-                                            modifier = Modifier
-                                                .align(Alignment.BottomEnd)
-                                                .padding(4.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (isTvItem) Icons.Default.Tv else Icons.Default.Movie,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(9.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(2.dp))
-                                                Text(
-                                                    text = if (isTvItem) "TV" else "FILM",
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Color.White
-                                                )
-                                            }
                                         }
                                     }
 
@@ -566,23 +537,31 @@ fun HomeScreen(
                                         } else {
                                             NetworkResolver.resolve(item)
                                         }
+
+                                        val daysLeftLabel = remember(progress?.nextAiringDate) {
+                                            val d = progress?.nextAiringDate ?: return@remember "READY"
+                                            val target = runCatching { java.time.LocalDate.parse(d.take(10)) }.getOrNull()
+                                                ?: return@remember "READY"
+                                            val days = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), target)
+                                            when {
+                                                days < 0L -> "READY"
+                                                days == 0L -> "AIRING TODAY"
+                                                days == 1L -> "1 day left"
+                                                days <= 7L -> "$days days left"
+                                                else -> "READY"
+                                            }
+                                        }
+
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
+                                            MonoLabel(text = netInfo.name, color = MaterialTheme.colorScheme.primary)
                                             Text(
-                                                text = netInfo.name.uppercase(),
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                letterSpacing = 0.5.sp
-                                            )
-                                            Text(
-                                                text = "READY",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = sem.success
+                                                text = daysLeftLabel,
+                                                style = AppTextStyles.MonoLabel,
+                                                color = if (daysLeftLabel == "READY") sem.success else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
 
@@ -609,52 +588,47 @@ fun HomeScreen(
                                             overflow = TextOverflow.Ellipsis
                                         )
 
-                                        Spacer(modifier = Modifier.height(6.dp))
-
-                                        // Progress bar for TV shows with episodes
                                         val total = progress?.totalEpisodes ?: 0
                                         val watched = progress?.watchedEpisodes ?: 0
                                         if (total > 0) {
-                                            val ratio = (watched.toFloat() / total.toFloat()).coerceIn(0f, 1f)
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                LinearProgressIndicator(
-                                                    progress = { ratio },
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .height(5.dp)
-                                                        .clip(RoundedCornerShape(3.dp)),
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                                                )
-                                                Text(
-                                                    text = "$watched/$total",
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            ProgressLine(
+                                                fraction = watched.toFloat() / total.toFloat(),
+                                                label = "$watched/$total"
+                                            )
                                         }
                                     }
 
                                     Spacer(modifier = Modifier.width(10.dp))
 
-                                    // Quick check episode button
-                                    IconButton(
-                                        onClick = { onSelectMedia(item.id) },
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                    // Quick check: marks the next episode watched.
+                                    val nextEp = progress?.nextEpisode
+                                    Surface(
+                                        onClick = {
+                                            if (nextEp == null) {
+                                                onSelectMedia(item.id)
+                                            } else {
+                                                scope.launch {
+                                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                                    container.mediaDao.setEpisodeWatched(nextEp.uniqueId, true, now)
+                                                    val showTmdbId = MediaIds.tmdbIdOf(nextEp.showId).toString()
+                                                    container.syncManager().pushEpisodeWatch(showTmdbId, nextEp.seasonNumber, nextEp.episodeNumber, true)
+                                                    AppToast.show("Marked S${nextEp.seasonNumber} E${nextEp.episodeNumber} watched")
+                                                }
+                                            }
+                                        },
+                                        shape = ExpressiveShapes.SquircleSm,
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        modifier = Modifier.size(40.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = "Done",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Mark next episode watched",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
@@ -324,7 +325,7 @@ fun LibraryScreen(
                                     )
                                     container.mediaDao.upsertMedia(newItem)
                                     syncManager.pushMediaUpdate(mediaId, newItem.type, "Wishlist", "None")
-                                    Toast.makeText(context, "Added '$title' to Wishlist", Toast.LENGTH_SHORT).show()
+                                    AppToast.show("Added '$title' to Wishlist")
                                     onSelectMedia(mediaId)
                                 }
                             }

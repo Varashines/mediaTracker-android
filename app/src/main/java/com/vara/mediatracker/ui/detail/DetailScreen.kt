@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -645,7 +646,7 @@ fun DetailScreen(
                                 db.mediaDao().updateState(item.id, rawState, now)
                                 mediaItem = item.copy(state = rawState)
                                 syncManager.pushMediaUpdate(item.id, item.type, rawState, item.taste)
-                                Toast.makeText(context, "Marked as $displayName", Toast.LENGTH_SHORT).show()
+                                AppToast.show("Marked as $displayName")
                             }
                         },
                         onDismiss = { statusPickerOpen = false }

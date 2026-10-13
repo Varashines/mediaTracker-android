@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import com.vara.mediatracker.ui.common.AppDestinations
+import com.vara.mediatracker.ui.common.AppToastHost
 import com.vara.mediatracker.ui.common.ExpressiveNavigationBar
 import com.vara.mediatracker.ui.theme.AppMotion as motion
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -261,5 +262,13 @@ fun MainAppScreen(
                 Overlay.None -> Unit
             }
         }
+
+        // Top toast overlay, above everything (tabs + detail/search).
+        AppToastHost(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 8.dp)
+        )
     }
 }

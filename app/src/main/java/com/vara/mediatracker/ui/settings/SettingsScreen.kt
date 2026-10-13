@@ -41,6 +41,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.data.sync.CloudSyncManager
+import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.Dispatchers
@@ -315,7 +316,7 @@ fun SettingsScreen(
                         onClick = {
                             if (!isCloudConnected) {
                                 isConfigExpanded = true
-                                Toast.makeText(context, "Configure credentials below first", Toast.LENGTH_SHORT).show()
+                                AppToast.show("Configure credentials below first")
                                 return@Button
                             }
                             // Preview the diff first (macOS SyncImpact), then confirm.
@@ -327,7 +328,7 @@ fun SettingsScreen(
                                     if (result.isSuccess) {
                                         pendingImpact = result.getOrNull()
                                     } else {
-                                        Toast.makeText(context, "Preview failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+                                        AppToast.show("Preview failed: ${result.exceptionOrNull()?.localizedMessage}")
                                     }
                                 }
                             }
@@ -994,9 +995,9 @@ fun SettingsScreen(
                                 prefs.lastSyncTimestamp = now
                                 lastSyncTime = now
                                 val s = result.getOrNull()
-                                Toast.makeText(context, "Synced — ↑ ${s?.outgoing ?: 0} sent, ↓ ${s?.incoming ?: 0} received", Toast.LENGTH_SHORT).show()
+                                AppToast.show("Synced — ↑ ${s?.outgoing ?: 0} sent, ↓ ${s?.incoming ?: 0} received")
                             } else {
-                                Toast.makeText(context, "Sync failed: ${result.exceptionOrNull()?.localizedMessage}", Toast.LENGTH_LONG).show()
+                                AppToast.show("Sync failed: ${result.exceptionOrNull()?.localizedMessage}")
                             }
                         }
                     }

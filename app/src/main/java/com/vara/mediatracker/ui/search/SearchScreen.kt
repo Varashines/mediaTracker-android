@@ -54,6 +54,7 @@ import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBSearchItem
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import kotlinx.coroutines.Dispatchers
@@ -259,9 +260,7 @@ fun SearchScreen(
                                         container.syncManager().pushMediaUpdate(
                                             mediaId, newItem.type, "Wishlist", "None"
                                         )
-                                        Toast.makeText(
-                                            context, "Added \"$title\"", Toast.LENGTH_SHORT
-                                        ).show()
+                                        AppToast.show("Added \"$title\"")
                                         onSelectMedia(mediaId)
                                     }
                                 }
