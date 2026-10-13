@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
-import androidx.activity.compose.BackHandler
 import com.vara.mediatracker.data.db.EpisodeKeyReconciler
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.common.LocalNowMillis
@@ -102,6 +102,24 @@ class MainActivity : ComponentActivity() {
 }
 
 
+/**
+ * Full-screen screens pushed on top of the tab tree.
+ *
+ * [depth] orders them for the push/pop transition direction (a deeper screen slides in
+ * from the right; popping slides back to the right).
+ */
+private sealed interface Overlay {
+    data object None : Overlay
+    data object Search : Overlay
+    data class Detail(val id: String) : Overlay
+}
+
+private fun Overlay.depth(): Int = when (this) {
+    Overlay.None -> 0
+    Overlay.Search -> 1
+    is Overlay.Detail -> 2
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainAppScreen(
@@ -110,109 +128,137 @@ fun MainAppScreen(
     onThemeModeChanged: (Int) -> Unit = {}
 ) {
     val mediaItems by container.mediaDao.getAllActiveMedia().collectAsState(initial = emptyList())
-    var selectedTab by remember { mutableIntStateOf(0) }
-    var activeDetailMediaId by remember { mutableStateOf<String?>(null) }
-    var isSearchActive by remember { mutableStateOf(false) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var activeDetailMediaId by rememberSaveable { mutableStateOf<String?>(null) }
+    var isSearchActive by rememberSaveable { mutableStateOf(false) }
 
-    // Hardware / gesture back closes an open detail or search before exiting tab.
-    BackHandler(enabled = isSearchActive || activeDetailMediaId != null) {
-        if (activeDetailMediaId != null) {
-            activeDetailMediaId = null
-        } else if (isSearchActive) {
-            isSearchActive = false
-        }
+    val overlay: Overlay = when {
+        activeDetailMediaId != null -> Overlay.Detail(activeDetailMediaId!!)
+        isSearchActive -> Overlay.Search
+        else -> Overlay.None
     }
 
-    if (activeDetailMediaId != null) {
-        DetailScreen(
-            mediaId = activeDetailMediaId!!,
-            container = container,
-            onBack = { activeDetailMediaId = null }
-        )
-        return
-    }
-
-    if (isSearchActive) {
-        com.vara.mediatracker.ui.search.SearchScreen(
-            items = mediaItems,
-            container = container,
-            onSelectMedia = {
-                activeDetailMediaId = it
-                isSearchActive = false
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            bottomBar = {
+                ExpressiveNavigationBar(
+                    selectedIndex = selectedTab,
+                    onSelect = { selectedTab = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                )
             },
-            onBack = { isSearchActive = false }
-        )
-        return
-    }
-
-    Scaffold(
-        bottomBar = {
-            ExpressiveNavigationBar(
-                selectedIndex = selectedTab,
-                onSelect = { selectedTab = it },
+            containerColor = MaterialTheme.colorScheme.background
+        ) { paddingValues ->
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-        ) {
-            // Direction-aware slide so moving between tabs feels spatial rather than a
-            // crossfade, which made the whole screen feel like it was reloading.
-            AnimatedContent(
-                targetState = selectedTab,
-                transitionSpec = {
-                    val forward = targetState > initialState
-                    val offset = if (forward) 1 else -1
-                    (slideInHorizontally(tween(motion.EMPHASIZED, easing = motion.emphasizedEase)) { width ->
-                        offset * width / 6
-                    } + fadeIn(tween(motion.STANDARD)))
-                        .togetherWith(
-                            slideOutHorizontally(tween(motion.EMPHASIZED, easing = motion.emphasizedEase)) { width ->
-                                -offset * width / 6
-                            } + fadeOut(tween(motion.FAST))
+                    .fillMaxSize()
+            ) {
+                // Direction-aware slide so moving between tabs feels spatial rather than a
+                // crossfade, which made the whole screen feel like it was reloading.
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        val forward = targetState > initialState
+                        val offset = if (forward) 1 else -1
+                        (slideInHorizontally(
+                            animationSpec = tween(motion.STANDARD, easing = motion.emphasizedEase)
+                        ) { width -> offset * width / 8 } + fadeIn(tween(motion.STANDARD)))
+                            .togetherWith(
+                                slideOutHorizontally(
+                                    animationSpec = tween(motion.FAST, easing = motion.standardEase)
+                                ) { width -> -offset * width / 8 } + fadeOut(tween(motion.FAST))
+                            )
+                    },
+                    label = "tabTransition"
+                ) { tab ->
+                    when (tab) {
+                        0 -> HomeScreen(
+                            items = mediaItems,
+                            container = container,
+                            onSelectMedia = { activeDetailMediaId = it },
+                            onOpenCalendar = { selectedTab = 2 },
+                            onOpenSearch = { isSearchActive = true }
                         )
-                },
-                label = "tabTransition"
-            ) { tab ->
-                when (tab) {
-                    0 -> HomeScreen(
-                        items = mediaItems,
-                        container = container,
-                        onSelectMedia = { activeDetailMediaId = it },
-                        onOpenCalendar = { selectedTab = 2 },
-                        onOpenSearch = { isSearchActive = true }
-                    )
-                    1 -> com.vara.mediatracker.ui.smarthub.SmartHubScreen(
-                        items = mediaItems,
-                        container = container,
-                        onSelectMedia = { activeDetailMediaId = it },
-                        onOpenSearch = { isSearchActive = true }
-                    )
-                    2 -> ReleaseCalendarScreen(
-                        items = mediaItems,
-                        container = container,
-                        onSelectMedia = { activeDetailMediaId = it },
-                        onOpenSearch = { isSearchActive = true }
-                    )
-                    3 -> LibraryScreen(
-                        items = mediaItems,
-                        container = container,
-                        onSelectMedia = { activeDetailMediaId = it },
-                        onOpenSearch = { isSearchActive = true }
-                    )
-                    else -> SettingsScreen(
-                        container = container,
-                        onThemePresetChanged = onThemePresetChanged,
-                        onThemeModeChanged = onThemeModeChanged,
-                        onOpenSearch = { isSearchActive = true }
-                    )
+                        1 -> com.vara.mediatracker.ui.smarthub.SmartHubScreen(
+                            items = mediaItems,
+                            container = container,
+                            onSelectMedia = { activeDetailMediaId = it },
+                            onOpenSearch = { isSearchActive = true }
+                        )
+                        2 -> ReleaseCalendarScreen(
+                            items = mediaItems,
+                            container = container,
+                            onSelectMedia = { activeDetailMediaId = it },
+                            onOpenSearch = { isSearchActive = true }
+                        )
+                        3 -> LibraryScreen(
+                            items = mediaItems,
+                            container = container,
+                            onSelectMedia = { activeDetailMediaId = it },
+                            onOpenSearch = { isSearchActive = true }
+                        )
+                        else -> SettingsScreen(
+                            container = container,
+                            onThemePresetChanged = onThemePresetChanged,
+                            onThemeModeChanged = onThemeModeChanged,
+                            onOpenSearch = { isSearchActive = true }
+                        )
+                    }
                 }
+            }
+        }
+
+        // Detail / Search are pushed as a full-screen overlay instead of replacing the tab
+        // tree. Replacing it disposed the tab and every `remember`ed navigation value in
+        // it, so returning from a detail reset the Hub to its Smart sub-tab and dropped an
+        // open section list. Keeping the tab composed preserves all of that, and the
+        // overlay naturally covers the bottom bar.
+        AnimatedContent(
+            targetState = overlay,
+            transitionSpec = {
+                val forward = targetState.depth() > initialState.depth()
+                val incoming = if (forward) 1 else -1
+                (slideInHorizontally(
+                    animationSpec = tween(motion.STANDARD, easing = motion.emphasizedEase)
+                ) { width -> incoming * width } + fadeIn(tween(motion.STANDARD)))
+                    .togetherWith(
+                        slideOutHorizontally(
+                            animationSpec = tween(motion.STANDARD, easing = motion.standardEase)
+                        ) { width -> -incoming * width } + fadeOut(tween(motion.FAST))
+                    )
+            },
+            label = "overlayTransition",
+            modifier = Modifier.fillMaxSize()
+        ) { ov ->
+            when (ov) {
+                Overlay.None -> Box(modifier = Modifier.fillMaxSize())
+                Overlay.Search -> com.vara.mediatracker.ui.search.SearchScreen(
+                    items = mediaItems,
+                    container = container,
+                    onSelectMedia = {
+                        activeDetailMediaId = it
+                        isSearchActive = false
+                    },
+                    onBack = { isSearchActive = false }
+                )
+                is Overlay.Detail -> DetailScreen(
+                    mediaId = ov.id,
+                    container = container,
+                    onBack = { activeDetailMediaId = null }
+                )
+            }
+        }
+
+        // Registered after the tab content, so it wins back-priority while an overlay is
+        // open; the tab's own handlers (section lists) resume once it closes.
+        BackHandler(enabled = overlay != Overlay.None) {
+            when (overlay) {
+                is Overlay.Detail -> activeDetailMediaId = null
+                Overlay.Search -> isSearchActive = false
+                Overlay.None -> Unit
             }
         }
     }

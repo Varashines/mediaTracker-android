@@ -36,13 +36,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -318,14 +318,15 @@ val MediaTrackerMark: ImageVector = ImageVector.Builder(
 /**
  * Bottom navigation destinations.
  *
- * Home / Smart Hub / Radar / Library / Settings. The Smart Hub surfaces the macOS
- * smart categories (Release Radar, Premiere Radar, Catch Up, Loved, Binge, Quick
- * Bites, Shelved, Released This Week); Radar stays a top-level view of upcoming
- * releases because it is time-sensitive rather than a place you browse.
+ * Home / Hub / Radar / Library / Settings. The Hub hosts the macOS smart categories
+ * (Release Radar, Premiere Radar, Catch Up, Loved, Binge, Quick Bites, Shelved,
+ * Released This Week) and the Discovery Hub behind one tab, so it reads as a single
+ * place you browse rather than a "Smart" mode. Radar stays a top-level view of
+ * upcoming releases because it is time-sensitive rather than a place you browse.
  */
 val AppDestinations = listOf(
     NavDestination("Home", Icons.Default.Home),
-    NavDestination("Smart", Icons.Default.AutoAwesome),
+    NavDestination("Hub", Icons.Default.Widgets),
     NavDestination("Radar", Icons.Default.CalendarMonth),
     NavDestination("Library", Icons.Default.VideoLibrary),
     NavDestination("Settings", Icons.Default.Settings)
