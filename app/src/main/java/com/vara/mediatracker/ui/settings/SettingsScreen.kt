@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.BuildConfig
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import android.Manifest
 import android.content.pm.PackageManager
@@ -820,7 +821,7 @@ fun SettingsScreen(
                     }
 
                     Text(
-                        text = "macOS Palettes • v9.6",
+                        text = "macOS Palettes • v${BuildConfig.VERSION_NAME}",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

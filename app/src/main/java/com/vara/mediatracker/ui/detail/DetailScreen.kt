@@ -1131,29 +1131,6 @@ fun DetailScreen(
 }
 
 @Composable
-fun TasteButton(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    isSelected: Boolean,
-    color: Color,
-    onClick: () -> Unit
-) {
-    ElevatedButton(
-        onClick = onClick,
-        colors = ButtonDefaults.elevatedButtonColors(
-            containerColor = if (isSelected) color else MaterialTheme.colorScheme.surface,
-            contentColor = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
-        ),
-        shape = RoundedCornerShape(10.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-    ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(label, fontSize = 12.sp)
-    }
-}
-
-@Composable
 fun EpisodeCard(
     episode: EpisodeEntity,
     onToggleWatched: (Boolean) -> Unit

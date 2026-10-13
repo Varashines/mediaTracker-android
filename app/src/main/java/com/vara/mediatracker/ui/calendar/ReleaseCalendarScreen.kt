@@ -117,7 +117,6 @@ fun ReleaseCalendarScreen(
 
     // Compute month boundaries
     val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
-    val dayOfMonthFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
 
     // Precalculate all events in current month
     val monthEventsMap = remember(items, allEpisodes, selectedYearMonth) {
@@ -129,27 +128,6 @@ fun ReleaseCalendarScreen(
             year = cal.get(Calendar.YEAR),
             month = cal.get(Calendar.MONTH)
         ).groupBy { it.dateString }
-    }
-
-    // Days in current month grid
-    val daysInMonth = remember(selectedYearMonth) {
-        val cal = selectedYearMonth.clone() as Calendar
-        cal.set(Calendar.DAY_OF_MONTH, 1)
-        val maxDay = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
-        val firstDayOfWeek = cal.get(Calendar.DAY_OF_WEEK) // 1 = Sunday, 2 = Monday...
-
-        // Shift so Monday is index 0
-        val offset = (firstDayOfWeek - Calendar.MONDAY + 7) % 7
-
-        val list = mutableListOf<String?>()
-        repeat(offset) { list.add(null) }
-
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        for (day in 1..maxDay) {
-            cal.set(Calendar.DAY_OF_MONTH, day)
-            list.add(sdf.format(cal.time))
-        }
-        list
     }
 
     // Events for selected date or whole month
@@ -352,18 +330,6 @@ fun ReleaseCalendarScreen(
                         eventsByDate = monthEventsMap,
                         selectedDate = selectedDateString,
                         onSelectDate = { selectedDateString = it },
-                        onPreviousMonth = {
-                            selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
-                                add(Calendar.MONTH, -1)
-                            }
-                            selectedDateString = null
-                        },
-                        onNextMonth = {
-                            selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
-                                add(Calendar.MONTH, 1)
-                            }
-                            selectedDateString = null
-                        },
                         isCompactWeek = isCompactWeek,
                         modifier = Modifier.fillMaxWidth()
                     )

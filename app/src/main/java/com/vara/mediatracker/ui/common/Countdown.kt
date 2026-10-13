@@ -230,7 +230,7 @@ fun formatReleaseDay(dateString: String?, todayMillis: Long = System.currentTime
             it.set(Calendar.SECOND, 0)
             it.set(Calendar.MILLISECOND, 0)
         }
-        return (a.timeInMillis - b.timeInMillis) / 86_400_000L
+        return (a.timeInMillis - b.timeInMillis) / DAY_MILLIS
     }
 
     return when (daysBetween()) {

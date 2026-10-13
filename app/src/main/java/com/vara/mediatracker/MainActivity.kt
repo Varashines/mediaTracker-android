@@ -97,8 +97,8 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -207,104 +207,5 @@ fun MainAppScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-fun LibraryGrid(items: List<MediaItemEntity>) {
-    if (items.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    imageVector = Icons.Default.CloudSync,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "No titles yet",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "Pair your Sync Key in Settings to import your library",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-            }
-        }
-    } else {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            contentPadding = PaddingValues(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(items, key = { it.id }) { item ->
-                MediaPosterCard(item = item)
-            }
-        }
-    }
-}
-
-@Composable
-fun MediaPosterCard(item: MediaItemEntity) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f / 3f)
-                    .background(Color.DarkGray)
-            ) {
-                if (item.posterUrl != null) {
-                    AsyncImage(
-                        model = item.posterUrl,
-                        contentDescription = item.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                // Taste Badge
-                if (item.taste == "Loved") {
-                    Surface(
-                        color = Color.Red.copy(alpha = 0.85f),
-                        shape = RoundedCornerShape(bottomStart = 8.dp),
-                        modifier = Modifier.align(Alignment.TopEnd)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = "Loved",
-                            tint = Color.White,
-                            modifier = Modifier
-                                .padding(4.dp)
-                                .size(14.dp)
-                        )
-                    }
-                }
-            }
-
-            Text(
-                text = item.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun SettingsPlaceholder() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Cross-Device Cloud Sync Settings")
     }
 }

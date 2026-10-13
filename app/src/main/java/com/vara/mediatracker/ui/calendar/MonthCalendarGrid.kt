@@ -48,8 +48,6 @@ fun MonthCalendarGrid(
     eventsByDate: Map<String, List<CalendarReleaseEvent>>,
     selectedDate: String?,
     onSelectDate: (String?) -> Unit,
-    onPreviousMonth: () -> Unit,
-    onNextMonth: () -> Unit,
     modifier: Modifier = Modifier,
     isCompactWeek: Boolean = false
 ) {
