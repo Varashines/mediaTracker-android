@@ -140,27 +140,33 @@ class SmartCategoryMatcherTest {
         assertFalse(matches(SmartCategory.QUICK_BITES, movie.copy(taste = "Dislike"), runtime = 80))
     }
 
-    // ---------- on this week (cross-year week match) ----------
+    // ---------- on this week (literal current week) ----------
 
     @Test
-    fun `on this week matches a prior-year release falling in the current week`() {
-        // 2026-08-20 is a Thursday; its week includes Aug 20. A 2020 release on the
-        // same month/day lands in that week but a different year.
-        val releasedLastYears = item(type = "Movie", releaseDate = "2020-08-20")
-        assertTrue(matches(SmartCategory.ON_THIS_WEEK, releasedLastYears))
+    fun `on this week matches a release inside the current week`() {
+        // 2026-08-20 is a Thursday; the same year and week.
+        val released = item(type = "Movie", releaseDate = "2026-08-20")
+        assertTrue(matches(SmartCategory.ON_THIS_WEEK, released))
     }
 
     @Test
-    fun `on this week ignores same-year releases`() {
-        // The macOS rule has a deliberate cross-year guard.
-        val thisYear = item(type = "Movie", releaseDate = "2026-08-20")
-        assertFalse(matches(SmartCategory.ON_THIS_WEEK, thisYear))
+    fun `on this week matches any day of the current week`() {
+        // now = 2026-08-20 (Thursday). Aug 18 (Tue) and Aug 21 (Fri) fall in its week
+        // under either a Sunday-first or Monday-first locale, so this stays portable.
+        assertTrue(matches(SmartCategory.ON_THIS_WEEK, item(type = "Movie", releaseDate = "2026-08-18")))
+        assertTrue(matches(SmartCategory.ON_THIS_WEEK, item(type = "Movie", releaseDate = "2026-08-21")))
     }
 
     @Test
     fun `on this week ignores releases outside the current week`() {
-        val farOff = item(type = "Movie", releaseDate = "2020-08-03")
-        assertFalse(matches(SmartCategory.ON_THIS_WEEK, farOff))
+        assertFalse(matches(SmartCategory.ON_THIS_WEEK, item(type = "Movie", releaseDate = "2026-08-03")))
+        assertFalse(matches(SmartCategory.ON_THIS_WEEK, item(type = "Movie", releaseDate = "2026-09-01")))
+    }
+
+    @Test
+    fun `on this week ignores prior-year releases`() {
+        // The macOS cross-year behaviour was dropped: only the current week counts.
+        assertFalse(matches(SmartCategory.ON_THIS_WEEK, item(type = "Movie", releaseDate = "2020-08-20")))
     }
 
     @Test
