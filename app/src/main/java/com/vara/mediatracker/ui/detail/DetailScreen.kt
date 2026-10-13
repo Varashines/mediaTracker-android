@@ -43,9 +43,6 @@ import com.vara.mediatracker.data.model.TVSeasonEntity
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import kotlinx.coroutines.launch
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TmdbResponseCache
 import com.vara.mediatracker.ui.common.ChipTone
@@ -77,7 +74,6 @@ fun DetailScreen(
     var statusPickerOpen by remember { mutableStateOf(false) }
     // TMDB title-treatment logo (the stylized wordmark), shown in the hero when available.
     var titleLogoUrl by remember { mutableStateOf<String?>(null) }
-    val hazeState = remember { HazeState() }
     val showIdKey = MediaIds.tvShowKey(mediaId)
     val episodes by db.mediaDao().getEpisodesForShow(showIdKey)
         .collectAsState(initial = emptyList())
@@ -365,30 +361,15 @@ fun DetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                ),
-                modifier = Modifier.hazeEffect(state = hazeState) {
-                    blurRadius = 40.dp
-                }
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { padding ->
-        // Start the content at y=0 (ignoring the Scaffold's top inset) so the hero sits
-        // UNDER the top bar — that is what the Haze blur samples. No top content padding,
-        // or the hero would be pushed below the bar and the blur would sample background.
-        val layoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .hazeSource(state = hazeState)
-                .padding(
-                    PaddingValues(
-                        start = padding.calculateStartPadding(layoutDirection),
-                        top = 0.dp,
-                        end = padding.calculateEndPadding(layoutDirection),
-                        bottom = padding.calculateBottomPadding()
-                    )
-                ),
+                .padding(padding),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
             // Full-bleed backdrop hero with the title overlaid, per the prototype.
