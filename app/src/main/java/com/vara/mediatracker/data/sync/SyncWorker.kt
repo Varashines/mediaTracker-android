@@ -50,6 +50,11 @@ class SyncWorker(
         // raised against the new state within the same pass.
         BadgeComputer.recompute(container.database)
 
+        // Kick the backfills so new/changed titles get their Discovery facets and air
+        // times without waiting for the next periodic tick.
+        SyncScheduler.enrichMetadataNow(applicationContext)
+        SyncScheduler.enrichEpisodesNow(applicationContext)
+
         ReleaseNotifier(applicationContext, container).announceNewReleases()
 
         return Result.success(workDataOf(KEY_ITEMS to count, KEY_SKIPPED to false))

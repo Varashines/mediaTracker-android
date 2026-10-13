@@ -258,10 +258,17 @@ object SyncScheduler {
         if (!isEnabled(context)) return
         val now = System.currentTimeMillis()
         val last = prefs(context).getLong(KEY_LAST_FOREGROUND_ENRICH, 0L)
-        if (now - last < throttleMs) return
-        prefs(context).edit().putLong(KEY_LAST_FOREGROUND_ENRICH, now).apply()
-        enrichEpisodesNow(context)
-        enrichMetadataNow(context)
+        if (now - last >= throttleMs) {
+            prefs(context).edit().putLong(KEY_LAST_FOREGROUND_ENRICH, now).apply()
+            enrichEpisodesNow(context)
+        }
+        // Discovery facets fill faster than the episode backfill: the hub looks empty
+        // until the whole library is enriched, so this runs on a much shorter throttle.
+        val lastMeta = prefs(context).getLong(KEY_LAST_FOREGROUND_METADATA, 0L)
+        if (now - lastMeta >= FOREGROUND_METADATA_THROTTLE_MS) {
+            prefs(context).edit().putLong(KEY_LAST_FOREGROUND_METADATA, now).apply()
+            enrichMetadataNow(context)
+        }
     }
 
     const val TAG_SYNC = "mediatracker-sync"
@@ -280,12 +287,16 @@ object SyncScheduler {
     private const val KEY_BACKGROUND_SYNC_ENABLED = "background_sync_enabled"
     private const val KEY_LAST_FOREGROUND_SYNC = "last_foreground_sync"
     private const val KEY_LAST_FOREGROUND_ENRICH = "last_foreground_enrich"
+    private const val KEY_LAST_FOREGROUND_METADATA = "last_foreground_metadata"
     private const val KEY_LAST_SYNC = "last_sync"
     private const val PREFS_NAME = "media_tracker_sync_prefs"
     private const val FOREGROUND_THROTTLE_MS = 5 * 60 * 1000L
 
     /** Episode backfill is heavier, so it runs at most every 30 minutes on foreground. */
     private const val FOREGROUND_ENRICH_THROTTLE_MS = 30 * 60 * 1000L
+
+    /** Discovery facets: short throttle so the hub fills in quickly. */
+    private const val FOREGROUND_METADATA_THROTTLE_MS = 5 * 60 * 1000L
 
     /** Discovery-facet backfill cadence. */
     private const val METADATA_INTERVAL_HOURS = 2L

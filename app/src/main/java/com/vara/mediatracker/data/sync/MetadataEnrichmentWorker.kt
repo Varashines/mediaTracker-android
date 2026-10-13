@@ -128,10 +128,10 @@ class MetadataEnrichmentWorker(
     companion object {
         const val KEY_ITEMS = "items"
 
-        /** Items per pass; a few passes cover a normal library. */
-        const val BATCH_SIZE = 40
+        /** Items per pass; a normal library converges in a couple of passes. */
+        const val BATCH_SIZE = 150
 
-        /** Concurrent TMDB calls, kept well inside the rate limit. */
-        const val MAX_CONCURRENT = 4
+        /** Concurrent TMDB calls, kept inside the rate limit. */
+        const val MAX_CONCURRENT = 6
     }
 }
