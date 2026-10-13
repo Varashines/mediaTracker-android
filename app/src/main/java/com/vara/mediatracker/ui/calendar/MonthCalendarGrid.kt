@@ -1,7 +1,7 @@
 package com.vara.mediatracker.ui.calendar
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.vara.mediatracker.ui.common.springClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
@@ -146,43 +147,41 @@ private fun DayCell(
     val dayNum = dateString.takeLast(2).toIntOrNull()?.toString() ?: ""
     val accent = MaterialTheme.colorScheme.primary
 
+    val isEventDay = eventCount > 0
+    val isFilledActive = isSelected || isToday
+
     Box(
         modifier = Modifier
             .size(40.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(CircleShape)
             .background(
-                when {
-                    isToday -> accent
-                    isSelected -> accent.copy(alpha = 0.22f)
-                    else -> Color.Transparent
-                }
+                if (isFilledActive) MaterialTheme.colorScheme.primary
+                else Color.Transparent
             )
-            .clickable(onClick = onClick),
+            .then(
+                if (!isFilledActive && isEventDay) {
+                    Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f), CircleShape)
+                } else Modifier
+            )
+            .springClickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = dayNum,
                 fontSize = 13.sp,
-                fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = when {
-                    isToday -> Color.White
-                    isSelected -> accent
-                    else -> MaterialTheme.colorScheme.onSurface
-                }
+                fontWeight = if (isFilledActive) FontWeight.ExtraBold else FontWeight.SemiBold,
+                color = if (isFilledActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
             )
-            if (eventCount > 0) {
-                Spacer(Modifier.height(2.dp))
-                // Density marker: size and opacity both scale with how much is airing,
-                // so a quiet day and a day with four drops are distinguishable at a glance.
-                val intensity = (eventCount.coerceAtMost(4) / 4f)
+            if (isEventDay) {
+                Spacer(Modifier.height(1.dp))
                 Box(
                     modifier = Modifier
-                        .size(3.dp + 3.dp * intensity)
+                        .size(4.dp)
                         .clip(CircleShape)
                         .background(
-                            if (isToday) Color.White.copy(alpha = 0.55f + 0.45f * intensity)
-                            else accent.copy(alpha = 0.35f + 0.5f * intensity)
+                            if (isFilledActive) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.primary
                         )
                 )
             }

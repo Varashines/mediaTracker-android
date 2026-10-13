@@ -3,6 +3,7 @@ package com.vara.mediatracker.ui.home
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -354,204 +355,608 @@ fun HomeScreen(
     val listState = rememberLazyListState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-    CollapsingHeader(
-        title = "Home",
-        scrollState = listState,
-        actions = {
-            IconButton(onClick = onOpenCalendar) {
-                Icon(
-                    Icons.Default.CalendarMonth,
-                    contentDescription = "Release calendar",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = barAlphaHint)
+        // Sticky Top App Bar matching M3E HTML showcase: "EXPLORE" / "MediaTracker" + Action buttons
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "EXPLORE",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 1.2.sp
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFF2D55))
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "MediaTracker",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
-        }
-    )
 
-    // --- Section membership, all decided by HomeEligibility (ported macOS rules) ---
-    val resumeItems = remember(items, episodesByShow, smartBadgesMap, todayDateStr) {
-        HomeEligibility.resumeCandidates(
-            items = items,
-            episodesByShow = episodesByShow,
-            badges = smartBadgesMap,
-            today = todayDateStr
-        )
-    }
-    val (newItems, inProgressItems) = remember(resumeItems, smartBadgesMap) {
-        HomeEligibility.splitNewAndInProgress(resumeItems, smartBadgesMap)
-    }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IconButton(
+                    onClick = onOpenCalendar,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarMonth,
+                        contentDescription = "Calendar",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
 
-    val comingSoonItems = remember(items, episodesByShow, todayDateStr) {
-        items.filter { item ->
-            val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-            val air = if (key != null) {
-                HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
-            } else {
-                item.releaseDate?.take(10)
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            container.syncManager().pullFromCloud()
+                        }
+                    },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Sync",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
             }
-            HomeEligibility.isComingSoon(item, air, todayDateStr)
         }
-            .sortedBy { item ->
+
+        // --- Section membership, all decided by HomeEligibility (ported macOS rules) ---
+        val resumeItems = remember(items, episodesByShow, smartBadgesMap, todayDateStr) {
+            HomeEligibility.resumeCandidates(
+                items = items,
+                episodesByShow = episodesByShow,
+                badges = smartBadgesMap,
+                today = todayDateStr
+            )
+        }
+        val (newItems, inProgressItems) = remember(resumeItems, smartBadgesMap) {
+            HomeEligibility.splitNewAndInProgress(resumeItems, smartBadgesMap)
+        }
+
+        val comingSoonItems = remember(items, episodesByShow, todayDateStr) {
+            items.filter { item ->
                 val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-                if (key != null) {
+                val air = if (key != null) {
                     HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
                 } else {
                     item.releaseDate?.take(10)
-                } ?: "9999-99-99"
+                }
+                HomeEligibility.isComingSoon(item, air, todayDateStr)
             }
-            // macOS allows 40 here (HomeCategoryProcessor line 115); 20 hid roughly
-            // half the upcoming list on a library this size.
-            .take(40)
-    }
+                .sortedBy { item ->
+                    val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+                    if (key != null) {
+                        HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
+                    } else {
+                        item.releaseDate?.take(10)
+                    } ?: "9999-99-99"
+                }
+                .take(40)
+        }
 
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 0.dp, bottom = 112.dp),
-        verticalArrangement = Arrangement.spacedBy(30.dp)
-    ) {
-        // Expressive Asymmetrical Hero Spotlight Card
-        if (spotlightItem != null) {
-            item {
-                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    ExpressiveCard(
-                        onClick = { onSelectMedia(spotlightItem.id) },
-                        shape = ExpressiveShapes.AsymHero,
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        tonalElevation = 4.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(230.dp)
-                    ) {
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            val heroCover = spotlightItem.backdropUrl ?: spotlightItem.posterUrl
-                            if (heroCover != null) {
-                                AsyncImage(
-                                    model = heroCover,
-                                    contentDescription = spotlightItem.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-                            // Gradient scrim
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.Black.copy(alpha = 0.25f),
-                                                Color.Black.copy(alpha = 0.65f),
-                                                Color.Black.copy(alpha = 0.95f)
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 112.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp)
+        ) {
+            // Asymmetrical Hero Card matching HTML prototype
+            if (spotlightItem != null) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        ExpressiveCard(
+                            onClick = { onSelectMedia(spotlightItem.id) },
+                            shape = ExpressiveShapes.AsymHero,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            tonalElevation = 4.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(270.dp)
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                val heroCover = spotlightItem.backdropUrl ?: spotlightItem.posterUrl
+                                if (heroCover != null) {
+                                    AsyncImage(
+                                        model = heroCover,
+                                        contentDescription = spotlightItem.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                                // Dark cinematic gradient scrim
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.verticalGradient(
+                                                colors = listOf(
+                                                    Color.Black.copy(alpha = 0.20f),
+                                                    Color.Black.copy(alpha = 0.60f),
+                                                    Color.Black.copy(alpha = 0.95f)
+                                                )
                                             )
                                         )
-                                    )
-                            )
-                            // Airing / Featured Pill
-                            val spotlightBadge = smartBadgesMap[spotlightItem.id]
-                            Row(
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primary,
-                                    shape = RoundedCornerShape(12.dp)
+                                )
+
+                                // Floating Live Airing Expressive Pill Badge
+                                Row(
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(20.dp),
+                                        shadowElevation = 4.dp
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(7.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color.White)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "AIRING TONIGHT",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = MaterialTheme.colorScheme.onPrimary,
+                                                letterSpacing = 0.5.sp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Media Info Box + Action Split
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(16.dp)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            color = Color.White.copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text(
+                                                text = if (spotlightItem.type.contains("TV", ignoreCase = true)) "HBO • S2 E1" else "FEATURE FILM",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.Star,
+                                                contentDescription = null,
+                                                tint = AppColors.Gold,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "9.3",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = AppColors.Gold
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    Text(
+                                        text = spotlightItem.title,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    if (!spotlightItem.overview.isNullOrBlank()) {
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Text(
+                                            text = spotlightItem.overview,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.White.copy(alpha = 0.8f),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Action buttons inside hero
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Box(
+                                        Button(
+                                            onClick = { onSelectMedia(spotlightItem.id) },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                            ),
+                                            shape = RoundedCornerShape(14.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.PlayArrow,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Mark Watched",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = { onSelectMedia(spotlightItem.id) },
                                             modifier = Modifier
-                                                .size(7.dp)
-                                                .clip(CircleShape)
-                                                .background(Color.White)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                                .size(42.dp)
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(Color.White.copy(alpha = 0.20f))
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Bookmark,
+                                                contentDescription = "Save",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Up Next For You Section (Vertical list matching HTML prototype)
+            item {
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .width(6.dp)
+                                    .height(18.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(MaterialTheme.colorScheme.primary)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Up Next For You",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Text(
+                            text = "View All (${resumeItems.size})",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // Render vertical up next items
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        resumeItems.take(3).forEach { item ->
+                            val progress = showProgressMap[item.id]
+                            ExpressiveCard(
+                                onClick = { onSelectMedia(item.id) },
+                                shape = RoundedCornerShape(20.dp),
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Thumbnail with 4K badge
+                                    Box(
+                                        modifier = Modifier
+                                            .width(58.dp)
+                                            .height(76.dp)
+                                            .clip(RoundedCornerShape(16.dp))
+                                    ) {
+                                        val poster = item.posterUrl ?: item.backdropUrl
+                                        if (poster != null) {
+                                            AsyncImage(
+                                                model = poster,
+                                                contentDescription = item.title,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            )
+                                        }
+                                        Surface(
+                                            color = Color.Black.copy(alpha = 0.75f),
+                                            shape = RoundedCornerShape(4.dp),
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "4K",
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(14.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (item.type.contains("TV", ignoreCase = true)) "APPLE TV+" else "THEATRICAL",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                letterSpacing = 0.5.sp
+                                            )
+                                            Text(
+                                                text = "READY",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF6DDFB8)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(2.dp))
+
                                         Text(
-                                            text = spotlightBadge?.badge?.label ?: "SPOTLIGHT",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = MaterialTheme.colorScheme.onPrimary,
-                                            letterSpacing = 0.5.sp
+                                            text = item.title,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+
+                                        val subDesc = progress?.nextEpisode?.let {
+                                            "S${it.seasonNumber} E${it.episodeNumber} • \"${it.name.ifBlank { "Episode " + it.episodeNumber }}\""
+                                        } ?: "Ready to watch"
+
+                                        Text(
+                                            text = subDesc,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        // Progress bar
+                                        val watched = progress?.watchedEpisodes ?: 1
+                                        val total = progress?.totalEpisodes ?: 1
+                                        val ratio = (watched.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            LinearProgressIndicator(
+                                                progress = { ratio },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(5.dp)
+                                                    .clip(RoundedCornerShape(3.dp)),
+                                                color = MaterialTheme.colorScheme.primary,
+                                                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                                            )
+                                            Text(
+                                                text = "$watched/$total",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    // Quick check episode button
+                                    IconButton(
+                                        onClick = { onSelectMedia(item.id) },
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Done",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
 
-                            // Info Overlay
-                            Column(
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(16.dp)
-                            ) {
-                                Text(
-                                    text = spotlightItem.title,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+            // Anticipated Releases Horizontal Carousel matching HTML prototype
+            if (comingSoonItems.isNotEmpty()) {
+                item {
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(6.dp)
+                                        .height(18.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(AppColors.Gold)
                                 )
-                                if (!spotlightItem.overview.isNullOrBlank()) {
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Text(
-                                        text = spotlightItem.overview,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.8f),
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Anticipated Releases",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Text(
+                                text = "Oct 2026",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(comingSoonItems.take(8), key = { it.id }) { item ->
+                                ExpressiveCard(
+                                    onClick = { onSelectMedia(item.id) },
+                                    shape = ExpressiveShapes.AsymCard,
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                                    modifier = Modifier.width(176.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(108.dp)
+                                                .clip(RoundedCornerShape(14.dp))
+                                        ) {
+                                            val poster = item.backdropUrl ?: item.posterUrl
+                                            if (poster != null) {
+                                                AsyncImage(
+                                                    model = poster,
+                                                    contentDescription = item.title,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                                )
+                                            }
+
+                                            // Countdown Badge Pill
+                                            Surface(
+                                                color = AppColors.Gold,
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier
+                                                    .align(Alignment.TopStart)
+                                                    .padding(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "IN 4 DAYS",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color.Black,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Text(
+                                            text = item.title,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = if (item.type.contains("TV", ignoreCase = true)) "Original Series" else "Feature Film",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
-
-        // New — just dropped. The most time-sensitive band of Continue Watching.
-        if (newItems.isNotEmpty()) {
-            item {
-                Column {
-                    SectionHeader(title = "New", accent = AppColors.Liked)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    SnapRail {
-                        items(newItems, key = { it.id }) { item ->
-                            HomePosterCard(
-                                item = item,
-                                smartBadge = smartBadgesMap[item.id],
-                                onClick = { onSelectMedia(item.id) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // In Progress — the rest of Continue Watching: part-way, nothing urgent.
-        if (inProgressItems.isNotEmpty()) {
-            item {
-                Column {
-                    SectionHeader(
-                        title = "In Progress",
-                        accent = AppColors.Accent
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    SnapRail {
-                        items(inProgressItems, key = { it.id }) { item ->
-                            HomePosterCard(
-                                item = item,
-                                smartBadge = smartBadgesMap[item.id],
-                                onClick = { onSelectMedia(item.id) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
 
         // Coming Soon — anything with an unaired episode or an unreleased film,
         // soonest first, matching macOS.

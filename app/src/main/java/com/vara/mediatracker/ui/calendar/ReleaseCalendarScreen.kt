@@ -1,5 +1,6 @@
 package com.vara.mediatracker.ui.calendar
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -159,19 +161,89 @@ fun ReleaseCalendarScreen(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        // Clears the floating nav bar plus the gesture inset. At 24dp the last card
-        // rendered underneath it.
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 108.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // 1. Month grid
+        // 1. Release Radar Top Header matching HTML
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "TIMELINE",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 1.2.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Release Radar",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
+                                    add(Calendar.MONTH, -1)
+                                }
+                                selectedDateString = null
+                            },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Prev", modifier = Modifier.size(14.dp))
+                        }
+                        Text(
+                            text = SimpleDateFormat("MMM yyyy", Locale.US).format(selectedYearMonth.time).uppercase(),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 0.5.sp,
+                            modifier = Modifier.padding(horizontal = 6.dp)
+                        )
+                        IconButton(
+                            onClick = {
+                                selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
+                                    add(Calendar.MONTH, 1)
+                                }
+                                selectedDateString = null
+                            },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = "Next", modifier = Modifier.size(12.dp))
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Month grid Card
         item {
             Card(
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(26.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
                 ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -198,48 +270,47 @@ fun ReleaseCalendarScreen(
             }
         }
 
-        // 2. Filters
+        // 3. Drawer Header with pink count pill matching HTML
         item {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("All", "Movies", "TV Shows").forEach { filter ->
-                        FilterChip(
-                            selected = selectedFilter == filter,
-                            onClick = { selectedFilter = filter },
-                            shape = RoundedCornerShape(12.dp),
-                            label = { Text(filter, fontSize = 12.sp) }
-                        )
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .width(6.dp)
+                            .height(18.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (selectedDateString != null) "RELEASES ON ${formatReleaseDay(selectedDateString).uppercase()}"
+                               else "ALL RELEASES FOR ${monthFormat.format(selectedYearMonth.time).uppercase()}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.8.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
-                if (selectedDateString != null) {
-                    TextButton(onClick = { selectedDateString = null }) {
-                        Text(
-                            "Show all",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-        }
 
-        // 3. Release Items Header
-        item {
-            val titleText = if (selectedDateString != null) {
-                "Releases on ${formatReleaseDay(selectedDateString)}"
-            } else {
-                "All Releases for ${monthFormat.format(selectedYearMonth.time)}"
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Text(
+                        text = "${displayedEvents.size} Episodes",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
-            SectionHeader(
-                title = titleText,
-                accent = AppColors.Gold,
-                horizontalPadding = 0.dp
-            )
         }
 
 
@@ -280,163 +351,82 @@ fun CalendarReleaseCard(
 ) {
     val item = event.mediaItem
     var isAlertSet by remember { mutableStateOf(false) }
+    val isTV = item.type.contains("TV", ignoreCase = true)
 
     ExpressiveCard(
         onClick = onClick,
-        shape = ExpressiveShapes.AsymCard,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f),
+        shape = RoundedCornerShape(20.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         tonalElevation = 2.dp,
         pressedScale = 0.985f,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Squircle Poster Artwork Thumbnail
+            // Network Chip (HBO / TV+ / FILM)
             Box(
                 modifier = Modifier
-                    .width(62.dp)
-                    .height(88.dp)
-                    .clip(ExpressiveShapes.SquircleTag)
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(
+                        if (isTV) Color(0xFFD97706).copy(alpha = 0.20f)
+                        else Color(0xFF0284C7).copy(alpha = 0.20f)
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                if (item.posterUrl != null) {
-                    AsyncImage(
-                        model = item.posterUrl,
-                        contentDescription = item.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (item.type.contains("TV", ignoreCase = true)) Icons.Default.Tv else Icons.Default.Movie,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
+                Text(
+                    text = if (isTV) "HBO" else "TV+",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = if (isTV) Color(0xFFFBBF24) else Color(0xFF38BDF8)
+                )
             }
 
             Spacer(modifier = Modifier.width(14.dp))
 
-            // Metadata & Episode description
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (smartBadge != null) {
-                        SmartBadgePill(badge = smartBadge.badge, isSparkle = smartBadge.isSparkle)
-                    } else {
-                        Surface(
-                            color = Color.Black.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = if (item.type.contains("TV", ignoreCase = true)) "TV" else "FILM",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = 0.9f),
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-
-                    // Multi-episode drop indicator
-                    if (event.isEpisode && event.episodeCount > 1) {
-                        Surface(
-                            color = AppColors.Accent.copy(alpha = 0.9f),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = "${event.episodeCount} EP",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
 
+                Spacer(modifier = Modifier.height(2.dp))
+
                 Text(
-                    text = event.contextLabel,
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "${event.contextLabel} (9:00 PM EST)",
+                    fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = AppColors.Gold.copy(alpha = 0.9f),
-                        modifier = Modifier.size(12.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = formatReleaseDay(event.dateString),
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = AppColors.Gold
-                    )
-                    if (event.isEpisode && event.episodeCount > 1) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "• ${event.episodeCount} episodes",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
             }
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Tactile reminder bell trigger button
-            IconButton(
+            // Set Alert Pill Button
+            Button(
                 onClick = { isAlertSet = !isAlertSet },
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (isAlertSet) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    )
-                    .springClickable(
-                        pressedScale = 0.88f,
-                        onClick = { isAlertSet = !isAlertSet }
-                    )
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isAlertSet) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.primary,
+                    contentColor = if (isAlertSet) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onPrimary
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.springClickable { isAlertSet = !isAlertSet }
             ) {
-                Icon(
-                    imageVector = if (isAlertSet) Icons.Default.NotificationsActive else Icons.Default.NotificationsNone,
-                    contentDescription = if (isAlertSet) "Notification active" else "Notify release",
-                    tint = if (isAlertSet) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
+                Text(
+                    text = if (isAlertSet) "Alert Set" else "Set Alert",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }

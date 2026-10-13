@@ -263,73 +263,42 @@ object ExpressiveShapes {
     val ActivePill = RoundedCornerShape(16.dp)
 }
 
-// ---------------------------------------------------------------------------
-// Color schemes
-// ---------------------------------------------------------------------------
-
-private val CinematicDark = darkColorScheme(
-    primary = AppColors.Accent,
-    onPrimary = Color.White,
-    primaryContainer = AppColors.Accent.copy(alpha = 0.22f),
-    onPrimaryContainer = AppColors.AccentLuminous,
-    secondary = AppColors.SurfaceBright,
-    onSecondary = AppColors.TextPrimary,
-    secondaryContainer = AppColors.SurfaceVariant,
-    onSecondaryContainer = AppColors.TextPrimary,
-    tertiary = AppColors.Gold,
+private val M3EPlumDark = darkColorScheme(
+    primary = Color(0xFFF4B8E4), // M3E Expressive Plum Pink
+    onPrimary = Color(0xFF4E1E48),
+    primaryContainer = Color(0xFF67355F),
+    onPrimaryContainer = Color(0xFFFFD7F3),
+    secondary = Color(0xFFDDA6CE),
+    onSecondary = Color(0xFF3F1F39),
+    secondaryContainer = Color(0xFF4B324D),
+    onSecondaryContainer = Color(0xFFFFD7F3),
+    tertiary = Color(0xFFFFD60A), // Gold star
     onTertiary = Color.Black,
-    background = AppColors.Background,
-    onBackground = AppColors.TextPrimary,
-    surface = AppColors.Surface,
-    onSurface = AppColors.TextPrimary,
-    surfaceVariant = AppColors.SurfaceVariant,
-    onSurfaceVariant = AppColors.TextSecondary,
-    surfaceContainer = AppColors.Surface,
-    surfaceContainerHigh = AppColors.SurfaceVariant,
-    surfaceContainerHighest = AppColors.SurfaceBright,
-    outline = AppColors.Stroke,
-    outlineVariant = AppColors.Stroke.copy(alpha = 0.6f),
-    error = Color(0xFFFF453A),
-    onError = Color.White
-)
-
-/** Light counterpart, previously missing — the app was dark-only with no way out. */
-private val CinematicLight = lightColorScheme(
-    primary = Color(0xFF0066CC),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFD3E4FF),
-    onPrimaryContainer = Color(0xFF001B3D),
-    secondary = Color(0xFF545F70),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD8E3F8),
-    onSecondaryContainer = Color(0xFF111C2B),
-    tertiary = Color(0xFF7A5900),
-    onTertiary = Color.White,
-    background = Color(0xFFF9F9FB),
-    onBackground = Color(0xFF1A1C1E),
-    surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF1A1C1E),
-    surfaceVariant = Color(0xFFE1E2E8),
-    onSurfaceVariant = Color(0xFF44474E),
-    surfaceContainer = Color(0xFFF1F2F6),
-    surfaceContainerHigh = Color(0xFFEBECF0),
-    surfaceContainerHighest = Color(0xFFE4E5EA),
-    outline = Color(0xFFC3C6CF),
-    outlineVariant = Color(0xFFD7D9E0),
-    error = Color(0xFFBA1A1A),
+    tertiaryContainer = Color(0xFF3E2D00),
+    onTertiaryContainer = Color(0xFFFFE082),
+    background = Color(0xFF120E13), // Deep Plum-tinted OLED
+    onBackground = Color(0xFFEBDFE8),
+    surface = Color(0xFF161217), // M3E Surface
+    onSurface = Color(0xFFEBDFE8),
+    surfaceVariant = Color(0xFF211B22), // M3E Surface Container
+    onSurfaceVariant = Color(0xFFCFC2CD),
+    surfaceContainer = Color(0xFF211B22),
+    surfaceContainerHigh = Color(0xFF2C252D),
+    surfaceContainerHighest = Color(0xFF372F38),
+    outline = Color(0xFF9B8E9B),
+    outlineVariant = Color(0xFF463C46),
+    error = Color(0xFFFF5252),
     onError = Color.White
 )
 
 @Composable
 fun MediaTrackerTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true, // Stick strictly to dark mode as requested
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) CinematicDark else CinematicLight
-
     CompositionLocalProvider(LocalMotion provides AppMotion) {
         MaterialTheme(
-            colorScheme = colorScheme,
+            colorScheme = M3EPlumDark,
             typography = AppTypography,
             shapes = AppShapes,
             content = content

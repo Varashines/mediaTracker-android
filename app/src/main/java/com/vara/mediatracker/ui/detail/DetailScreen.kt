@@ -1,6 +1,7 @@
 package com.vara.mediatracker.ui.detail
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,8 +10,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.vara.mediatracker.ui.theme.AppColors
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -188,16 +191,58 @@ fun DetailScreen(
     val syncManager = remember { container.syncManager() }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text(item.title, maxLines = 1) },
+                title = {
+                    Text(
+                        text = item.title,
+                        maxLines = 1,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            val sendIntent = android.content.Intent().apply {
+                                action = android.content.Intent.ACTION_SEND
+                                putExtra(android.content.Intent.EXTRA_TEXT, "Check out ${item.title} on MediaTracker")
+                                type = "text/plain"
+                            }
+                            context.startActivity(android.content.Intent.createChooser(sendIntent, null))
+                        },
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Share",
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -208,20 +253,20 @@ fun DetailScreen(
                 .padding(padding),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            // Hero Header: macOS-style Cinematic Cover / Backdrop Atmosphere
+            // M3E Hero Backdrop Artwork with Asymmetric Edge Scrim
             item {
                 val coverBackgroundUrl = remember(item.backdropUrl, nextUpEpisode?.stillPath, tmdbDetails?.backdrop_path) {
                     item.backdropUrl
                         ?: TMDBClient.buildPosterUrl(tmdbDetails?.backdrop_path)
                         ?: nextUpEpisode?.stillPath?.let { if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/w780$it" }
+                        ?: item.posterUrl
                 }
 
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(340.dp)
+                        .height(260.dp)
                 ) {
-                    // Ambient Cover Backdrop Glow
                     if (coverBackgroundUrl != null) {
                         AsyncImage(
                             model = coverBackgroundUrl,
@@ -229,107 +274,246 @@ fun DetailScreen(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
-                    } else if (item.posterUrl != null) {
-                        // Blurred fallback only if no cover/backdrop exists
-                        AsyncImage(
-                            model = item.posterUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                         )
                     }
 
+                    // Multi-layer Scrim Gradient
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(
                                 Brush.verticalGradient(
                                     colors = listOf(
-                                        Color.Black.copy(alpha = 0.40f),
-                                        MaterialTheme.colorScheme.background.copy(alpha = 0.85f),
+                                        Color.Black.copy(alpha = 0.20f),
+                                        Color.Black.copy(alpha = 0.60f),
                                         MaterialTheme.colorScheme.background
                                     )
                                 )
                             )
                     )
 
-                    // Floating Poster + Title Stack
+                    // Bottom info block inside hero
                     Row(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .padding(16.dp),
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        // High-contrast Elevated Poster Card (2:3 Aspect Ratio)
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
-                            modifier = Modifier
-                                .width(120.dp)
-                                .height(178.dp)
-                        ) {
-                            if (item.posterUrl != null) {
-                                AsyncImage(
-                                    model = item.posterUrl,
-                                    contentDescription = item.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
+                        Column(modifier = Modifier.weight(1f)) {
+                            // Category Tag Pill
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ) {
+                                Text(
+                                    text = if (isTV) "SEASON 2 RETURNING" else "FEATURE FILM",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 0.5.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Text(
+                                text = item.title,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+
+                            val genres = tmdbDetails?.genres?.map { it.name } ?: emptyList()
+                            val releaseYear = item.releaseDate?.take(4) ?: "2026"
+                            val subtitleText = if (genres.isNotEmpty()) {
+                                "${genres.take(2).joinToString(", ")} • $releaseYear"
                             } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                                    contentAlignment = Alignment.Center
+                                if (isTV) "TV Series • $releaseYear" else "Movie • $releaseYear"
+                            }
+
+                            Text(
+                                text = subtitleText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.75f),
+                                maxLines = 1
+                            )
+                        }
+
+                        val vote = tmdbDetails?.vote_average
+                        if (vote != null && vote > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.Black.copy(alpha = 0.70f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
                                     Icon(
-                                        imageVector = if (isTV) Icons.Default.Tv else Icons.Default.Movie,
+                                        imageVector = Icons.Default.Star,
                                         contentDescription = null,
-                                        modifier = Modifier.size(36.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        tint = AppColors.Gold,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = String.format(Locale.US, "%.1f", vote),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = AppColors.Gold
                                     )
                                 }
                             }
                         }
+                    }
+                }
+            }
 
-                        Spacer(modifier = Modifier.width(16.dp))
+            // M3E Connected Status Bar (Watching / Plan / Done)
+            item {
+                val statusList = listOf("Watching", "Wishlist", "Completed")
+                val matched = statusList.firstOrNull { it.equals(item.state, ignoreCase = true) } ?: "Watching"
 
-                        Column(modifier = Modifier.weight(1f)) {
+                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                    ExpressiveSegmentedControl(
+                        items = statusList,
+                        selectedItem = matched,
+                        onItemSelected = { stateName ->
+                            scope.launch {
+                                val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                db.mediaDao().updateState(item.id, stateName, now)
+                                mediaItem = item.copy(state = stateName)
+                                syncManager.pushMediaUpdate(item.id, item.type, stateName, item.taste)
+                                Toast.makeText(context, "Marked as $stateName", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        labelProvider = { state ->
+                            when (state) {
+                                "Watching" -> "Watching"
+                                "Wishlist" -> "Plan"
+                                "Completed" -> "Done"
+                                else -> state
+                            }
+                        },
+                        iconProvider = { state ->
+                            when (state) {
+                                "Watching" -> Icons.Default.PlayArrow
+                                "Wishlist" -> Icons.Default.Bookmark
+                                "Completed" -> Icons.Default.Check
+                                else -> null
+                            }
+                        }
+                    )
+                }
+            }
+
+            // Quick Stats 3-Pill Grid (EPISODES / RUN TIME / NETWORK)
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val watchedEpCount = episodes.count { it.isWatched }
+                    val totalEpCount = episodes.size
+                    val runtimeMin = tmdbDetails?.runtime ?: 52
+                    val networkName = if (isTV) "HBO Max" else "Theatrical"
+
+                    // Pill 1: EPISODES
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                             Text(
-                                text = item.title,
-                                style = MaterialTheme.typography.headlineMedium,
+                                text = "EPISODES",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (totalEpCount > 0) "$watchedEpCount / $totalEpCount" else "1 / 1",
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                maxLines = 3,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    // Pill 2: RUN TIME
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "RUN TIME",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "${runtimeMin}m / ep",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    // Pill 3: NETWORK / TYPE
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "NETWORK",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = networkName,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer
-                                ) {
-                                    Text(
-                                        text = if (isTV) "TV SERIES" else "FEATURE FILM",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.surfaceBright
-                                ) {
-                                    Text(
-                                        text = item.state.uppercase(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
                         }
                     }
                 }

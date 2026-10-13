@@ -26,6 +26,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,10 +40,12 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -320,27 +323,15 @@ val MediaTrackerMark: ImageVector = ImageVector.Builder(
  * job is adding and finding content, not just looking at what is already there.
  */
 val AppDestinations = listOf(
-    // The app mark rather than a house: Home is the app itself, so saying so with
-    // the brand is honest, and it is the only destination without a semantic icon.
-    NavDestination("Home", MediaTrackerMark),
-    NavDestination("Search", Icons.Filled.Search),
-    NavDestination("Library", Icons.Filled.VideoLibrary),
-    NavDestination("Settings", Icons.Filled.Settings)
+    NavDestination("Home", Icons.Default.Home),
+    NavDestination("Radar", Icons.Default.CalendarMonth),
+    NavDestination("Library", Icons.Default.VideoLibrary),
+    NavDestination("Detail", Icons.Default.Tv)
 )
 
-private val NavItemWidth = 78.dp
-
 /**
- * Icon-only bottom navigation with a sliding active indicator.
- *
- * Labels were previously shown for the selected destination only. That is worse than
- * either extreme on a phone: the bar changes width and the whole row reflows on every
- * tap, and the shifting text draws the eye away from the icons it is labelling. Icon-only
- * is now the rule, matching how most media apps do it.
- *
- * Each destination gets an equal slice of the width so the bar reads as evenly divided
- * regardless of icon size, and the indicator is a pill behind the active icon — the
- * current Material 3 pattern — rather than a colour change on the icon itself.
+ * Floating Navigation Bar with M3E Active Squircle Pill Indicator and labels,
+ * matching the HTML prototype layout.
  */
 @Composable
 fun ExpressiveNavigationBar(
@@ -348,81 +339,63 @@ fun ExpressiveNavigationBar(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val motion = LocalMotion.current
-
     Surface(
-        shape = RoundedCornerShape(26.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 3.dp,
-        shadowElevation = 12.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+        shape = RoundedCornerShape(32.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.95f),
+        tonalElevation = 4.dp,
+        shadowElevation = 16.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.40f)),
         modifier = modifier.fillMaxWidth()
     ) {
-        BoxWithConstraints(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            val totalDestinations = AppDestinations.size
-            val slotWidth = maxWidth / totalDestinations
-            val indicatorWidth = 58.dp
-            val indicatorHeight = 36.dp
+            AppDestinations.forEachIndexed { index, destination ->
+                val selected = index == selectedIndex
 
-            // Compute the target horizontal offset to center the pill on the selected slot
-            val targetOffset = (slotWidth * selectedIndex) + ((slotWidth - indicatorWidth) / 2)
-            val animatedOffset by animateDpAsState(
-                targetValue = targetOffset,
-                animationSpec = motion.gentleDp,
-                label = "slidingNavPill"
-            )
-
-            // Dynamic sliding pill indicator
-            Box(
-                modifier = Modifier
-                    .offset(x = animatedOffset)
-                    .width(indicatorWidth)
-                    .height(indicatorHeight)
-                    .align(Alignment.CenterStart)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AppDestinations.forEachIndexed { index, destination ->
-                    val selected = index == selectedIndex
-                    val iconScale by animateFloatAsState(
-                        targetValue = if (selected) 1.05f else 0.92f,
-                        animationSpec = motion.snappy,
-                        label = "navIconScale"
-                    )
-
+                Column(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .springClickable(
+                            pressedScale = 0.90f,
+                            onClick = { onSelect(index) }
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(indicatorHeight)
-                            .clip(RoundedCornerShape(18.dp))
-                            .springClickable(
-                                pressedScale = 0.90f,
-                                onClick = { onSelect(index) }
+                            .width(52.dp)
+                            .height(28.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary
+                                else Color.Transparent
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = destination.icon,
                             contentDescription = destination.label,
-                            tint = if (selected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                            modifier = Modifier
-                                .size(23.dp)
-                                .graphicsLayer {
-                                    scaleX = iconScale
-                                    scaleY = iconScale
-                                }
+                            tint = if (selected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Text(
+                        text = destination.label,
+                        fontSize = 10.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (selected) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
