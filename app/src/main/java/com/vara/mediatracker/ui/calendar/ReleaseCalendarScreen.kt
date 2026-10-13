@@ -466,7 +466,7 @@ fun CalendarReleaseCard(
 
     ExpressiveCard(
         onClick = onClick,
-        shape = RoundedCornerShape(22.dp),
+        shape = ExpressiveShapes.Hero,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         tonalElevation = 2.dp,
@@ -521,7 +521,7 @@ fun CalendarReleaseCard(
                 ) {
                     Text(
                         text = netInfo.shortName,
-                        fontSize = 7.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White,
                         modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
@@ -542,7 +542,7 @@ fun CalendarReleaseCard(
                     ) {
                         Text(
                             text = netInfo.name.uppercase(),
-                            fontSize = 9.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = netInfo.textColor,
                             letterSpacing = 0.5.sp,

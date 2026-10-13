@@ -228,9 +228,9 @@ object ExpressiveShapes {
     val Hero = RoundedCornerShape(22.dp)
     val AsymHero = RoundedCornerShape(22.dp)
 
-    /** Uniform media card shape */
-    val Card = RoundedCornerShape(16.dp)
-    val AsymCard = RoundedCornerShape(16.dp)
+    /** Uniform media / list card shape. Matches ExpressiveCard's default. */
+    val Card = RoundedCornerShape(18.dp)
+    val AsymCard = RoundedCornerShape(18.dp)
 
     /** Squircle tag / badge shape */
     val SquircleTag = RoundedCornerShape(10.dp)

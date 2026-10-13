@@ -222,7 +222,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = if (isCloudConnected) "CONNECTED" else "STANDALONE",
-                            fontSize = 9.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.onSurface,
                             letterSpacing = 0.5.sp
@@ -241,7 +241,7 @@ fun SettingsScreen(
         ) {
             // 1. Minimal Quick Sync Action Card
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                 tonalElevation = 1.dp,
@@ -336,7 +336,7 @@ fun SettingsScreen(
 
             // 2. Minimal Collapsible Cloud Sync Credentials
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                 tonalElevation = 1.dp,
@@ -457,7 +457,7 @@ fun SettingsScreen(
 
             // 3. Minimal Collapsible TMDB API Metadata
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                 tonalElevation = 1.dp,
@@ -541,7 +541,7 @@ fun SettingsScreen(
 
             // 4. Background Sync & Periodic Workers (Clean Toggle Card)
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                 tonalElevation = 1.dp,
@@ -609,7 +609,7 @@ fun SettingsScreen(
             // 5. Appearance & Theme Palette Selector (Same 6 presets as Mac App)
             val activePreset = com.vara.mediatracker.ui.theme.ThemePresets.getPreset(currentPresetIndex)
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                 tonalElevation = 1.dp,

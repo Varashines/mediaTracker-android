@@ -718,7 +718,7 @@ fun DetailScreen(
                             ) {
                                 Text(
                                     text = "EPISODES",
-                                    fontSize = 9.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     letterSpacing = 0.5.sp
@@ -746,7 +746,7 @@ fun DetailScreen(
                             ) {
                                 Text(
                                     text = "RUN TIME",
-                                    fontSize = 9.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     letterSpacing = 0.5.sp
@@ -774,7 +774,7 @@ fun DetailScreen(
                             ) {
                                 Text(
                                     text = "NETWORK",
-                                    fontSize = 9.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     letterSpacing = 0.5.sp
@@ -805,7 +805,7 @@ fun DetailScreen(
                             ) {
                                 Text(
                                     text = "RUN TIME",
-                                    fontSize = 9.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     letterSpacing = 0.5.sp
@@ -838,7 +838,7 @@ fun DetailScreen(
                             ) {
                                 Text(
                                     text = "PRODUCTION",
-                                    fontSize = 9.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     letterSpacing = 0.5.sp
@@ -864,7 +864,7 @@ fun DetailScreen(
             if (item.overview.isNotBlank()) {
                 item {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Text("Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = item.overview,
@@ -1099,7 +1099,7 @@ fun DetailScreen(
                                     if (!actor.character.isNullOrBlank()) {
                                         Text(
                                             text = actor.character,
-                                            fontSize = 9.5.sp,
+                                            fontSize = 10.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis

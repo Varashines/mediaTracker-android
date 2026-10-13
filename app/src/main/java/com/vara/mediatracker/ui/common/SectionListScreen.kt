@@ -29,6 +29,7 @@ import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.home.SmartBadgePill
 import com.vara.mediatracker.ui.home.TVShowProgress
+import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.util.NetworkResolver
 
 /**
@@ -120,7 +121,7 @@ fun SectionListScreen(
 
                     ExpressiveCard(
                         onClick = { onSelectMedia(item.id) },
-                        shape = RoundedCornerShape(18.dp),
+                        shape = ExpressiveShapes.Card,
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                         modifier = Modifier.fillMaxWidth()

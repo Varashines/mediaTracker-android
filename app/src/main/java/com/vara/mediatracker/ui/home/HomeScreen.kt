@@ -437,7 +437,7 @@ fun HomeScreen(
                                         ) {
                                             Text(
                                                 text = if (spotlightItem.type.contains("TV", ignoreCase = true)) "${heroNetwork.shortName}$epTag" else "FEATURE FILM",
-                                                fontSize = 9.sp,
+                                                fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color.White,
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -611,7 +611,7 @@ fun HomeScreen(
                             val progress = showProgressMap[item.id]
                             ExpressiveCard(
                                 onClick = { onSelectMedia(item.id) },
-                                shape = RoundedCornerShape(20.dp),
+                                shape = ExpressiveShapes.Card,
                                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
                                 modifier = Modifier.fillMaxWidth()
@@ -665,7 +665,7 @@ fun HomeScreen(
                                                 Spacer(modifier = Modifier.width(2.dp))
                                                 Text(
                                                     text = if (isTvItem) "TV" else "FILM",
-                                                    fontSize = 8.sp,
+                                                    fontSize = 10.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = Color.White
                                                 )
@@ -914,7 +914,7 @@ fun SmartBadgePill(
             }
             Text(
                 text = badge.label,
-                fontSize = 9.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = badge.textColor,
                 letterSpacing = 0.4.sp

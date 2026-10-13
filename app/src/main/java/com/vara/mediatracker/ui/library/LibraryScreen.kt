@@ -439,7 +439,7 @@ fun LibraryScreen(
             // 3. M3E Expressive Streak Banner
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
                     tonalElevation = 2.dp,

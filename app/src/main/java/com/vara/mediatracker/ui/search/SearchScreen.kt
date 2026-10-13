@@ -336,7 +336,7 @@ private fun SearchResultCard(
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = typeLabel,
-                            fontSize = 9.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White
                         )
