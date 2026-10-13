@@ -38,6 +38,11 @@ import com.vara.mediatracker.data.api.TMDBSearchItem
 import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.MediaIds
+import com.vara.mediatracker.ui.common.ChipTone
+import com.vara.mediatracker.ui.common.FlatCard
+import com.vara.mediatracker.ui.common.StatusChip
+import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import kotlinx.coroutines.Dispatchers
@@ -112,14 +117,14 @@ fun LibraryScreen(
             .statusBarsPadding()
     ) {
         LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
+            columns = GridCells.Fixed(2),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 14.dp, top = 6.dp, end = 14.dp, bottom = 140.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 1. Top Header: "COLLECTION" / "Media Library" + count pill
-            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -172,7 +177,7 @@ fun LibraryScreen(
         }
 
         // 2. Search Bar + Online TMDB mode pill
-        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -259,7 +264,7 @@ fun LibraryScreen(
         }
 
         if (searchOnlineTMDB) {
-            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -281,7 +286,7 @@ fun LibraryScreen(
             }
 
             if (onlineResults.isEmpty() && !isSearchingOnline) {
-                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                     Box(modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
                         Text(
                             text = if (searchQuery.length < 2) "Type at least 2 characters to discover on TMDB" else "No TMDB results found",
@@ -382,7 +387,7 @@ fun LibraryScreen(
             }
         } else {
             // 3. M3E Segmented Controls: Type Switcher (All / Movies / TV Shows)
-            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 ExpressiveSegmentedControl(
                     items = listOf("All", "Movies", "TV Shows"),
                     selectedItem = filters.type,
@@ -393,7 +398,7 @@ fun LibraryScreen(
             }
 
             // 5. Quick state pills + the facet filter / group / sort bar
-            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 val filterCounts = remember(items, filters.type) {
                     val scoped = items.filter { item ->
                         when (filters.type) {
@@ -463,7 +468,7 @@ fun LibraryScreen(
 
             // 6. Posters Grid
             if (filteredItems.isEmpty()) {
-                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                     EmptyState(
                         icon = if (searchQuery.isNotBlank()) Icons.Default.SearchOff else Icons.Default.VideoLibrary,
                         title = if (searchQuery.isNotBlank()) "No matches found" else "Empty Collection",
@@ -475,14 +480,24 @@ fun LibraryScreen(
                 sections.forEach { (groupTitle, groupItems) ->
                     if (groupTitle.isNotEmpty()) {
                         item(
-                            span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) },
+                            span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) },
                             key = "group_$groupTitle"
                         ) {
                             LibraryGroupHeader(title = groupTitle, count = groupItems.size)
                         }
                     }
                     items(groupItems, key = { it.id }) { item ->
-                        LibraryPosterCard(item = item, onClick = { onSelectMedia(item.id) })
+                        val isTV = item.type.contains("TV", ignoreCase = true)
+                        val eps = if (isTV) core.episodesByShow[MediaIds.tvShowKey(item.id)] else null
+                        val watched = eps?.count { it.isWatched } ?: 0
+                        val total = eps?.size ?: 0
+                        val progressLabel = if (isTV && total > 0) "$watched of $total watched" else item.state
+                        LibraryPosterCard(
+                            item = item,
+                            statusLabel = core.badges[item.id]?.badge?.label,
+                            progressLabel = progressLabel,
+                            onClick = { onSelectMedia(item.id) }
+                        )
                     }
                 }
             }
@@ -522,80 +537,91 @@ fun LibraryScreen(
 }
 
 @Composable
-fun LibraryPosterCard(item: MediaItemEntity, onClick: () -> Unit) {
-    // Clean Poster-only card with M3E rounded squircle geometry
-    val cardShape = RoundedCornerShape(16.dp)
-
-    ExpressiveCard(
+fun LibraryPosterCard(
+    item: MediaItemEntity,
+    statusLabel: String?,
+    progressLabel: String,
+    onClick: () -> Unit
+) {
+    // 2-column M3E card: poster + status chip + title + progress line.
+    FlatCard(
         onClick = onClick,
-        shape = cardShape,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)),
-        tonalElevation = 2.dp,
-        pressedScale = 0.95f
+        shape = ExpressiveShapes.SquircleMd,
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f / 3f)
-        ) {
-            if (item.posterUrl != null) {
-                AsyncImage(
-                    model = item.posterUrl,
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Movie,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-            }
-
-            // Subtle Type Icon Badge (Top-left)
-            val isTV = item.type.contains("TV", ignoreCase = true)
-            Surface(
-                color = Color.Black.copy(alpha = 0.65f),
-                shape = RoundedCornerShape(bottomEnd = 10.dp),
-                modifier = Modifier.align(Alignment.TopStart)
+        Column(modifier = Modifier.padding(10.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f)
+                    .clip(ExpressiveShapes.SquircleSm)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             ) {
-                Box(modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
-                    Icon(
-                        imageVector = if (isTV) Icons.Default.Tv else Icons.Default.Movie,
-                        contentDescription = if (isTV) "TV Show" else "Movie",
-                        tint = Color.White,
-                        modifier = Modifier.size(11.dp)
+                if (item.posterUrl != null) {
+                    AsyncImage(
+                        model = item.posterUrl,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
+                } else {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Movie,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+
+                if (statusLabel != null) {
+                    StatusChip(
+                        label = statusLabel,
+                        tone = ChipTone.Accent,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(8.dp)
+                    )
+                }
+
+                if (item.taste.equals("Loved", true) || item.taste.equals("Love", true)) {
+                    Surface(
+                        color = Color(0xFFFF2D55),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .size(12.dp)
+                        )
+                    }
                 }
             }
 
-            // Loved Heart indicator (Top-right)
-            if (item.taste.equals("Loved", true) || item.taste.equals("Love", true)) {
-                Surface(
-                    color = Color(0xFFFF2D55),
-                    shape = RoundedCornerShape(bottomStart = 10.dp),
-                    modifier = Modifier.align(Alignment.TopEnd)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .size(11.dp)
-                    )
-                }
-            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = progressLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
