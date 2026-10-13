@@ -2,6 +2,7 @@ package com.vara.mediatracker.data.db
 
 import androidx.room.*
 import com.vara.mediatracker.data.model.EpisodeEntity
+import com.vara.mediatracker.data.model.FacetLogoEntity
 import com.vara.mediatracker.data.model.MediaBadgeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.TVSeasonEntity
@@ -124,6 +125,16 @@ interface SeasonDao {
     suspend fun getDeclaredCountsForShow(showId: String): List<TVSeasonEntity>
 }
 
+/** Facet logo paths for the Discovery/Library browse surfaces. */
+@Dao
+interface FacetLogoDao {
+    @Query("SELECT * FROM facet_logos")
+    fun observeLogos(): Flow<List<FacetLogoEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertLogos(logos: List<FacetLogoEntity>)
+}
+
 /**
  * Persisted badge state.
  *
@@ -163,13 +174,15 @@ interface BadgeDao {
         MediaItemEntity::class,
         EpisodeEntity::class,
         MediaBadgeEntity::class,
-        TVSeasonEntity::class
+        TVSeasonEntity::class,
+        FacetLogoEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun mediaDao(): MediaDao
     abstract fun badgeDao(): BadgeDao
     abstract fun seasonDao(): SeasonDao
+    abstract fun facetLogoDao(): FacetLogoDao
 }

@@ -5,8 +5,10 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.vara.mediatracker.data.api.TMDBClient
+import com.vara.mediatracker.data.api.TMDBWatchProvider
 import com.vara.mediatracker.data.api.TMDBWatchProvidersResponse
 import com.vara.mediatracker.data.db.AppDatabase
+import com.vara.mediatracker.data.model.FacetLogoEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import kotlinx.coroutines.Dispatchers
@@ -141,7 +143,27 @@ class MetadataEnrichmentWorker(
         } else {
             tmdb.getTVWatchProviders(tmdbId)
         }).getOrNull()
-        val providers = providerNames(providersResponse, region).takeIf { it.isNotEmpty() }?.joinToString(", ")
+        val providerEntries = providerEntries(providersResponse, region)
+        val providers = providerEntries.map { it.provider_name }
+            .takeIf { it.isNotEmpty() }?.joinToString(", ")
+
+        // Logo paths TMDB already returned, kept so every surface can show the real
+        // network/studio/provider logo instead of a coloured letter marker. Keyed by
+        // facet + name, so the same network across many titles stores one row.
+        val logos = buildList {
+            details.networks?.forEach { net ->
+                net.logo_path?.takeIf { it.isNotBlank() }
+                    ?.let { add(FacetLogoEntity("network", net.name, it)) }
+            }
+            details.production_companies?.forEach { studio ->
+                studio.logo_path?.takeIf { it.isNotBlank() }
+                    ?.let { add(FacetLogoEntity("studio", studio.name, it)) }
+            }
+            providerEntries.forEach { p ->
+                p.logo_path?.takeIf { it.isNotBlank() }
+                    ?.let { add(FacetLogoEntity("provider", p.provider_name, it)) }
+            }
+        }
 
         db.mediaDao().upsertMedia(
             item.copy(
@@ -154,6 +176,7 @@ class MetadataEnrichmentWorker(
                 network = network ?: item.network
             )
         )
+        if (logos.isNotEmpty()) db.facetLogoDao().upsertLogos(logos)
         return true
     }
 
@@ -163,7 +186,7 @@ class MetadataEnrichmentWorker(
      * carrier-bundled/add-on providers dropped, "... Channel" add-ons dropped, deduped
      * by provider id.
      */
-    private fun providerNames(response: TMDBWatchProvidersResponse?, region: String): List<String> {
+    private fun providerEntries(response: TMDBWatchProvidersResponse?, region: String): List<TMDBWatchProvider> {
         val regionData = response?.results?.get(region) ?: return emptyList()
         val merged = (regionData.flatrate ?: emptyList()) + (regionData.free ?: emptyList())
         val seen = mutableSetOf<Int>()
@@ -176,9 +199,8 @@ class MetadataEnrichmentWorker(
                     !name.contains("apple tv channel")
             }
             .filter { it.provider_id == null || seen.add(it.provider_id) }
-            .map { it.provider_name }
-            .filter { it.isNotBlank() }
-            .distinct()
+            .filter { it.provider_name.isNotBlank() }
+            .distinctBy { it.provider_name }
     }
 
     companion object {

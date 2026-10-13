@@ -130,9 +130,28 @@ object Migrations {
         }
     }
 
+    /**
+     * v9 -> v10: facet logo paths for networks/studios/providers. Purely additive — the
+     * metadata worker fills the table as it enriches.
+     */
+    val MIGRATION_9_10 = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `facet_logos` (
+                    `facet` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `logoPath` TEXT NOT NULL,
+                    PRIMARY KEY(`facet`, `name`)
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
     val ALL: Array<Migration> =
         arrayOf(
             MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-            MIGRATION_7_8, MIGRATION_8_9
+            MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10
         )
 }

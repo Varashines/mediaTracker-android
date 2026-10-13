@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.badge.SmartBadge
 import com.vara.mediatracker.data.model.EpisodeEntity
+import com.vara.mediatracker.data.model.FacetLogoEntity
 import com.vara.mediatracker.data.model.MediaBadgeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.util.Date
+import java.util.Locale
 
 /** Episode totals / next-episode state for one show, shown on Home rails and detail lists. */
 data class TVShowProgress(
@@ -46,7 +48,9 @@ data class LibraryCore(
     val allEpisodes: List<EpisodeEntity> = emptyList(),
     val episodesByShow: Map<String, List<EpisodeEntity>> = emptyMap(),
     val badges: Map<String, BadgeResult> = emptyMap(),
-    val badgeRows: List<MediaBadgeEntity> = emptyList()
+    val badgeRows: List<MediaBadgeEntity> = emptyList(),
+    /** lowercased facet name -> TMDB logo path (networks, studios, providers). */
+    val logos: Map<String, String> = emptyMap()
 )
 
 /** Home-specific derivations (Continue Watching, Coming Soon, hero) off the UI thread. */
@@ -57,6 +61,14 @@ data class HomeData(
     val recentlyAddedItems: List<MediaItemEntity> = emptyList(),
     val lovedItems: List<MediaItemEntity> = emptyList(),
     val spotlightItem: MediaItemEntity? = null
+)
+
+/** The four Room flows joined before the (off-main) library build. */
+private data class RawLibrary(
+    val items: List<MediaItemEntity>,
+    val episodes: List<EpisodeEntity>,
+    val badgeRows: List<MediaBadgeEntity>,
+    val logoRows: List<FacetLogoEntity>
 )
 
 /**
@@ -71,22 +83,24 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
     val core: StateFlow<LibraryCore> = combine(
         container.mediaDao.getAllActiveMedia(),
         container.mediaDao.getAllEpisodesFlow(),
-        container.database.badgeDao().observeBadges()
-    ) { items, episodes, badgeRows ->
-        Triple(items, episodes, badgeRows)
-    }.mapLatest { (items, episodes, badgeRows) ->
+        container.database.badgeDao().observeBadges(),
+        container.database.facetLogoDao().observeLogos()
+    ) { items, episodes, badgeRows, logoRows ->
+        RawLibrary(items, episodes, badgeRows, logoRows)
+    }.mapLatest { raw ->
         withContext(Dispatchers.Default) {
             LibraryCore(
-                items = items,
-                allEpisodes = episodes,
-                episodesByShow = episodes.groupBy { it.showId },
-                badges = badgeRows.associate { row ->
+                items = raw.items,
+                allEpisodes = raw.episodes,
+                episodesByShow = raw.episodes.groupBy { it.showId },
+                badges = raw.badgeRows.associate { row ->
                     row.mediaId to BadgeResult(
                         SmartBadge.fromLabel(row.badgeLabel) ?: SmartBadge.NEW,
                         isSparkle = row.isSparkle
                     )
                 },
-                badgeRows = badgeRows
+                badgeRows = raw.badgeRows,
+                logos = raw.logoRows.associate { it.name.lowercase(Locale.US) to it.logoPath }
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryCore())

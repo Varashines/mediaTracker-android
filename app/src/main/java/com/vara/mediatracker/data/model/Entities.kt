@@ -142,3 +142,20 @@ data class TVSeasonEntity(
     val airDate: String? = null,
     val updatedAt: String? = null
 )
+
+/**
+ * Logo path for a Discovery facet value (network / studio / provider).
+ *
+ * The metadata worker already receives these from TMDB but used to keep only the names,
+ * so the Hub and Library had to render coloured letter markers. Storing the paths keyed
+ * by facet + name lets every surface show the real logo without a per-title column.
+ */
+@Entity(
+    tableName = "facet_logos",
+    primaryKeys = ["facet", "name"]
+)
+data class FacetLogoEntity(
+    val facet: String,      // "network" | "studio" | "provider"
+    val name: String,
+    val logoPath: String
+)
