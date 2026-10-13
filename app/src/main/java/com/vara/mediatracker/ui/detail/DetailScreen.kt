@@ -121,8 +121,11 @@ fun DetailScreen(
                                     .getOrNull()?.also { TmdbResponseCache.put(detailsKey, it) }
                             tmdbDetails = details
 
-                            // Persist backdrop and poster if updated from TMDB
-                            val tmdbBackdrop = TMDBClient.buildPosterUrl(details?.backdrop_path)
+                            // Persist backdrop and poster if updated from TMDB. The
+                            // backdrop is fetched at the backdrop size (w1280), not the
+                            // poster size — a w780 backdrop upscaled to a full-bleed hero
+                            // is visibly soft.
+                            val tmdbBackdrop = TMDBClient.buildBackdropUrl(details?.backdrop_path)
                             val tmdbPoster = TMDBClient.buildPosterUrl(details?.poster_path)
                             if (tmdbBackdrop != null && item.backdropUrl != tmdbBackdrop) {
                                 val updatedItem = item.copy(
@@ -356,7 +359,7 @@ fun DetailScreen(
             // Full-bleed backdrop hero with the title overlaid, per the prototype.
             item {
                 val backdropUrl = remember(item.backdropUrl, tmdbDetails?.backdrop_path) {
-                    item.backdropUrl ?: TMDBClient.buildBackdropUrl(tmdbDetails?.backdrop_path)
+                    TMDBClient.buildBackdropUrl(tmdbDetails?.backdrop_path) ?: item.backdropUrl
                 }
                 val releaseYear = item.releaseDate?.take(4)
                     ?: tmdbDetails?.release_date?.take(4)
@@ -1246,7 +1249,7 @@ fun EpisodeCard(
                 // Episode Thumbnail if available
                 if (!episode.stillPath.isNullOrBlank()) {
                     AsyncImage(
-                        model = if (episode.stillPath.startsWith("http")) episode.stillPath else "https://image.tmdb.org/t/p/w300${episode.stillPath}",
+                        model = if (episode.stillPath.startsWith("http")) episode.stillPath else "https://image.tmdb.org/t/p/w780${episode.stillPath}",
                         contentDescription = episode.name,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
