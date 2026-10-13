@@ -80,6 +80,9 @@ dependencies {
     // Coil Images
     implementation(libs.coil.compose)
 
+    // Backdrop blur for translucent top bars (Haze 2)
+    implementation(libs.haze)
+
     // Networking
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)

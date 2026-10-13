@@ -132,11 +132,11 @@ fun SectionListScreen(
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Poster Thumbnail
+                            // Poster Thumbnail — matches the Home row size (56x74).
                             Box(
                                 modifier = Modifier
-                                    .width(62.dp)
-                                    .height(84.dp)
+                                    .width(56.dp)
+                                    .height(74.dp)
                                     .clip(RoundedCornerShape(12.dp))
                             ) {
                                 val cover = item.posterUrl ?: item.backdropUrl

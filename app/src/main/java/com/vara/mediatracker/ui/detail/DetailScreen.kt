@@ -43,6 +43,9 @@ import com.vara.mediatracker.data.model.TVSeasonEntity
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import kotlinx.coroutines.launch
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TmdbResponseCache
 import com.vara.mediatracker.ui.common.ChipTone
@@ -74,6 +77,7 @@ fun DetailScreen(
     var statusPickerOpen by remember { mutableStateOf(false) }
     // TMDB title-treatment logo (the stylized wordmark), shown in the hero when available.
     var titleLogoUrl by remember { mutableStateOf<String?>(null) }
+    val hazeState = remember { HazeState() }
     val showIdKey = MediaIds.tvShowKey(mediaId)
     val episodes by db.mediaDao().getEpisodesForShow(showIdKey)
         .collectAsState(initial = emptyList())
@@ -361,14 +365,18 @@ fun DetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.86f)
-                )
+                    containerColor = Color.Transparent
+                ),
+                modifier = Modifier.hazeEffect(state = hazeState) {
+                    blurRadius = 24.dp
+                }
             )
         }
     ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .hazeSource(state = hazeState)
                 .padding(padding),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
@@ -406,7 +414,8 @@ fun DetailScreen(
                         )
                     }
 
-                    // Scrim so the overlaid text stays legible.
+                    // Always-dark scrim: the overlaid title/genres/year are white, so a
+                    // theme-following gradient would wash them out in light mode.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -414,8 +423,8 @@ fun DetailScreen(
                                 Brush.verticalGradient(
                                     colors = listOf(
                                         Color.Transparent,
-                                        MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
-                                        MaterialTheme.colorScheme.background
+                                        Color.Black.copy(alpha = 0.55f),
+                                        Color.Black.copy(alpha = 0.92f)
                                     )
                                 )
                             )
