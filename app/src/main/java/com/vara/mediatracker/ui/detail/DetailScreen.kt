@@ -46,6 +46,8 @@ import kotlinx.coroutines.launch
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TmdbResponseCache
 import com.vara.mediatracker.ui.common.ChipTone
+import com.vara.mediatracker.ui.theme.AppTextStyles
+import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
 import com.vara.mediatracker.ui.common.StatusChip
 import com.vara.mediatracker.ui.common.ExpressiveToggleGroup
@@ -351,134 +353,117 @@ fun DetailScreen(
                 .padding(padding),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            // Mac-style Atmospheric Hero Header with High-Res Poster Card
+            // Full-bleed backdrop hero with the title overlaid, per the prototype.
             item {
-                val posterUrl = remember(item.posterUrl, tmdbDetails?.poster_path) {
-                    item.posterUrl ?: TMDBClient.buildPosterUrl(tmdbDetails?.poster_path)
+                val backdropUrl = remember(item.backdropUrl, tmdbDetails?.backdrop_path) {
+                    item.backdropUrl ?: TMDBClient.buildBackdropUrl(tmdbDetails?.backdrop_path)
                 }
+                val releaseYear = item.releaseDate?.take(4)
+                    ?: tmdbDetails?.release_date?.take(4)
+                    ?: tmdbDetails?.first_air_date?.take(4)
+                    ?: "2026"
+                val vote = tmdbDetails?.vote_average ?: prefs.getCachedVoteAverage(item.id)?.toDouble()
+                val genres = tmdbDetails?.genres?.map { it.name }
+                    ?: prefs.getCachedGenres(item.id)?.split(",")?.map { it.trim() }
+                    ?: emptyList()
 
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .height(240.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        // High-Res Poster Card with Bloom & Rounded Corners
-                        Surface(
+                    if (backdropUrl != null) {
+                        AsyncImage(
+                            model = backdropUrl,
+                            contentDescription = item.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Box(
                             modifier = Modifier
-                                .width(135.dp)
-                                .height(200.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shadowElevation = 8.dp,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-                        ) {
-                            if (posterUrl != null) {
-                                AsyncImage(
-                                    model = posterUrl,
-                                    contentDescription = item.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (isTV) Icons.Default.Tv else Icons.Default.Movie,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(36.dp)
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        )
+                    }
+
+                    // Scrim so the overlaid text stays legible.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
+                                        MaterialTheme.colorScheme.background
                                     )
-                                }
-                            }
-                        }
-
-                        // Editorial Title, Badges, and Details
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 200.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            // Type Badge Pill
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            ) {
-                                Text(
-                                    text = if (isTV) "TV SHOW" else "MOVIE",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    letterSpacing = 0.5.sp,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
-                            }
-
-                            // Title
-                            Text(
-                                text = item.title,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.onBackground,
-                                maxLines = 3,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
+                    )
 
-                            // Rating and Year Row
-                            val releaseYear = item.releaseDate?.take(4) 
-                                ?: tmdbDetails?.release_date?.take(4) 
-                                ?: tmdbDetails?.first_air_date?.take(4) 
-                                ?: "2026"
-                            val vote = tmdbDetails?.vote_average ?: prefs.getCachedVoteAverage(item.id)?.toDouble()
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            shape = ExpressiveShapes.AsymTag,
+                            color = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ) {
+                            Text(
+                                text = if (isTV) "TV SHOW" else "MOVIE",
+                                style = AppTextStyles.MonoLabel,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = buildString {
+                                if (genres.isNotEmpty()) append(genres.take(3).joinToString(", "))
+                                if (genres.isNotEmpty()) append(" • ")
+                                append(releaseYear)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.85f),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
 
+                    if (vote != null && vote > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color.Black.copy(alpha = 0.55f),
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(16.dp)
+                        ) {
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (vote != null && vote > 0) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Star,
-                                            contentDescription = null,
-                                            tint = sem.gold,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(3.dp))
-                                        Text(
-                                            text = String.format(Locale.US, "%.1f", vote),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onBackground
-                                        )
-                                    }
-                                    Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                                }
-                                Text(
-                                    text = releaseYear,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = sem.gold,
+                                    modifier = Modifier.size(14.dp)
                                 )
-                            }
-
-                            // Genres
-                            val genres = tmdbDetails?.genres?.map { it.name }
-                                ?: prefs.getCachedGenres(item.id)?.split(",")?.map { it.trim() }
-                                ?: emptyList()
-                            if (genres.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = genres.take(3).joinToString(" • "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    text = String.format(Locale.US, "%.1f", vote),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = Color.White
                                 )
                             }
                         }
