@@ -849,7 +849,7 @@ fun DetailScreen(
             if (item.overview.isNotBlank()) {
                 item {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Text("Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                        Text("SYNOPSIS", style = AppTextStyles.MonoLabel, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = item.overview,
