@@ -341,10 +341,9 @@ fun SettingsScreen(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                     ) {
                         if (isSyncing) {
-                            CircularProgressIndicator(
+                            LoadingIndicator(
                                 modifier = Modifier.size(16.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
+                                color = MaterialTheme.colorScheme.onPrimary
                             )
                         } else {
                             Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))

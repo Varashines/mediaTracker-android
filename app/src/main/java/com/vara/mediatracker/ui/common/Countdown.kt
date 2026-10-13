@@ -6,11 +6,20 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-import java.util.TimeZone
+
+// java.time formatters are immutable and thread-safe, so they are shared instead of
+// allocated per call — these run once per visible card on every countdown tick.
+private val MONTH_DAY_FORMAT = DateTimeFormatter.ofPattern("MMM d", Locale.getDefault())
+private val WEEKDAY_DAY_FORMAT = DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault())
+private val ISO_DAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US)
 
 /**
  * Current wall-clock time, republished on a fixed interval.
@@ -126,7 +135,7 @@ fun formatCountdownTimer(targetDate: Date, nowMillis: Long = System.currentTimeM
     if (diffDays <= 60) {
         return if (diffDays == 1) "in 1d" else "in ${diffDays}d"
     }
-    return SimpleDateFormat("MMM d", Locale.getDefault()).format(targetDate)
+    return MONTH_DAY_FORMAT.format(Instant.ofEpochMilli(targetDate.time).atZone(ZoneId.systemDefault()))
 }
 /**
  * Today's date as `yyyy-MM-dd`, recomputed when the calendar day rolls over.
@@ -143,7 +152,7 @@ fun rememberTodayDateString(): String {
     val nowMillis = LocalNowMillis.current
     val dayIndex = Math.floorDiv(nowMillis, DAY_MILLIS)
     return remember(dayIndex) {
-        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowMillis))
+        ISO_DAY_FORMAT.format(Instant.ofEpochMilli(nowMillis).atZone(ZoneId.systemDefault()))
     }
 }
 
@@ -167,28 +176,13 @@ private const val DAY_MILLIS = 86_400_000L
  */
 fun formatReleaseDay(dateString: String?, todayMillis: Long = System.currentTimeMillis()): String {
     if (dateString.isNullOrBlank() || dateString.length < 10) return ""
-    val parsed = runCatching {
-        SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateString.take(10))
-    }.getOrNull() ?: return dateString
+    val date = runCatching { LocalDate.parse(dateString.take(10), ISO_DAY_FORMAT) }.getOrNull()
+        ?: return dateString
 
-    val cal = Calendar.getInstance().apply { time = parsed }
-    val todayCal = Calendar.getInstance().apply { timeInMillis = todayMillis }
-
-    fun daysBetween(): Long {
-        val a = cal.clone() as Calendar
-        val b = todayCal.clone() as Calendar
-        listOf(a, b).forEach {
-            it.set(Calendar.HOUR_OF_DAY, 0)
-            it.set(Calendar.MINUTE, 0)
-            it.set(Calendar.SECOND, 0)
-            it.set(Calendar.MILLISECOND, 0)
-        }
-        return (a.timeInMillis - b.timeInMillis) / DAY_MILLIS
-    }
-
-    return when (daysBetween()) {
+    val today = Instant.ofEpochMilli(todayMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    return when (ChronoUnit.DAYS.between(today, date)) {
         0L -> "Today"
         1L -> "Tomorrow"
-        else -> SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(parsed)
+        else -> WEEKDAY_DAY_FORMAT.format(date)
     }
 }

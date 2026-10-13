@@ -42,6 +42,7 @@ import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import kotlinx.coroutines.launch
 import com.vara.mediatracker.data.api.TMDBClient
+import com.vara.mediatracker.data.api.TmdbResponseCache
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
 import com.vara.mediatracker.ui.common.ExpressiveToggleGroup
 import com.vara.mediatracker.ui.common.springClickable
@@ -63,6 +64,7 @@ fun DetailScreen(
     val scope = rememberCoroutineScope()
     val sem = LocalSemanticColors.current
     var mediaItem by remember { mutableStateOf<MediaItemEntity?>(null) }
+    var markMenuExpanded by remember { mutableStateOf(false) }
     val showIdKey = MediaIds.tvShowKey(mediaId)
     val episodes by db.mediaDao().getEpisodesForShow(showIdKey)
         .collectAsState(initial = emptyList())
@@ -104,9 +106,12 @@ fun DetailScreen(
                             val tmdbClient = container.tmdbClient()
                             val isMovie = item.type.contains("Movie", ignoreCase = true)
                             
-                            // Fetch Details (Genres, Ratings, Runtime)
-                            val detailsRes = if (isMovie) tmdbClient.getMovieDetails(tmdbId) else tmdbClient.getTVDetails(tmdbId)
-                            val details = detailsRes.getOrNull()
+                            // Fetch Details (Genres, Ratings, Runtime) — cached for a few
+                            // hours so re-opening a title does not re-hit TMDB.
+                            val detailsKey = TmdbResponseCache.detailsKey(item.id)
+                            val details = TmdbResponseCache.get<com.vara.mediatracker.data.api.TMDBDetailsResponse>(detailsKey)
+                                ?: (if (isMovie) tmdbClient.getMovieDetails(tmdbId) else tmdbClient.getTVDetails(tmdbId))
+                                    .getOrNull()?.also { TmdbResponseCache.put(detailsKey, it) }
                             tmdbDetails = details
 
                             // Persist backdrop and poster if updated from TMDB
@@ -160,9 +165,12 @@ fun DetailScreen(
                                 prefs.setCachedVoteAverage(item.id, voteAvg.toFloat())
                             }
 
-                            // Fetch Credits (Cast)
-                            val creditsRes = if (isMovie) tmdbClient.getMovieCredits(tmdbId) else tmdbClient.getTVCredits(tmdbId)
-                            castMembers = creditsRes.getOrNull()?.cast?.take(15) ?: emptyList()
+                            // Fetch Credits (Cast), cached alongside the details.
+                            val creditsKey = TmdbResponseCache.creditsKey(item.id)
+                            val credits = TmdbResponseCache.get<com.vara.mediatracker.data.api.TMDBCreditsResponse>(creditsKey)
+                                ?: (if (isMovie) tmdbClient.getMovieCredits(tmdbId) else tmdbClient.getTVCredits(tmdbId))
+                                    .getOrNull()?.also { TmdbResponseCache.put(creditsKey, it) }
+                            castMembers = credits?.cast?.take(15) ?: emptyList()
 
                             // If it's a TV show, fetch full episodes and episode names from TMDB
                             if (!isMovie) {
@@ -176,8 +184,10 @@ fun DetailScreen(
                                 val seasonRows = mutableListOf<TVSeasonEntity>()
                                 for (season in seasons) {
                                     if (season.season_number < 1) continue
-                                    val seasonDetailsRes = tmdbClient.getSeasonDetails(tmdbId, season.season_number)
-                                    val seasonDetails = seasonDetailsRes.getOrNull()
+                                    val seasonKey = TmdbResponseCache.seasonKey(item.id, season.season_number)
+                                    val seasonDetails = TmdbResponseCache.get<com.vara.mediatracker.data.api.TMDBSeasonDetailsResponse>(seasonKey)
+                                        ?: tmdbClient.getSeasonDetails(tmdbId, season.season_number).getOrNull()
+                                            ?.also { TmdbResponseCache.put(seasonKey, it) }
                                     val eps = seasonDetails?.episodes ?: emptyList()
 
                                     // Recorded from the season payload we already fetched,
@@ -272,7 +282,7 @@ fun DetailScreen(
                     }
                 }
             } else {
-                CircularProgressIndicator()
+                LoadingIndicator()
             }
         }
         return
@@ -895,21 +905,73 @@ fun DetailScreen(
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                            db.mediaDao().setEpisodeWatched(nextUpEpisode.uniqueId, true, now)
-                                            val showTmdbId = MediaIds.tmdbIdOf(nextUpEpisode.showId).toString()
-                                            syncManager.pushEpisodeWatch(showTmdbId, nextUpEpisode.seasonNumber, nextUpEpisode.episodeNumber, true)
+                                Box {
+                                    // M3 Expressive split button: the primary action marks
+                                    // the next episode; the trailing half opens bulk actions.
+                                    SplitButtonLayout(
+                                        leadingButton = {
+                                            SplitButtonDefaults.LeadingButton(
+                                                onClick = {
+                                                    scope.launch {
+                                                        val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                                        db.mediaDao().setEpisodeWatched(nextUpEpisode.uniqueId, true, now)
+                                                        val showTmdbId = MediaIds.tmdbIdOf(nextUpEpisode.showId).toString()
+                                                        syncManager.pushEpisodeWatch(showTmdbId, nextUpEpisode.seasonNumber, nextUpEpisode.episodeNumber, true)
+                                                    }
+                                                }
+                                            ) {
+                                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Mark Watched", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        },
+                                        trailingButton = {
+                                            SplitButtonDefaults.TrailingButton(
+                                                onClick = { markMenuExpanded = true }
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.ArrowDropDown,
+                                                    contentDescription = "More watch options",
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
                                         }
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Mark Watched", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    )
+                                    DropdownMenu(
+                                        expanded = markMenuExpanded,
+                                        onDismissRequest = { markMenuExpanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Mark season watched") },
+                                            leadingIcon = { Icon(Icons.Default.DoneAll, contentDescription = null) },
+                                            onClick = {
+                                                markMenuExpanded = false
+                                                scope.launch {
+                                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                                    val showTmdbId = MediaIds.tmdbIdOf(mediaId).toString()
+                                                    currentSeasonEpisodes.forEach { ep ->
+                                                        db.mediaDao().setEpisodeWatched(ep.uniqueId, true, now)
+                                                        syncManager.pushEpisodeWatch(showTmdbId, ep.seasonNumber, ep.episodeNumber, true)
+                                                    }
+                                                }
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Mark all watched") },
+                                            leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
+                                            onClick = {
+                                                markMenuExpanded = false
+                                                scope.launch {
+                                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                                    val showTmdbId = MediaIds.tmdbIdOf(mediaId).toString()
+                                                    episodes.forEach { ep ->
+                                                        db.mediaDao().setEpisodeWatched(ep.uniqueId, true, now)
+                                                        syncManager.pushEpisodeWatch(showTmdbId, ep.seasonNumber, ep.episodeNumber, true)
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -931,7 +993,7 @@ fun DetailScreen(
                             fontWeight = FontWeight.ExtraBold
                         )
                         if (isLoadingEpisodes) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            LoadingIndicator(modifier = Modifier.size(18.dp))
                         }
                     }
                 }

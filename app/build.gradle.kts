@@ -45,6 +45,18 @@ ksp {
     arg("room.incremental", "true")
 }
 
+kotlin {
+    compilerOptions {
+        // Material 3 Expressive components (LoadingIndicator, ToggleButton, SplitButton,
+        // MotionScheme) are gated behind this opt-in; enabling it module-wide keeps the
+        // call sites free of repeated @OptIn annotations.
+        freeCompilerArgs.addAll(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3ExpressiveApi",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
+        )
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

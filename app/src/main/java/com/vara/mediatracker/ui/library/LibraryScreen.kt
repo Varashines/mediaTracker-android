@@ -272,7 +272,7 @@ fun LibraryScreen(
                         letterSpacing = 0.5.sp
                     )
                     if (isSearchingOnline) {
-                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                        LoadingIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
