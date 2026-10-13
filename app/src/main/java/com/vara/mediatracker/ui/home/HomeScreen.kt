@@ -45,8 +45,8 @@ import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.rememberTodayDateString
 import com.vara.mediatracker.ui.common.springClickable
-import com.vara.mediatracker.ui.theme.AppColors
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
+import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -54,12 +54,6 @@ import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.util.NetworkResolver
 import kotlinx.coroutines.launch
-
-enum class HomeFocusSection(val title: String) {
-    FOR_YOU("For You"),
-    RECENTLY_WATCHED("Recently Watched"),
-    PICK_OF_THE_DAY("Pick of the Day")
-}
 
 data class TVShowProgress(
     val totalEpisodes: Int,
@@ -78,10 +72,10 @@ fun HomeScreen(
     onOpenSearch: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
+    val sem = LocalSemanticColors.current
     val allEpisodes by container.mediaDao.getAllEpisodesFlow()
         .collectAsState(initial = emptyList())
 
-    var activeFocusSection by remember { mutableStateOf<HomeFocusSection?>(null) }
     var activeSectionListTitle by remember { mutableStateOf<String?>(null) }
     var activeSectionListItems by remember { mutableStateOf<List<MediaItemEntity>>(emptyList()) }
 
@@ -91,9 +85,6 @@ fun HomeScreen(
     }
 
     val todayDateStr = rememberTodayDateString()
-
-    // Title logo URL cache: mediaId -> logoUrl
-    val logoMap = remember { mutableStateMapOf<String, String?>() }
 
     // Precalculate progress and next episode per show
     val showProgressMap = remember(items, episodesByShow, todayDateStr) {
@@ -131,81 +122,15 @@ fun HomeScreen(
         }
     }
 
-    // Continue Watching Candidate Pool matching macOS HomeCategoryProcessor.isHomeEligible:
-    // 1. Active / In Progress items (Watching, Active, In Progress)
-    // 2. Titles with fresh PREMIERE / NEW / BINGE_DROP radar badges released in the past 3 days (even if in Wishlist)
-    val continueWatchingPool = remember(items, smartBadgesMap, todayDateStr) {
-        items.filter { item ->
-            if (item.isSoftDeleted) return@filter false
-            if (item.state.equals("Completed", ignoreCase = true) ||
-                item.state.equals("Dropped", ignoreCase = true) ||
-                item.state.equals("On Hold", ignoreCase = true) ||
-                item.state.equals("Paused", ignoreCase = true)
-            ) return@filter false
-
-            val isActive = item.state.equals("Watching", ignoreCase = true) ||
-                item.state.equals("Active", ignoreCase = true) ||
-                item.state.equals("In Progress", ignoreCase = true)
-
-            val badge = smartBadgesMap[item.id]?.badge
-            val isRadarBadge = badge != null && (
-                badge == SmartBadge.PREMIERE ||
-                badge == SmartBadge.NEW ||
-                badge == SmartBadge.BINGE_DROP ||
-                badge == SmartBadge.FINALE
-            )
-
-            if (isActive) {
-                true
-            } else if (isRadarBadge) {
-                // Must be already released (releaseDate <= today) and within 3 days
-                val relDate = item.releaseDate
-                relDate != null && relDate <= todayDateStr
-            } else {
-                false
-            }
-        }
-    }
-
-    // 1. CONTINUE WATCHING: Strictly READY NOW items (next unwatched episode airDate <= today or null)
-    val continueWatching = remember(continueWatchingPool, showProgressMap, smartBadgesMap, todayDateStr) {
-        val readyNow = continueWatchingPool.filter { item ->
-            if (!item.type.contains("TV", ignoreCase = true)) {
-                // For movies: already released (releaseDate <= todayDateStr or null)
-                item.releaseDate == null || item.releaseDate <= todayDateStr
-            } else {
-                val progress = showProgressMap[item.id]
-                val nextEp = progress?.nextEpisode
-                if (nextEp != null) {
-                    // Ready now if next episode is already released (airDate <= today) or unannounced
-                    nextEp.airDate == null || nextEp.airDate <= todayDateStr
-                } else {
-                    // If episodes are not synced locally yet, check show releaseDate <= today
-                    item.releaseDate != null && item.releaseDate <= todayDateStr
-                }
-            }
-        }
-        HomeRanking.rank(readyNow, smartBadgesMap)
-    }
-
-    val continueWatchingIds = remember(continueWatching) {
-        continueWatching.map { it.id }.toSet()
-    }
-
-    // Every actively-watching title, including ones whose next episode has not aired
-    // yet. Anything not claimed by Continue Watching or New lands in In Progress.
-    val allInProgress = remember(items) {
-        items.filter { HomeRanking.isActivelyInProgress(it) && !it.isSoftDeleted }
-    }
-
-    // Everything the hero can page through: the freshest things worth resuming.
-    val heroItems = remember(continueWatching) { continueWatching.take(5) }
-
-    val sections = remember(continueWatching, allInProgress, smartBadgesMap) {
-        HomeSectionsBuilder.build(
-            readyNow = continueWatching,
-            inProgressAll = allInProgress,
-            badges = smartBadgesMap
+    // Up Next / Continue Watching: eligibility rules ported from the macOS app.
+    // This is the single source for the hero spotlight, the "Up Next" list, and its
+    // "View All" screen, so a title can never appear in two differently-ranked rails.
+    val resumeItems = remember(items, episodesByShow, smartBadgesMap, todayDateStr) {
+        HomeEligibility.resumeCandidates(
+            items = items,
+            episodesByShow = episodesByShow,
+            badges = smartBadgesMap,
+            today = todayDateStr
         )
     }
 
@@ -221,9 +146,55 @@ fun HomeScreen(
     // Force network refresh trigger state
     var forceNetworkRefreshCount by remember { mutableIntStateOf(0) }
 
-    // Pre-fetch logos & real TMDB networks for all prominent items across Home
-    val itemsToEnrich = remember(continueWatching, heroItems, items) {
-        (continueWatching + heroItems + items.take(15)).distinctBy { it.id }
+    // COMING SOON: anything with an unaired episode or an unreleased film, soonest
+    // first. Uses the ported macOS eligibility rules, and excludes anything already in
+    // Up Next so a title never appears in two rails.
+    val comingSoonItems = remember(items, episodesByShow, resumeItems, todayDateStr) {
+        val resumeIds = resumeItems.map { it.id }.toSet()
+        items.filter { item ->
+            if (item.isSoftDeleted || resumeIds.contains(item.id)) return@filter false
+            val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+            val air = if (key != null) {
+                HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
+            } else {
+                item.releaseDate?.take(10)
+            }
+            HomeEligibility.isComingSoon(item, air, todayDateStr)
+        }
+            .sortedBy { item ->
+                val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+                if (key != null) {
+                    HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
+                } else {
+                    item.releaseDate?.take(10)
+                } ?: "9999-99-99"
+            }
+            .take(15)
+    }
+
+    // RECENTLY ADDED: Sorted by last added / interacted, max 15
+    val recentlyAddedItems = remember(items) {
+        items.filter { !it.isSoftDeleted }
+            .sortedByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
+            .take(15)
+    }
+
+    val lovedItems = remember(items) {
+        items.filter { !it.isSoftDeleted && (it.taste.equals("Loved", ignoreCase = true) || it.taste.equals("Love", ignoreCase = true)) }
+    }
+
+    // Hero Spotlight: highest priority title with backdrop or poster
+    val spotlightItem = remember(resumeItems, comingSoonItems, lovedItems, items) {
+        resumeItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+            ?: comingSoonItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+            ?: lovedItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+            ?: items.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+    }
+
+    // Pre-fetch real TMDB networks for the items Home actually renders.
+    val itemsToEnrich = remember(spotlightItem, resumeItems, comingSoonItems, recentlyAddedItems, items) {
+        (listOfNotNull(spotlightItem) + resumeItems + comingSoonItems + recentlyAddedItems + items.take(15))
+            .distinctBy { it.id }
     }
 
     LaunchedEffect(itemsToEnrich, container.preferences.tmdbApiKey, forceNetworkRefreshCount) {
@@ -249,122 +220,8 @@ fun HomeScreen(
                         container.preferences.setCachedNetwork(item.id, net)
                     }
                 }
-
-                // Fetch logo if not already cached
-                if (!logoMap.containsKey(item.id)) {
-                    val imagesRes = if (isMovie) tmdbClient.getMovieImages(tmdbId) else tmdbClient.getTVImages(tmdbId)
-                    val bestLogo = imagesRes.getOrNull()?.logos?.let { logos ->
-                        logos.sortedWith(
-                            compareBy<com.vara.mediatracker.data.api.TMDBImageItem> { logo ->
-                                when (logo.iso_639_1) {
-                                    "en" -> 0
-                                    null -> 1
-                                    else -> 2
-                                }
-                            }.thenByDescending { it.width }
-                        ).firstOrNull()?.file_path?.let { TMDBClient.buildLogoUrl(it) }
-                    }
-                    logoMap[item.id] = bestLogo
-                }
             }
         }
-    }
-
-    // 2. COMING SOON: Strictly UPCOMING titles.
-    // An item cannot be in both Continue Watching and Coming Soon:
-    // - Movies / shows with releaseDate > today
-    // - TV shows where the user is caught up with released episodes, and the NEXT unwatched episode airs in the future (> today)
-    val comingSoonItems = remember(items, showProgressMap, smartBadgesMap, continueWatchingIds, todayDateStr) {
-        val directUpcoming = items.filter { !it.isSoftDeleted && it.releaseDate != null && it.releaseDate > todayDateStr }
-        val airingSoonShows = items.filter { item ->
-            !item.isSoftDeleted && item.type.contains("TV", ignoreCase = true) &&
-                !continueWatchingIds.contains(item.id) &&
-                showProgressMap[item.id]?.nextEpisode != null &&
-                showProgressMap[item.id]?.nextEpisode?.airDate != null &&
-                showProgressMap[item.id]!!.nextEpisode!!.airDate!! > todayDateStr
-        }
-        (directUpcoming + airingSoonShows).distinctBy { it.id }.sortedWith(
-            compareBy<MediaItemEntity> { item ->
-                // Sort by earliest next airdate or release date
-                showProgressMap[item.id]?.nextAiringDate ?: item.releaseDate ?: "9999"
-            }.thenByDescending { item ->
-                // Within date ties, prioritize PREMIERE, FINALE, SOON
-                when (smartBadgesMap[item.id]?.badge) {
-                    SmartBadge.PREMIERE -> 100
-                    SmartBadge.FINALE -> 90
-                    SmartBadge.SOON -> 80
-                    SmartBadge.BINGE_DROP -> 70
-                    else -> 0
-                }
-            }
-        ).take(15)
-    }
-
-    // Time-sensitive strip. Sourced from Coming Soon rather than releaseDate: a show's
-    // releaseDate is its premiere, often a year old, while what matters is when the
-    // next episode actually lands.
-    val thisWeekItems = remember(comingSoonItems) { comingSoonItems.take(15) }
-
-    // 3. RECENTLY ADDED: Sorted by last added / interacted, max 15
-    val recentlyAddedItems = remember(items) {
-        items.filter { !it.isSoftDeleted }
-            .sortedByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
-            .take(15)
-    }
-
-    // Watchlist for For You focus section
-    val wishlistItems = remember(items) {
-        items.filter { !it.isSoftDeleted && it.state.equals("Wishlist", ignoreCase = true) }
-    }
-
-    val lovedItems = remember(items) {
-        items.filter { !it.isSoftDeleted && (it.taste.equals("Loved", ignoreCase = true) || it.taste.equals("Love", ignoreCase = true)) }
-    }
-
-    // For You focus tray (Watchlist only)
-    val forYouItems = remember(wishlistItems) {
-        if (wishlistItems.isNotEmpty()) {
-            wishlistItems.shuffled(Random(Calendar.getInstance().get(Calendar.DAY_OF_YEAR).toLong())).take(15)
-        } else {
-            emptyList()
-        }
-    }
-
-    // Recently Watched focus tray
-    val recentlyWatchedItems = remember(items) {
-        items.filter { !it.isSoftDeleted && it.lastInteractionDate != null }
-            .sortedByDescending { it.lastInteractionDate }
-            .take(15)
-    }
-
-    // Pick of the Day focus tray
-    val pickOfTheDay = remember(items, lovedItems) {
-        val calendar = Calendar.getInstance()
-        val dayOfYear = calendar.get(Calendar.DAY_OF_YEAR)
-        val pool = if (lovedItems.isNotEmpty()) lovedItems else items.filter { !it.isSoftDeleted }
-        if (pool.isEmpty()) emptyList()
-        else {
-            var seed = dayOfYear
-            val picks = mutableListOf<MediaItemEntity>()
-            val usedIndices = mutableSetOf<Int>()
-            val count = minOf(4, pool.size)
-            while (picks.size < count) {
-                seed = (seed * 1103515245 + 12345) and 0x7FFFFFFF
-                val idx = Math.floorMod(seed, pool.size)
-                if (usedIndices.add(idx)) {
-                    picks.add(pool[idx])
-                }
-            }
-            picks
-        }
-    }
-
-    // Hero Spotlight: highest priority title with backdrop or poster
-    val spotlightItem = remember(continueWatching, comingSoonItems, lovedItems, items) {
-        continueWatching.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
-            ?: comingSoonItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
-            ?: lovedItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
-            ?: items.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
     }
 
     if (activeSectionListTitle != null) {
@@ -396,20 +253,6 @@ fun HomeScreen(
         return
     }
 
-    // Hero row is the freshest things worth acting on: premieres and new releases,
-    // then anything else ready to resume. Both derive from one partition, so a title
-    // never shows up in two rails.
-    val heroSource = remember(sections) {
-        (sections.newReleases + sections.continueWatching).take(HomeRanking.TOP_ROW_SIZE)
-    }
-    val remainingCW = remember(sections, heroSource) {
-        val placed = heroSource.mapTo(HashSet()) { it.id }
-        (sections.newReleases + sections.continueWatching).filter { it.id !in placed }
-    }
-
-    // Fixed hint rather than reading the header's own animation state, which is
-    // internal to CollapsingHeader.
-    val barAlphaHint = 1f
     val listState = rememberLazyListState()
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -437,7 +280,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFFF2D55))
+                            .background(sem.loved)
                     )
                 }
                 Spacer(modifier = Modifier.height(2.dp))
@@ -487,40 +330,6 @@ fun HomeScreen(
             }
         }
 
-
-        // --- Section membership, all decided by HomeEligibility (ported macOS rules) ---
-        val resumeItems = remember(items, episodesByShow, smartBadgesMap, todayDateStr) {
-            HomeEligibility.resumeCandidates(
-                items = items,
-                episodesByShow = episodesByShow,
-                badges = smartBadgesMap,
-                today = todayDateStr
-            )
-        }
-        val (newItems, inProgressItems) = remember(resumeItems, smartBadgesMap) {
-            HomeEligibility.splitNewAndInProgress(resumeItems, smartBadgesMap)
-        }
-
-        val comingSoonItems = remember(items, episodesByShow, todayDateStr) {
-            items.filter { item ->
-                val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-                val air = if (key != null) {
-                    HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
-                } else {
-                    item.releaseDate?.take(10)
-                }
-                HomeEligibility.isComingSoon(item, air, todayDateStr)
-            }
-                .sortedBy { item ->
-                    val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-                    if (key != null) {
-                        HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
-                    } else {
-                        item.releaseDate?.take(10)
-                    } ?: "9999-99-99"
-                }
-                .take(40)
-        }
 
         LazyColumn(
             state = listState,
@@ -639,7 +448,7 @@ fun HomeScreen(
                                                 Icon(
                                                     imageVector = Icons.Default.Star,
                                                     contentDescription = null,
-                                                    tint = AppColors.Gold,
+                                                    tint = sem.gold,
                                                     modifier = Modifier.size(13.dp)
                                                 )
                                                 Spacer(modifier = Modifier.width(3.dp))
@@ -647,7 +456,7 @@ fun HomeScreen(
                                                     text = spotlightItem.taste.uppercase(),
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = AppColors.Gold
+                                                    color = sem.gold
                                                 )
                                             }
                                         }
@@ -678,13 +487,32 @@ fun HomeScreen(
                                     Spacer(modifier = Modifier.height(10.dp))
 
                                     // Action buttons inside hero
+                                    val heroIsTV = spotlightItem.type.contains("TV", ignoreCase = true)
+                                    val heroWishlisted = spotlightItem.state.equals("Wishlist", ignoreCase = true)
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Button(
-                                            onClick = { onSelectMedia(spotlightItem.id) },
+                                            onClick = {
+                                                scope.launch {
+                                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                                    val dao = container.mediaDao
+                                                    val sync = container.syncManager()
+                                                    if (heroIsTV) {
+                                                        val nextEp = showProgressMap[spotlightItem.id]?.nextEpisode
+                                                        if (nextEp != null) {
+                                                            dao.setEpisodeWatched(nextEp.uniqueId, true, now)
+                                                            val showTmdbId = MediaIds.tmdbIdOf(nextEp.showId).toString()
+                                                            sync.pushEpisodeWatch(showTmdbId, nextEp.seasonNumber, nextEp.episodeNumber, true)
+                                                        }
+                                                    } else {
+                                                        dao.updateState(spotlightItem.id, "Completed", now)
+                                                        sync.pushMediaUpdate(spotlightItem.id, spotlightItem.type, "Completed", spotlightItem.taste)
+                                                    }
+                                                }
+                                            },
                                             colors = ButtonDefaults.buttonColors(
                                                 containerColor = MaterialTheme.colorScheme.primary,
                                                 contentColor = MaterialTheme.colorScheme.onPrimary
@@ -699,22 +527,29 @@ fun HomeScreen(
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
-                                                text = "Mark Watched",
+                                                text = if (heroIsTV) "Watch Next" else "Mark Watched",
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
 
                                         IconButton(
-                                            onClick = { onSelectMedia(spotlightItem.id) },
+                                            onClick = {
+                                                scope.launch {
+                                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                                    val next = if (heroWishlisted) "Active" else "Wishlist"
+                                                    container.mediaDao.updateState(spotlightItem.id, next, now)
+                                                    container.syncManager().pushMediaUpdate(spotlightItem.id, spotlightItem.type, next, spotlightItem.taste)
+                                                }
+                                            },
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(RoundedCornerShape(14.dp))
                                                 .background(Color.White.copy(alpha = 0.20f))
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Bookmark,
-                                                contentDescription = "Save",
+                                                imageVector = if (heroWishlisted) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                                contentDescription = if (heroWishlisted) "Remove from Watchlist" else "Add to Watchlist",
                                                 tint = Color.White,
                                                 modifier = Modifier.size(18.dp)
                                             )
@@ -728,6 +563,7 @@ fun HomeScreen(
             }
 
             // Up Next For You Section (Vertical list matching HTML prototype)
+            if (resumeItems.isNotEmpty()) {
             item {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Row(
@@ -862,7 +698,7 @@ fun HomeScreen(
                                                 text = "READY",
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF6DDFB8)
+                                                color = sem.success
                                             )
                                         }
 
@@ -942,161 +778,10 @@ fun HomeScreen(
                     }
                 }
             }
-
-            // Anticipated Releases Horizontal Carousel matching HTML prototype
-            if (comingSoonItems.isNotEmpty()) {
-                item {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(6.dp)
-                                        .height(18.dp)
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(AppColors.Gold)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Anticipated Releases",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Black,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            val currentMonthYear = remember {
-                                SimpleDateFormat("MMM yyyy", Locale.US).format(Date())
-                            }
-                            Text(
-                                text = currentMonthYear,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(comingSoonItems.take(8), key = { it.id }) { item ->
-                                ExpressiveCard(
-                                    onClick = { onSelectMedia(item.id) },
-                                    shape = ExpressiveShapes.AsymCard,
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
-                                    modifier = Modifier.width(176.dp)
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp)) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(108.dp)
-                                                .clip(RoundedCornerShape(14.dp))
-                                        ) {
-                                            val poster = item.backdropUrl ?: item.posterUrl
-                                            if (poster != null) {
-                                                AsyncImage(
-                                                    model = poster,
-                                                    contentDescription = item.title,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            } else {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                                                )
-                                            }
-
-                                            // Dynamic Countdown / Release Date Badge Pill
-                                            val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-                                            val airDate = if (key != null) {
-                                                HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
-                                            } else {
-                                                item.releaseDate?.take(10)
-                                            }
-                                            val badgeText = remember(airDate, todayDateStr) {
-                                                if (airDate != null) {
-                                                    try {
-                                                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-                                                        val target = sdf.parse(airDate)
-                                                        val today = sdf.parse(todayDateStr)
-                                                        if (target != null && today != null) {
-                                                            val diffDays = ((target.time - today.time) / (1000 * 60 * 60 * 24)).toInt()
-                                                            when {
-                                                                diffDays == 0 -> "TODAY"
-                                                                diffDays == 1 -> "TOMORROW"
-                                                                diffDays in 2..30 -> "IN $diffDays DAYS"
-                                                                else -> SimpleDateFormat("MMM d", Locale.US).format(target).uppercase()
-                                                            }
-                                                        } else {
-                                                            airDate
-                                                        }
-                                                    } catch (_: Exception) {
-                                                        airDate
-                                                    }
-                                                } else {
-                                                    "COMING SOON"
-                                                }
-                                            }
-
-                                            Surface(
-                                                color = AppColors.Gold,
-                                                shape = RoundedCornerShape(8.dp),
-                                                modifier = Modifier
-                                                    .align(Alignment.TopStart)
-                                                    .padding(6.dp)
-                                            ) {
-                                                Text(
-                                                    text = badgeText,
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    color = Color.Black,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        Text(
-                                            text = item.title,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        val realAntNet = networkMap[item.id]
-                                        val antNet = if (!realAntNet.isNullOrBlank()) {
-                                            NetworkResolver.resolveByName(realAntNet, isTV = item.type.contains("TV", ignoreCase = true))
-                                        } else {
-                                            NetworkResolver.resolve(item)
-                                        }
-                                        Text(
-                                            text = if (item.type.contains("TV", ignoreCase = true)) "${antNet.name} Original" else "${antNet.name} Theatrical",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
             }
+
+            // Coming Soon is rendered once, below, as a snapping poster rail. An
+            // earlier "Anticipated Releases" carousel duplicated this exact list.
 
         // Coming Soon — anything with an unaired episode or an unreleased film,
         // soonest first, matching macOS.
@@ -1111,7 +796,7 @@ fun HomeScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             SectionHeader(
                                 title = "Coming Soon",
-                                accent = AppColors.Gold,
+                                accent = sem.gold,
                                 horizontalPadding = 0.dp
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -1167,7 +852,7 @@ fun HomeScreen(
                     ) {
                         SectionHeader(
                             title = "Recently Added",
-                            accent = AppColors.TextSecondary,
+                            accent = MaterialTheme.colorScheme.onSurfaceVariant,
                             horizontalPadding = 0.dp
                         )
 
@@ -1252,6 +937,7 @@ fun ContinueWatchingBackdropCard(
     logoUrl: String? = null,
     onClick: () -> Unit
 ) {
+    val sem = LocalSemanticColors.current
     // Art priority: backdrop -> next episode still path -> center-cropped poster
     val coverUrl = remember(item.backdropUrl, item.posterUrl, progress?.nextEpisode?.stillPath) {
         item.backdropUrl
@@ -1324,7 +1010,7 @@ fun ContinueWatchingBackdropCard(
                 // Taste Badge
                 if (item.taste == "Loved" || item.taste == "Love") {
                     Surface(
-                        color = AppColors.Loved.copy(alpha = 0.9f),
+                        color = sem.loved.copy(alpha = 0.9f),
                         shape = CircleShape
                     ) {
                         Icon(
@@ -1402,7 +1088,7 @@ fun ContinueWatchingBackdropCard(
                             .fillMaxWidth()
                             .height(3.dp)
                             .clip(RoundedCornerShape(2.dp)),
-                        color = AppColors.Accent,
+                        color = MaterialTheme.colorScheme.primary,
                         trackColor = Color.White.copy(alpha = 0.25f)
                     )
                 }
@@ -1460,6 +1146,7 @@ fun HomePosterCard(
     showCountdown: Boolean = false,
     onClick: () -> Unit
 ) {
+    val sem = LocalSemanticColors.current
     // Target date resolution using network / streaming service rules (only computed when countdown is enabled)
     val targetAirDate = remember(nextAirDate, item.releaseDate, item.title, item.overview, showCountdown) {
         if (!showCountdown) null
@@ -1535,7 +1222,7 @@ fun HomePosterCard(
             // Top-Right: Taste Badge (if loved)
             if (item.taste == "Loved" || item.taste == "Love") {
                 Surface(
-                    color = AppColors.Loved.copy(alpha = 0.9f),
+                    color = sem.loved.copy(alpha = 0.9f),
                     shape = CircleShape,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -1569,7 +1256,7 @@ fun HomePosterCard(
                         Icon(
                             imageVector = Icons.Default.HourglassEmpty,
                             contentDescription = null,
-                            tint = AppColors.Gold,
+                            tint = sem.gold,
                             modifier = Modifier.size(10.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
