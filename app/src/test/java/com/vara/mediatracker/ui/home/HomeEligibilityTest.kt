@@ -11,8 +11,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.text.SimpleDateFormat
-import java.util.Calendar
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Ported macOS Home rules. These decide what the user sees *and* what they never see,
@@ -20,11 +21,14 @@ import java.util.Locale
  */
 class HomeEligibilityTest {
 
-    private val today = "2026-10-12"
-    private val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    // Fixed instant so the elapsed-time windows are deterministic.
+    private val now: Date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+        .apply { timeZone = TimeZone.getTimeZone("UTC") }
+        .parse("2026-10-12 12:00")!!
+    private val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
 
     private fun day(offset: Long) =
-        fmt.format(Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, offset.toInt()) }.time)
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now.time + offset * 86_400_000L))
 
     private fun item(
         id: String = "tv_1",
@@ -52,14 +56,7 @@ class HomeEligibilityTest {
         item: MediaItemEntity,
         badge: SmartBadge? = null,
         eps: List<EpisodeEntity> = emptyList()
-    ) = HomeEligibility.isContinueWatchingCandidate(
-        item = item,
-        badge = badge,
-        hasUnwatchedAired = HomeEligibility.hasUnwatchedAired(eps, today),
-        watchedCount = eps.count { it.isWatched },
-        nextUnairedAirDate = HomeEligibility.nextAiringDate(eps, today),
-        today = today
-    )
+    ) = HomeEligibility.isContinueWatchingCandidate(item, badge, eps, now)
 
     // ---------- New badge set ----------
 
@@ -100,7 +97,9 @@ class HomeEligibilityTest {
 
     @Test
     fun `active show with something to resume qualifies`() {
-        assertTrue(eligible(item(), null, listOf(ep(watched = false, airDate = day(-3)))))
+        // macOS requires recent activity for an explicitly-Active title with no
+        // watched episodes, so it carries a recent interaction date.
+        assertTrue(eligible(item(lastInteraction = "2026-10-10T00:00:00Z"), null, listOf(ep(watched = false, airDate = day(-3)))))
     }
 
     @Test
@@ -268,7 +267,7 @@ class HomeEligibilityTest {
         )
         val badges = mapOf("tv_new" to BadgeResult(SmartBadge.NEW))
 
-        val ranked = HomeEligibility.resumeCandidates(items, mapOf("tv_1" to eps), badges, today)
+        val ranked = HomeEligibility.resumeCandidates(items, mapOf("tv_1" to eps), badges, now)
 
         // NEW outranks a plain active title despite far older interaction.
         assertEquals(listOf("tv_new", "tv_plain"), ranked.map { it.id })
@@ -277,14 +276,14 @@ class HomeEligibilityTest {
     @Test
     fun `resume candidates exclude ineligible titles`() {
         val items = listOf(item(state = "Completed"), item(state = "Wishlist"))
-        assertTrue(HomeEligibility.resumeCandidates(items, emptyMap(), emptyMap(), today).isEmpty())
+        assertTrue(HomeEligibility.resumeCandidates(items, emptyMap(), emptyMap(), now).isEmpty())
     }
 
     @Test
     fun `resume candidates are capped`() {
         val eps = listOf(ep(watched = false, airDate = day(-2)))
-        val items = (1..40).map { item(id = "tv_$it") }
+        val items = (1..40).map { item(id = "tv_$it", lastInteraction = "2026-10-11T00:00:00Z") }
         val byShow = (1..40).associate { "tv_$it" to eps }
-        assertEquals(20, HomeEligibility.resumeCandidates(items, byShow, emptyMap(), today).size)
+        assertEquals(20, HomeEligibility.resumeCandidates(items, byShow, emptyMap(), now).size)
     }
 }

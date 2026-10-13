@@ -5,8 +5,8 @@ import com.vara.mediatracker.data.badge.SmartBadge
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.util.AirTimeResolver
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -17,6 +17,10 @@ import java.util.Locale
  * are the part of Home that has to be right: they decide what the user sees and, more
  * importantly, what they *don't* see. Mirrors `HomeCategoryProcessor.isHomeEligible`,
  * `homeSortPriority`, and the Coming Soon filter.
+ *
+ * Continue Watching is evaluated against a `now: Date` and elapsed-time windows, not
+ * whole calendar days. The earlier date-string version put a title premiering exactly
+ * five days ago in Continue Watching where macOS had already dropped it.
  */
 object HomeEligibility {
 
@@ -25,6 +29,10 @@ object HomeEligibility {
 
     /** States that mean the user is part-way through. */
     private val ACTIVE_STATES = setOf("active", "re-watching", "in progress")
+
+    private const val DAY_MS = 86_400_000L
+    private const val NEW_DROP_WINDOW_DAYS = 5.0
+    private const val ACTIVE_WATCH_WINDOW_DAYS = 30.0
 
     /**
      * Badges that mean "this just happened".
@@ -52,49 +60,121 @@ object HomeEligibility {
         else -> if (item.state.lowercase() in ACTIVE_STATES || hasWatched) 80 else 0
     }
 
+    /** The per-title state macOS keeps denormalized on `MediaItem`/`TVShowDetails`. */
+    data class ShowState(
+        val isTv: Boolean,
+        val cachedNextAiringDate: Date?,
+        val storedIsUpcoming: Boolean,
+        val remainingEpisodesCount: Int,
+        val storedProgress: Double,
+        val latestWatchDate: Date?
+    )
+
     /**
-     * The Continue Watching candidate pool, ported from `isHomeEligible`.
-     *
-     * Beyond the obvious state exclusions this drops two categories that the simpler
-     * "is it active" check keeps:
-     *   - titles flagged upcoming whose release is still in the future, and
-     *   - shows that are fully caught up and waiting on a future episode, which are a
-     *     Coming Soon concern rather than something you can resume.
+     * Rebuilds macOS's denormalized badge/eligibility inputs from the episode rows:
+     * `cachedNextAiringDate`, `storedIsUpcoming`, `remainingEpisodesCount`,
+     * `storedProgress`, and the latest watch date.
+     */
+    fun showState(item: MediaItemEntity, episodes: List<EpisodeEntity>, now: Date): ShowState {
+        val isTv = item.type.contains("TV", ignoreCase = true)
+        val release = parseDay(item.releaseDate)
+
+        if (!isTv) {
+            // Movies: macOS sets cachedNextAiringDate = releaseDate.
+            return ShowState(
+                isTv = false,
+                cachedNextAiringDate = release,
+                storedIsUpcoming = release?.after(now) == true,
+                remainingEpisodesCount = 0,
+                storedProgress = 0.0,
+                latestWatchDate = parseDay(item.lastInteractionDate)
+            )
+        }
+
+        val sorted = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+        val watchedCount = sorted.count { it.isWatched }
+        val total = sorted.size
+        val aired = sorted.count { ep -> epInstant(ep, item)?.let { !it.after(now) } == true }
+        val remaining = maxOf(0, aired - watchedCount)
+        val progress = if (total > 0) watchedCount.toDouble() / total.toDouble() else 0.0
+
+        // macOS: firstUnwatched.airDateAsDate ?? tv.nextEpisodeDate.
+        val firstUnwatchedAir = sorted.firstOrNull { !it.isWatched }?.let { epInstant(it, item) }
+        val cached = firstUnwatchedAir ?: storedInstant(item)
+
+        val latestWatch = sorted.mapNotNull { parseDay(it.watchedDate) }.maxByOrNull { it.time }
+            ?: parseDay(item.lastInteractionDate)
+
+        return ShowState(
+            isTv = true,
+            cachedNextAiringDate = cached,
+            storedIsUpcoming = (cached ?: release)?.after(now) == true,
+            remainingEpisodesCount = remaining,
+            storedProgress = progress,
+            latestWatchDate = latestWatch
+        )
+    }
+
+    /**
+     * Continue Watching membership, port of macOS `isHomeEligible`. Uses elapsed-time
+     * windows (`now: Date`), not calendar-day counts.
      */
     fun isContinueWatchingCandidate(
         item: MediaItemEntity,
         badge: SmartBadge?,
-        hasUnwatchedAired: Boolean,
-        watchedCount: Int,
-        nextUnairedAirDate: String?,
-        today: String
+        episodes: List<EpisodeEntity> = emptyList(),
+        now: Date = Date()
+    ): Boolean = isHomeEligible(item, badge, showState(item, episodes, now), now)
+
+    private fun isHomeEligible(
+        item: MediaItemEntity,
+        badge: SmartBadge?,
+        st: ShowState,
+        now: Date
     ): Boolean {
         if (item.isSoftDeleted) return false
         val state = item.state.lowercase()
         if (state in EXCLUDED_STATES) return false
 
-        val isTv = item.type.contains("TV", ignoreCase = true)
-        val releaseDate = item.releaseDate?.take(10)
-
-        // Upcoming and not yet released: belongs in Coming Soon, not here.
-        if (releaseDate != null && releaseDate > today && !isTv) return false
-        if (releaseDate != null && releaseDate > today && badge == null) return false
-
-        // Caught up with something still to air.
-        val isCaughtUp = !hasUnwatchedAired && watchedCount > 0
-        if (isCaughtUp && isTv && nextUnairedAirDate != null && nextUnairedAirDate > today) return false
-
-        if (cwPriority(item, badge, watchedCount > 0) <= 0) return false
-
-        // A never-started watchlist title only earns a slot if it just dropped.
-        if (state == "wishlist" && watchedCount == 0 && badge in NEW_BADGES) {
-            val air = if (isTv && releaseDate != null && releaseDate <= today) releaseDate else releaseDate
-            if (air == null) return false
-            val daysSince = daysBetween(air, today)
-            if (daysSince < 0 || daysSince > 5) return false
+        // Upcoming titles only stay on Home for 5 days after the airing they point at.
+        if (st.storedIsUpcoming) {
+            val airDate = st.cachedNextAiringDate ?: parseDay(item.releaseDate) ?: return false
+            if (airDate.after(now)) return false
+            val daysSinceAir = (now.time - airDate.time).toDouble() / DAY_MS
+            if (daysSinceAir > NEW_DROP_WINDOW_DAYS) return false
         }
 
-        return true
+        // Caught up with something still to air: a Coming Soon concern, not resumable.
+        val isCaughtUp = st.remainingEpisodesCount == 0 && st.storedProgress > 0.0
+        val nextAir = st.cachedNextAiringDate
+        if (isCaughtUp && nextAir != null && nextAir.after(now) && st.isTv) return false
+
+        if (badge in NEW_BADGES) {
+            // A never-started watchlist title only earns a slot if it just dropped.
+            if (state == "wishlist" && st.storedProgress == 0.0) {
+                val release = parseDay(item.releaseDate)
+                val anchor = if (st.isTv && release != null && !release.after(now)) {
+                    release
+                } else {
+                    st.cachedNextAiringDate ?: release
+                } ?: return false
+                val daysSinceRelease = (now.time - anchor.time).toDouble() / DAY_MS
+                if (daysSinceRelease < 0.0 || daysSinceRelease > NEW_DROP_WINDOW_DAYS) return false
+            }
+            return true
+        }
+
+        val isActive = state in ACTIVE_STATES || st.storedProgress > 0.0
+        if (isActive) {
+            // An explicitly-active title with no watched episodes must have recent
+            // activity, otherwise a stale "Active" flag keeps it on Home forever.
+            if (state in ACTIVE_STATES && st.storedProgress == 0.0) {
+                val latest = st.latestWatchDate ?: return false
+                if (latest.time < now.time - (ACTIVE_WATCH_WINDOW_DAYS * DAY_MS).toLong()) return false
+            }
+            return true
+        }
+        return false
     }
 
     /**
@@ -113,9 +193,6 @@ object HomeEligibility {
     ): Boolean {
         if (item.isSoftDeleted) return false
         if (item.state.equals("Completed", ignoreCase = true)) return false
-        // macOS applies these when building the Home pool that Coming Soon draws
-        // from (HomeCategoryProcessor.swift:51,55,58), not in the air-date filter.
-        // Without them an On Hold or Disliked title still surfaces as "upcoming".
         if (item.state.equals("Dropped", ignoreCase = true)) return false
         if (item.state.equals("On Hold", ignoreCase = true)) return false
         if (item.taste.equals("Dislike", ignoreCase = true)) return false
@@ -127,15 +204,6 @@ object HomeEligibility {
      * Port of macOS `cachedNextAiringDate` (MediaItem+Sync.swift:233):
      * the air date of the FIRST UNWATCHED episode, falling back to the next
      * unaired one only when that episode has no air date.
-     *
-     * This is not the same as "next unaired date". A show with a backlog
-     * resolves to a date already in the past, which is what keeps it in In
-     * Progress instead of Coming Soon. Taking the next *unaired* date instead
-     * put shows with unwatched episodes into Coming Soon, because the future
-     * episodes outweighed the ones you have not seen yet.
-     *
-     * `firstUnwatched` is season-then-episode order with no air-date filter,
-     * matching TVShowDetails.swift:95.
      */
     fun nextAiringDate(episodes: List<EpisodeEntity>, today: String): String? {
         val ordered = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
@@ -153,8 +221,7 @@ object HomeEligibility {
 
     /**
      * The episode [nextAiringDate] points at, so callers can use its TVMaze `airstamp`
-     * and airtime for an exact countdown. Returns the first unwatched episode, or the
-     * soonest future one when the user is caught up.
+     * and airtime for an exact countdown.
      */
     fun nextAiringEpisode(episodes: List<EpisodeEntity>, today: String): EpisodeEntity? {
         val ordered = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
@@ -169,23 +236,16 @@ object HomeEligibility {
         items: List<MediaItemEntity>,
         episodesByShow: Map<String, List<EpisodeEntity>>,
         badges: Map<String, BadgeResult?>,
-        today: String,
+        now: Date = Date(),
         limit: Int = 20
     ): List<MediaItemEntity> {
         val scored = items.mapNotNull { item ->
             val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
             val eps = key?.let { episodesByShow[it] }.orEmpty()
             val badge = badges[item.id]?.badge
-            val watched = eps.count { it.isWatched }
-            if (!isContinueWatchingCandidate(
-                    item, badge,
-                    hasUnwatchedAired = hasUnwatchedAired(eps, today),
-                    watchedCount = watched,
-                    nextUnairedAirDate = nextAiringDate(eps, today),
-                    today = today
-                )
-            ) return@mapNotNull null
+            if (!isContinueWatchingCandidate(item, badge, eps, now)) return@mapNotNull null
 
+            val watched = eps.count { it.isWatched }
             val recency = item.lastInteractionDate ?: item.lastStateChangeDate ?: ""
             item to (cwPriority(item, badge, watched > 0) to recency)
         }
@@ -205,10 +265,31 @@ object HomeEligibility {
         return newItems to rest
     }
 
-    private fun daysBetween(from: String, to: String): Long {
-        val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val a = fmt.parse(from) ?: return 0
-        val b = fmt.parse(to) ?: return 0
-        return (b.time - a.time) / 86_400_000L
+    // ---- instant helpers ----
+
+    private fun epInstant(ep: EpisodeEntity, item: MediaItemEntity): Date? =
+        AirTimeResolver.resolveAirInstant(
+            dateString = ep.airDate?.take(10),
+            time = ep.airTime,
+            airstamp = ep.airstamp,
+            timezone = item.timezone,
+            serviceName = item.network
+        )
+
+    private fun storedInstant(item: MediaItemEntity): Date? =
+        item.nextAiringInstant?.takeIf { it.isNotBlank() }?.let { iso ->
+            AirTimeResolver.resolveAirInstant(
+                dateString = iso.take(10),
+                airstamp = iso,
+                timezone = item.timezone,
+                serviceName = item.network
+            )
+        }
+
+    private fun parseDay(dateStr: String?): Date? {
+        if (dateStr.isNullOrBlank() || dateStr.length < 10) return null
+        return runCatching {
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateStr.take(10))
+        }.getOrNull()
     }
 }

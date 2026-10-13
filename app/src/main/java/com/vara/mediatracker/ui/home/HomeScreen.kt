@@ -131,7 +131,7 @@ fun HomeScreen(
             items = items,
             episodesByShow = episodesByShow,
             badges = smartBadgesMap,
-            today = todayDateStr
+            now = Date()
         )
     }
 
