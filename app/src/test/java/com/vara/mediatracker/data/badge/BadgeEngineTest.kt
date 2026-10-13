@@ -237,15 +237,16 @@ class BadgeEngineTest {
     }
 
     @Test
-    fun `backlog with an episode airing within two days is BEHIND`() {
+    fun `backlog alone without taste is not BEHIND`() {
         val episodes = listOf(
             ep(1, 1, watched = true, airDate = day(-60), watchedDate = day(-60)),
             ep(1, 2, watched = true, airDate = day(-60), watchedDate = day(-60)),
             ep(1, 3, airDate = day(-20)), // backlog
             ep(1, 4, airDate = day(1))    // next episode airs tomorrow
         )
-        // BEHIND is taste-agnostic: a backlog already signals engagement.
-        assertEquals(SmartBadge.BEHIND, badgeFor(show(taste = "None"), episodes))
+        // macOS gates BEHIND on taste, and reads the first unwatched episode's instant
+        // (already aired here), so an unliked backlog earns no BEHIND.
+        assertNull(badgeFor(show(taste = "None"), episodes))
     }
 
     @Test
@@ -741,13 +742,16 @@ class BadgeEngineNextAiringInstantTest {
     }
 
     @Test
-    fun `BEHIND fires when the next episode airs within two days`() {
+    fun `liked show with a backlog and next episode within a week is BEHIND`() {
         val now = at("2026-10-11 18:52")
+        // S1E1/E2 watched. S1E3 is the first unwatched and airs ~4 days out — past the
+        // 48h SOON window, inside BEHIND's 7-day one. S1E4 already aired out of order, so
+        // the aired-backlog guard (remaining > 0) still holds, as macOS requires.
         val episodes = listOf(
             ep(1, 1, "2026-08-01", watched = true, watchedDate = "2026-08-01"),
             ep(1, 2, "2026-08-01", watched = true, watchedDate = "2026-08-01"),
-            ep(1, 3, "2026-08-01"),   // backlog
-            ep(1, 4, "2026-10-12")    // airs 2026-10-13 00:00 UTC, ~1.2 days out
+            ep(1, 3, "2026-10-15"),  // first unwatched, ~4.2 days out
+            ep(1, 4, "2026-10-05")   // aired, unwatched backlog
         )
         assertEquals(SmartBadge.BEHIND, BadgeEngine.calculateBadge(show(taste = "Love"), episodes, now)?.badge)
     }

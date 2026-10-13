@@ -54,8 +54,7 @@ object BadgeEngine {
     private const val FINALE_DAYS_MIN = -7.0
     private const val FINALE_DAYS_MAX = 14.0
     private const val MILESTONE_DAYS = 14.0
-    private const val BEHIND_SEASON_DAYS = 7.0
-    private const val BEHIND_EPISODE_DAYS = 2.0
+    private const val BEHIND_WINDOW_DAYS = 7.0
     private const val BINGE_ENGAGEMENT_COUNT = 3
     private const val BINGE_PROGRESS_RATIO = 0.20
 
@@ -340,26 +339,26 @@ object BadgeEngine {
             return BadgeResult(SmartBadge.HOOKED, isSparkle = true)
         }
 
-        // BEHIND: the next release is close and there is a backlog to clear. A season
-        // premiere earns a week's notice; a regular episode only two days, since episodes
-        // air frequently. Taste-agnostic — a backlog already signals the user is engaged.
-        val nextUpcoming = scan.nextUpcomingAirDate ?: storedInstant(item)
-        if (nextUpcoming != null) {
-            val daysToAir = (nextUpcoming.time - now.time).toDouble() / MS_PER_DAY.toDouble()
-            val threshold =
-                if (scan.nextUpcomingEpisodeNumber == 1) BEHIND_SEASON_DAYS else BEHIND_EPISODE_DAYS
-            if (daysToAir > 0.0 && daysToAir <= threshold) {
-                return BadgeResult(SmartBadge.BEHIND, isSparkle = false)
-            }
-        }
-
-        // BINGE stays gated on taste so a backlog alone does not nag every show.
+        // BEHIND and BINGE are both gated on taste so a backlog alone does not nag every
+        // show. macOS guards here, before either check.
         val isLikedOrLoved = item.taste.equals("Loved", ignoreCase = true) ||
                              item.taste.equals("Love", ignoreCase = true) ||
                              item.taste.equals("Liked", ignoreCase = true) ||
                              item.taste.equals("Like", ignoreCase = true)
 
         if (!isLikedOrLoved) return null
+
+        // BEHIND: the next release is within a week. Measured from the same instant macOS
+        // uses (`cachedNextAiringDate`): the first unwatched episode's air date, else the
+        // show's stored next-episode instant. A backlog whose next-unwatched episode has
+        // already aired yields a non-positive gap and earns no BEHIND, exactly as macOS.
+        val nextAiring = nextAiringInstant(item, scan.nextAirDate)
+        if (nextAiring != null) {
+            val daysToAiring = (nextAiring.time - now.time).toDouble() / MS_PER_DAY.toDouble()
+            if (daysToAiring > 0.0 && daysToAiring <= BEHIND_WINDOW_DAYS) {
+                return BadgeResult(SmartBadge.BEHIND, isSparkle = false)
+            }
+        }
 
         // BINGE: steady 20%+ progress through the show.
         if (scan.totalEpisodes > 0) {
