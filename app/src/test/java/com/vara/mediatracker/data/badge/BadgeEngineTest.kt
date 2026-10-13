@@ -237,23 +237,24 @@ class BadgeEngineTest {
     }
 
     @Test
-    fun `liked show with an episode airing within a week is BEHIND`() {
+    fun `backlog with an episode airing within two days is BEHIND`() {
         val episodes = listOf(
             ep(1, 1, watched = true, airDate = day(-60), watchedDate = day(-60)),
             ep(1, 2, watched = true, airDate = day(-60), watchedDate = day(-60)),
-            ep(1, 3, airDate = day(-20)), // next unwatched, outside NEW/SOON
-            ep(1, 4, airDate = day(3))    // first future airing
+            ep(1, 3, airDate = day(-20)), // backlog
+            ep(1, 4, airDate = day(1))    // next episode airs tomorrow
         )
-        assertEquals(SmartBadge.BEHIND, badgeFor(show(taste = "Liked"), episodes))
+        // BEHIND is taste-agnostic: a backlog already signals engagement.
+        assertEquals(SmartBadge.BEHIND, badgeFor(show(taste = "None"), episodes))
     }
 
     @Test
-    fun `unliked show with an episode airing soon is not BEHIND`() {
+    fun `backlog with no imminent episode is not BEHIND`() {
         val episodes = listOf(
             ep(1, 1, watched = true, airDate = day(-60), watchedDate = day(-60)),
             ep(1, 2, watched = true, airDate = day(-60), watchedDate = day(-60)),
             ep(1, 3, airDate = day(-20)),
-            ep(1, 4, airDate = day(3))
+            ep(1, 4, airDate = day(5)) // more than two days out
         )
         assertNull(badgeFor(show(taste = "None"), episodes))
     }
@@ -610,18 +611,14 @@ class BadgeEngineFinaleParityTest {
 }
 
 /**
- * Air-time precision, pinned against a real divergence.
+ * Air-time resolution, aligned to macOS `DateUtils.parseEpisodeDate`.
  *
- * "Doctor X: Mafia in White" premiered 2026-10-09 and Android showed NEW while macOS
- * showed PREMIERE. Its air date is a bare `2026-10-09`, which parses to midnight —
- * 5.5 hours before the episode actually airs. That pushed `daysSinceAir` to 3.013,
- * just past the `premiereDaysWindow` upper bound of 3, and the badge fell through to
- * the release window.
+ * The old Android fallback parsed a bare date to the device's local midnight; macOS
+ * resolves it to 8 PM ET (or the show timezone), which is what keeps "Doctor X" a
+ * PREMIERE instead of slipping to NEW.
  */
 class BadgeEngineAirTimeTest {
 
-    // Assertions below render instants and compare day-fractions, both of which depend
-    // on the ambient zone.
     @get:org.junit.Rule
     val tz = FixedTimeZone()
 
@@ -630,51 +627,29 @@ class BadgeEngineAirTimeTest {
     private fun at(text: String): Date = dateFormat.parse(text)!!
 
     @Test
-    fun `air time shifts the episode to its real instant`() {
-        val dateOnly = BadgeEngine.parseAirInstant("2026-10-09", null)!!
-        val withTime = BadgeEngine.parseAirInstant("2026-10-09", "20:30")!!
-
-        assertEquals("2026-10-09 00:00", dateFormat.format(dateOnly))
-        assertEquals("2026-10-09 20:30", dateFormat.format(withTime))
+    fun `bare air date resolves to 8pm ET`() {
+        // 20:00 EDT on 2026-10-09 == 2026-10-10 00:00 UTC.
+        assertEquals("2026-10-10 00:00", dateFormat.format(BadgeEngine.parseAirInstant("2026-10-09", null)!!))
     }
 
     @Test
-    fun `bare air date lands before the real instant`() {
-        val dateOnly = BadgeEngine.parseAirInstant("2026-10-09", null)!!
-        val withTime = BadgeEngine.parseAirInstant("2026-10-09", "20:30")!!
-
-        assertTrue(dateOnly.before(withTime))
+    fun `airstamp wins over date and time`() {
+        val d = BadgeEngine.parseAirInstant("2026-10-09", "20:30", airstamp = "2026-10-09T18:00:00Z")!!
+        assertEquals("2026-10-09 18:00", dateFormat.format(d))
     }
 
     @Test
-    fun `doctor x keeps PREMIERE when the air time is known`() {
-        // Evaluated at 2026-10-12 00:18 local, exactly when the bad badge was stored.
+    fun `show timezone interprets a real airtime`() {
+        // 21:00 EDT == 2026-10-10 01:00 UTC.
+        val d = BadgeEngine.parseAirInstant("2026-10-09", "21:00", timezone = "America/New_York")!!
+        assertEquals("2026-10-10 01:00", dateFormat.format(d))
+    }
+
+    @Test
+    fun `doctor x keeps PREMIERE even without a stored air time`() {
+        // The exact case that used to diverge: bare date, no air time. macOS still gives
+        // PREMIERE via the 8 PM ET fallback.
         val now = at("2026-10-12 00:18")
-
-        val episodes = listOf(
-            EpisodeEntity(
-                uniqueId = MediaIds.buildEpisodeUniqueId("tv_293610", 1, 1),
-                showId = "tv_293610",
-                seasonNumber = 1,
-                episodeNumber = 1,
-                airDate = "2026-10-09",
-                airTime = "20:30"
-            )
-        )
-        val show = MediaItemEntity(
-            id = "tv_293610", title = "Doctor X", type = "TV Show", state = "Wishlist"
-        )
-
-        assertEquals(SmartBadge.PREMIERE, BadgeEngine.calculateBadge(show, episodes, now)?.badge)
-    }
-
-    @Test
-    fun `doctor x loses PREMIERE without the air time`() {
-        // The exact regression: same data, air time omitted.
-        val now = at("2026-10-12 00:18")
-
-        // Twelve episodes as in the real library, otherwise E1 would look like the
-        // season's last episode and resolve as FINALE instead of falling through.
         val episodes = listOf(
             EpisodeEntity(
                 uniqueId = MediaIds.buildEpisodeUniqueId("tv_293610", 1, 1),
@@ -683,27 +658,18 @@ class BadgeEngineAirTimeTest {
                 episodeNumber = 1,
                 airDate = "2026-10-09"
             )
-        ) + (2..12).map {
-            EpisodeEntity(
-                uniqueId = MediaIds.buildEpisodeUniqueId("tv_293610", 1, it),
-                showId = "tv_293610",
-                seasonNumber = 1,
-                episodeNumber = it,
-                airDate = "2026-11-${(it - 2).toString().padStart(2, '0')}"
-            )
-        }
+        )
         val show = MediaItemEntity(
             id = "tv_293610", title = "Doctor X", type = "TV Show", state = "Wishlist"
         )
-
-        assertEquals(SmartBadge.NEW, BadgeEngine.calculateBadge(show, episodes, now)?.badge)
+        assertEquals(SmartBadge.PREMIERE, BadgeEngine.calculateBadge(show, episodes, now)?.badge)
     }
 
     @Test
-    fun `malformed air times fall back to the date`() {
+    fun `malformed air times fall back to 8pm ET`() {
         val expected = BadgeEngine.parseAirInstant("2026-10-09", null)!!
         listOf("", "  ", "8pm", "25:99", "ab:cd", "8:5").forEach { bad ->
-            assertEquals("airTime '$bad' must be ignored", expected, BadgeEngine.parseAirInstant("2026-10-09", bad))
+            assertEquals("airTime '$bad'", expected, BadgeEngine.parseAirInstant("2026-10-09", bad))
         }
     }
 
@@ -713,98 +679,77 @@ class BadgeEngineAirTimeTest {
         assertNull(BadgeEngine.parseAirInstant("", "20:30"))
         assertNull(BadgeEngine.parseAirInstant("2026", "20:30"))
     }
-
-    @Test
-    fun `midnight air time is accepted`() {
-        assertEquals("2026-10-09 00:00", dateFormat.format(BadgeEngine.parseAirInstant("2026-10-09", "00:00")!!))
-        assertEquals("2026-10-09 23:59", dateFormat.format(BadgeEngine.parseAirInstant("2026-10-09", "23:59")!!))
-    }
 }
 
 /**
- * The stored airing instant, sourced from TVMaze, must win over the day-granular
- * local air date — mirroring how macOS reads `cachedNextAiringDate`.
- *
- * "Abbott Elementary" measured 3.013 days on the bare date against 1.76 on macOS,
- * which is enough to cross the premiere boundary. The TVMaze airstamp for its next
- * airing resolves that without needing TMDB's missing `air_time`.
+ * The next-airing instant, mirroring macOS `cachedNextAiringDate`:
+ * first unwatched episode first, then the stored TVMaze next-episode instant.
  */
 class BadgeEngineNextAiringInstantTest {
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
-    // A bare air date parses in the device's zone, so these cases are only meaningful
-    // against a fixed one.
+
     @get:org.junit.Rule
     val tz = FixedTimeZone()
 
     private fun at(text: String): Date = dateFormat.parse(text)!!
 
-    private fun abbott() = listOf(
-        EpisodeEntity(
-            uniqueId = MediaIds.buildEpisodeUniqueId("tv_125935", 6, 2),
-            showId = "tv_125935",
-            seasonNumber = 6,
-            episodeNumber = 2,
-            airDate = "2026-10-14"
-        )
+    private fun ep(
+        season: Int,
+        number: Int,
+        airDate: String,
+        watched: Boolean = false,
+        watchedDate: String? = null
+    ) = EpisodeEntity(
+        uniqueId = MediaIds.buildEpisodeUniqueId("tv_125935", season, number),
+        showId = "tv_125935",
+        seasonNumber = season,
+        episodeNumber = number,
+        isWatched = watched,
+        watchedDate = watchedDate,
+        airDate = airDate
     )
 
-    private fun show(instant: String? = null) =
+    private fun show(instant: String? = null, taste: String = "None") =
         MediaItemEntity(
             id = "tv_125935",
             title = "Abbott Elementary",
             type = "TV Show",
             state = "Active",
+            taste = taste,
             releaseDate = "2021-12-07",
             nextAiringInstant = instant
         )
 
     @Test
-    fun `stored instant overrides the bare air date across the SOON boundary`() {
-        // 12:00 on the 12th: the bare date resolves 36h out (inside SOON's 48h
-        // window), the true instant 60h out (outside it).
+    fun `caught-up show falls back to the stored TVMaze instant`() {
         val now = at("2026-10-12 12:00")
-
-        val withoutInstant = BadgeEngine.calculateBadge(show(), abbott(), now)?.badge
-        val withInstant = BadgeEngine.calculateBadge(
-            show("2026-10-15T00:00:00Z"), abbott(), now
-        )?.badge
-
-        assertEquals(SmartBadge.SOON, withoutInstant)
-        assertEquals(null, withInstant)
+        // Everything aired is watched, so the only upcoming signal is the stored instant.
+        val episodes = listOf(ep(6, 1, "2026-10-07", watched = true, watchedDate = "2026-10-07"))
+        val result = BadgeEngine.calculateBadge(show("2026-10-13T00:00:00Z"), episodes, now)?.badge
+        assertEquals(SmartBadge.SOON, result)
     }
 
     @Test
-    fun `malformed stored values fall back instead of dropping the badge`() {
+    fun `backlog prefers the first unwatched episode over the stored instant`() {
         val now = at("2026-10-12 12:00")
-
-        // Garbage in the column must not make the engine throw or blank the badge.
-        val result = BadgeEngine.calculateBadge(show("not-a-timestamp"), abbott(), now)
-        assertEquals(SmartBadge.SOON, result?.badge)
+        // S6E2 aired 2026-10-10 and is unwatched; the stored instant is a week out.
+        val episodes = listOf(ep(6, 2, "2026-10-10"))
+        // 2026-10-10 20:00 ET == 2026-10-11 00:00 UTC -> ~1.5 days past -> NEW.
+        val result = BadgeEngine.calculateBadge(show("2026-10-20T00:00:00Z"), episodes, now)?.badge
+        assertEquals(SmartBadge.NEW, result)
     }
 
     @Test
-    fun `instant also drives the BEHIND window`() {
+    fun `BEHIND fires when the next episode airs within two days`() {
         val now = at("2026-10-11 18:52")
-        // Three days out is inside BEHIND's 7-day window.
-        val episodes = (1..3).map {
-            EpisodeEntity(
-                uniqueId = MediaIds.buildEpisodeUniqueId("tv_125935", 1, it),
-                showId = "tv_125935",
-                seasonNumber = 1,
-                episodeNumber = it,
-                isWatched = it <= 2,
-                watchedDate = if (it <= 2) "2026-08-01" else null,
-                airDate = if (it == 3) "2026-08-01" else "2026-08-01"
-            )
-        }
-        val liked = MediaItemEntity(
-            id = "tv_125935", title = "Abbott", type = "TV Show",
-            state = "Active", taste = "Love",
-            nextAiringInstant = "2026-10-14T20:00:00Z"
+        val episodes = listOf(
+            ep(1, 1, "2026-08-01", watched = true, watchedDate = "2026-08-01"),
+            ep(1, 2, "2026-08-01", watched = true, watchedDate = "2026-08-01"),
+            ep(1, 3, "2026-08-01"),   // backlog
+            ep(1, 4, "2026-10-12")    // airs 2026-10-13 00:00 UTC, ~1.2 days out
         )
-
-        assertEquals(SmartBadge.BEHIND, BadgeEngine.calculateBadge(liked, episodes, now)?.badge)
+        assertEquals(SmartBadge.BEHIND, BadgeEngine.calculateBadge(show(taste = "Love"), episodes, now)?.badge)
     }
 
     @Test
@@ -814,7 +759,6 @@ class BadgeEngineNextAiringInstantTest {
             id = "movie_1", title = "Film", type = "Movie",
             state = "Wishlist", releaseDate = "2026-10-20"
         )
-
         assertEquals(SmartBadge.PREMIERE, BadgeEngine.calculateBadge(movie, emptyList(), now)?.badge)
     }
 }

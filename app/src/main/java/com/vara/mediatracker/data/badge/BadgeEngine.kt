@@ -54,7 +54,8 @@ object BadgeEngine {
     private const val FINALE_DAYS_MIN = -7.0
     private const val FINALE_DAYS_MAX = 14.0
     private const val MILESTONE_DAYS = 14.0
-    private const val BEHIND_DAYS = 7.0
+    private const val BEHIND_SEASON_DAYS = 7.0
+    private const val BEHIND_EPISODE_DAYS = 2.0
     private const val BINGE_ENGAGEMENT_COUNT = 3
     private const val BINGE_PROGRESS_RATIO = 0.20
 
@@ -73,16 +74,11 @@ object BadgeEngine {
         }
     }
 
-    private val instantFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-
     /**
-     * Resolves an episode's real airing instant.
-     *
-     * When a TVMaze `airstamp` is available it is authoritative and resolution is
-     * delegated to [AirTimeResolver], which applies the same per-service rules and
-     * show-timezone handling as macOS. Without an `airstamp` this keeps the original
-     * behaviour: compose date + time in the device's local zone, falling back to a
-     * midnight parse when the time is unknown.
+     * Resolves an episode's real airing instant, delegating to [AirTimeResolver] so the
+     * resolution order matches macOS `DateUtils.parseEpisodeDate`: airstamp, else the
+     * show timezone + airtime, else 8 PM ET. The previous Android fallback parsed a bare
+     * date to the *device's* local midnight, which shifted the PREMIERE/NEW boundaries.
      */
     fun parseAirInstant(
         airDate: String?,
@@ -90,30 +86,13 @@ object BadgeEngine {
         airstamp: String? = null,
         timezone: String? = null,
         serviceName: String? = null
-    ): Date? {
-        if (!airstamp.isNullOrBlank()) {
-            return AirTimeResolver.resolveAirInstant(
-                dateString = airDate?.take(10),
-                time = airTime,
-                airstamp = airstamp,
-                timezone = timezone,
-                serviceName = serviceName
-            )
-        }
-        if (airDate.isNullOrBlank()) return null
-        val day = airDate.trim().take(10)
-        if (day.length < 10) return null
-        val time = airTime?.trim()?.take(5)?.takeIf { AIR_TIME_PATTERN.matches(it) }
-        if (time == null) return parseDate(day)
-        return try {
-            instantFormat.timeZone = TimeZone.getDefault()
-            instantFormat.parse("$day $time")
-        } catch (_: Exception) {
-            parseDate(day)
-        }
-    }
-
-    private val AIR_TIME_PATTERN = Regex("^([01]\\d|2[0-3]):[0-5]\\d$")
+    ): Date? = AirTimeResolver.resolveAirInstant(
+        dateString = airDate?.take(10),
+        time = airTime,
+        airstamp = airstamp,
+        timezone = timezone,
+        serviceName = serviceName
+    )
 
     data class EpisodeScan(
         val nextEpisodeNumber: Int,
@@ -125,7 +104,8 @@ object BadgeEngine {
         val watchedEpisodes: Int,
         val airedEpisodesCount: Int,
         val remainingAiredEpisodesCount: Int,
-        val nextUpcomingAirDate: Date? // First future airing episode date
+        val nextUpcomingAirDate: Date?,        // first future airing episode date
+        val nextUpcomingEpisodeNumber: Int     // its episode number (1 == season premiere)
     )
 
     fun calculateBadge(
@@ -193,9 +173,18 @@ object BadgeEngine {
         var airedCount = 0
         var watchedCount = 0
         var nextUpcomingAirDate: Date? = null
+        var nextUpcomingEpNum = 0
 
-        // Group by season to know episode count per season
-        val seasonCounts = sorted.groupBy { it.seasonNumber }.mapValues { it.value.size }
+        // Group by season to know episode count per season.
+        val seasonRows = sorted.groupBy { it.seasonNumber }
+        val seasonCounts = seasonRows.mapValues { it.value.size }
+
+        // macOS totalEpisodesCount = Σ max(declared season length, stored rows) over the
+        // seasons we hold rows for (TVShowDetails.calculateProgress). Counting rows alone
+        // over-reported BINGE progress whenever a season was only partially fetched.
+        val totalEpisodeCount = seasonRows.entries.sumOf { (season, eps) ->
+            maxOf(declaredSeasonCounts[season] ?: 0, eps.size)
+        }
 
         for (ep in sorted) {
             val epDate = parseAirInstant(ep.airDate, ep.airTime, ep.airstamp, timezone, serviceName)
@@ -234,6 +223,7 @@ object BadgeEngine {
                 airedCount++
             } else if (epDate != null && epDate > now && nextUpcomingAirDate == null) {
                 nextUpcomingAirDate = epDate
+                nextUpcomingEpNum = ep.episodeNumber
             }
         }
 
@@ -246,11 +236,12 @@ object BadgeEngine {
             nextAirDate = nextAir,
             airedOnSameDayCount = sameDayCount,
             recentlyWatchedCount = recentlyWatched,
-            totalEpisodes = sorted.size,
+            totalEpisodes = totalEpisodeCount,
             watchedEpisodes = watchedCount,
             airedEpisodesCount = airedCount,
             remainingAiredEpisodesCount = remainingAired,
-            nextUpcomingAirDate = nextUpcomingAirDate
+            nextUpcomingAirDate = nextUpcomingAirDate,
+            nextUpcomingEpisodeNumber = nextUpcomingEpNum
         )
     }
 
@@ -283,16 +274,14 @@ object BadgeEngine {
     /**
      * Resolves the instant a title's next airing happens.
      *
-     * Prefers the stored TVMaze `airstamp`, then the next unwatched episode's air date
-     * from the local table, then the release date. macOS reads `cachedNextAiringDate`
-     * (TVMaze) in preference to the episode scan, so the ordering matches.
-     *
-     * The stored value goes through [AirTimeResolver] rather than a bare ISO parse so
-     * that TVMaze's noon-UTC placeholder for streaming originals still resolves to the
-     * service's real drop time via the network rule.
+     * Matches macOS `cachedNextAiringDate` (`MediaItem+Sync`): the **first unwatched**
+     * episode's air instant first, then the show's stored TVMaze next-episode instant,
+     * then the release date. Preferring the TVMaze network episode (the old order) made
+     * a show with a backlog report SOON off a future episode where macOS reports NEW off
+     * the most recent unwatched aired episode.
      */
     private fun nextAiringInstant(item: MediaItemEntity, nextAir: Date?): Date? =
-        storedInstant(item) ?: nextAir ?: parseDate(item.releaseDate)
+        nextAir ?: storedInstant(item) ?: parseDate(item.releaseDate)
 
     /** The persisted TVMaze instant, resolved through the shared air-time rules. */
     private fun storedInstant(item: MediaItemEntity): Date? =
@@ -343,15 +332,28 @@ object BadgeEngine {
     }
 
     private fun engagementBadge(item: MediaItemEntity, scan: EpisodeScan, now: Date): BadgeResult? {
-        // Must have episodes already aired that haven't been watched yet!
-        // If remainingAiredEpisodesCount == 0, the user is completely caught up!
+        // Must have aired episodes that haven't been watched yet; otherwise caught up.
         if (scan.remainingAiredEpisodesCount <= 0) return null
 
-        // HOOKED: watched 3+ episodes in past 48 hours
+        // HOOKED: watched 3+ episodes in the last 48 hours.
         if (scan.recentlyWatchedCount >= BINGE_ENGAGEMENT_COUNT) {
             return BadgeResult(SmartBadge.HOOKED, isSparkle = true)
         }
 
+        // BEHIND: the next release is close and there is a backlog to clear. A season
+        // premiere earns a week's notice; a regular episode only two days, since episodes
+        // air frequently. Taste-agnostic — a backlog already signals the user is engaged.
+        val nextUpcoming = scan.nextUpcomingAirDate ?: storedInstant(item)
+        if (nextUpcoming != null) {
+            val daysToAir = (nextUpcoming.time - now.time).toDouble() / MS_PER_DAY.toDouble()
+            val threshold =
+                if (scan.nextUpcomingEpisodeNumber == 1) BEHIND_SEASON_DAYS else BEHIND_EPISODE_DAYS
+            if (daysToAir > 0.0 && daysToAir <= threshold) {
+                return BadgeResult(SmartBadge.BEHIND, isSparkle = false)
+            }
+        }
+
+        // BINGE stays gated on taste so a backlog alone does not nag every show.
         val isLikedOrLoved = item.taste.equals("Loved", ignoreCase = true) ||
                              item.taste.equals("Love", ignoreCase = true) ||
                              item.taste.equals("Liked", ignoreCase = true) ||
@@ -359,16 +361,7 @@ object BadgeEngine {
 
         if (!isLikedOrLoved) return null
 
-        // BEHIND: User has unwatched aired episodes AND a new episode airs within 7 days
-        val nextUpcomingAir = storedInstant(item) ?: scan.nextUpcomingAirDate
-        if (nextUpcomingAir != null) {
-            val daysToAir = (nextUpcomingAir.time - now.time).toDouble() / MS_PER_DAY.toDouble()
-            if (daysToAir in 0.0..BEHIND_DAYS) {
-                return BadgeResult(SmartBadge.BEHIND, isSparkle = false)
-            }
-        }
-
-        // BINGE: user has made steady 20%+ progress through the show
+        // BINGE: steady 20%+ progress through the show.
         if (scan.totalEpisodes > 0) {
             val progress = scan.watchedEpisodes.toDouble() / scan.totalEpisodes.toDouble()
             if (progress >= BINGE_PROGRESS_RATIO) {
