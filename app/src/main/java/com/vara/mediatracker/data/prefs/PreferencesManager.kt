@@ -69,6 +69,14 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putBoolean("episode_key_migration_v3_done", value).apply()
 
     /**
+     * When true, the detail view's NETWORK / PRODUCTION pill shows the network/studio
+     * logo instead of its name.
+     */
+    var detailNetworkLogo: Boolean
+        get() = prefs.getBoolean("detail_network_logo", false)
+        set(value) = prefs.edit().putBoolean("detail_network_logo", value).apply()
+
+    /**
      * Caches the resolved network or production company for a media item so it's
      * immediately available everywhere without making repetitive TMDB calls.
      */

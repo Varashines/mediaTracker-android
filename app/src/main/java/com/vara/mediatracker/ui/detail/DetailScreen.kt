@@ -72,6 +72,8 @@ fun DetailScreen(
     var mediaItem by remember { mutableStateOf<MediaItemEntity?>(null) }
     var markMenuExpanded by remember { mutableStateOf(false) }
     var statusPickerOpen by remember { mutableStateOf(false) }
+    // TMDB title-treatment logo (the stylized wordmark), shown in the hero when available.
+    var titleLogoUrl by remember { mutableStateOf<String?>(null) }
     val showIdKey = MediaIds.tvShowKey(mediaId)
     val episodes by db.mediaDao().getEpisodesForShow(showIdKey)
         .collectAsState(initial = emptyList())
@@ -181,6 +183,20 @@ fun DetailScreen(
                                 ?: (if (isMovie) tmdbClient.getMovieCredits(tmdbId) else tmdbClient.getTVCredits(tmdbId))
                                     .getOrNull()?.also { TmdbResponseCache.put(creditsKey, it) }
                             castMembers = credits?.cast?.take(15) ?: emptyList()
+
+                            // Title-treatment logo (the stylized wordmark), cached by id.
+                            val logoKey = "titlelogo:${item.id}"
+                            val cachedLogo = TmdbResponseCache.get<String>(logoKey)
+                            val logoPath = cachedLogo ?: run {
+                                val imagesRes = if (isMovie) tmdbClient.getMovieImages(tmdbId) else tmdbClient.getTVImages(tmdbId)
+                                val logos = imagesRes.getOrNull()?.logos ?: emptyList()
+                                val best = logos
+                                    .filter { it.iso_639_1 == null || it.iso_639_1 == "en" }
+                                    .maxByOrNull { it.vote_average ?: 0.0 }
+                                    ?: logos.maxByOrNull { it.vote_average ?: 0.0 }
+                                best?.file_path?.also { TmdbResponseCache.put(logoKey, it) }
+                            }
+                            titleLogoUrl = logoPath?.let { TMDBClient.buildLogoUrl(it) }
 
                             // If it's a TV show, fetch full episodes and episode names from TMDB
                             if (!isMovie) {
@@ -345,7 +361,7 @@ fun DetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.86f)
                 )
             )
         }
@@ -422,14 +438,25 @@ fun DetailScreen(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
-                        Text(
-                            text = item.title,
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White,
-                            maxLines = 2,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
+                        if (titleLogoUrl != null) {
+                            AsyncImage(
+                                model = titleLogoUrl,
+                                contentDescription = item.title,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .height(48.dp)
+                                    .widthIn(max = 260.dp)
+                            )
+                        } else {
+                            Text(
+                                text = item.title,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
                         Text(
                             text = buildString {
                                 if (genres.isNotEmpty()) append(genres.take(3).joinToString(", "))
@@ -770,16 +797,24 @@ fun DetailScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                NetworkPillLabel(logo = networkLogo, fallback = "NETWORK")
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = displayNetwork,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                val logoOnly = prefs.detailNetworkLogo && networkLogo != null
+                                NetworkPillLabel(
+                                    logo = networkLogo,
+                                    fallback = "NETWORK",
+                                    height = if (logoOnly) 34.dp else 20.dp,
+                                    maxWidth = if (logoOnly) 120.dp else 92.dp
                                 )
+                                if (!logoOnly) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = displayNetwork,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     } else {
@@ -830,16 +865,24 @@ fun DetailScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                NetworkPillLabel(logo = networkLogo, fallback = "PRODUCTION")
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = displayNetwork,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                val logoOnly = prefs.detailNetworkLogo && networkLogo != null
+                                NetworkPillLabel(
+                                    logo = networkLogo,
+                                    fallback = "PRODUCTION",
+                                    height = if (logoOnly) 34.dp else 20.dp,
+                                    maxWidth = if (logoOnly) 150.dp else 92.dp
                                 )
+                                if (!logoOnly) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = displayNetwork,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
@@ -1321,15 +1364,20 @@ fun EpisodeCard(
 
 /** The real network/studio logo when we have one, else the caption text. */
 @Composable
-private fun NetworkPillLabel(logo: String?, fallback: String) {
+private fun NetworkPillLabel(
+    logo: String?,
+    fallback: String,
+    height: androidx.compose.ui.unit.Dp = 20.dp,
+    maxWidth: androidx.compose.ui.unit.Dp = 92.dp
+) {
     if (logo != null) {
         AsyncImage(
             model = TMDBClient.buildLogoUrl(logo),
             contentDescription = null,
             contentScale = ContentScale.Fit,
             modifier = Modifier
-                .height(20.dp)
-                .widthIn(max = 92.dp)
+                .height(height)
+                .widthIn(max = maxWidth)
         )
     } else {
         Text(

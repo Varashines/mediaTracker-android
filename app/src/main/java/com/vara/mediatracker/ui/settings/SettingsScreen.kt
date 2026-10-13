@@ -91,6 +91,7 @@ fun SettingsScreen(
     val sem = LocalSemanticColors.current
     var currentPresetIndex by remember { mutableIntStateOf(prefs.themePreset) }
     var currentThemeMode by remember { mutableIntStateOf(prefs.themeMode) }
+    var detailNetworkLogo by remember { mutableStateOf(prefs.detailNetworkLogo) }
 
     // Credentials staging
     val draft = remember {
@@ -882,7 +883,7 @@ fun SettingsScreen(
                                     onThemePresetChanged(index)
                                 },
                                 shape = CircleShape,
-                                color = preset.primaryColor,
+                                color = preset.accentColor,
                                 border = if (isSelected) BorderStroke(2.5.dp, MaterialTheme.colorScheme.onSurface) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
                                 modifier = Modifier
                                     .size(if (isSelected) 40.dp else 34.dp)
@@ -904,6 +905,51 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tv,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Network logo in detail",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Show the logo instead of the name",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = detailNetworkLogo,
+                            onCheckedChange = {
+                                detailNetworkLogo = it
+                                prefs.detailNetworkLogo = it
+                            }
+                        )
                     }
                 }
             }

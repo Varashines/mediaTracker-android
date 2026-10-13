@@ -313,7 +313,12 @@ data class ThemePreset(
     val outlineColor: Color,
     val onSurfaceColor: Color,
     val onSurfaceVariantColor: Color
-)
+) {
+    /** The vivid identity colour, for swatches/previews (not the tonal primary). */
+    val accentColor: Color
+        get() = runCatching { Color(android.graphics.Color.parseColor(accentHex)) }
+            .getOrDefault(primaryColor)
+}
 
 object ThemePresets {
     val presets = listOf(

@@ -208,3 +208,12 @@ fun FlatCard(
         }
     }
 }
+
+/**
+ * Translucent top-bar background so scrolled content stays faintly visible behind it —
+ * readable, not opaque. Approximates the prototype's `backdrop-blur` with a scrim; a
+ * true backdrop blur needs a haze layer.
+ */
+@Composable
+fun Modifier.topBarScrim(): Modifier =
+    this.background(MaterialTheme.colorScheme.background.copy(alpha = 0.86f))

@@ -44,6 +44,7 @@ import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.formatReleaseDay
 import com.vara.mediatracker.ui.common.rememberCountdownText
 import com.vara.mediatracker.ui.common.rememberTodayDateString
+import com.vara.mediatracker.ui.common.topBarScrim
 import com.vara.mediatracker.ui.common.springClickable
 import com.vara.mediatracker.ui.home.SectionHeader
 import com.vara.mediatracker.ui.home.SmartBadgePill
@@ -192,6 +193,7 @@ fun ReleaseCalendarScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .topBarScrim()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
