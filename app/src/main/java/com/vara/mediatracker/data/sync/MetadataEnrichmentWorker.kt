@@ -11,6 +11,7 @@ import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.data.model.FacetLogoEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.util.GenreMapper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -122,7 +123,11 @@ class MetadataEnrichmentWorker(
         val details = (if (isMovie) tmdb.getMovieDetails(tmdbId) else tmdb.getTVDetails(tmdbId))
             .getOrNull() ?: return false
 
-        val genres = details.genres?.map { it.name }?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }
+        // Standardize with the shared GenreMapper so the genre facet matches macOS
+        // ("Action & Adventure" -> "Action", "Adventure").
+        val genres = details.genres?.map { it.name }?.filter { it.isNotBlank() }
+            ?.let { GenreMapper.standardize(it) }
+            ?.takeIf { it.isNotEmpty() }
             ?.joinToString(", ")
         val language = details.original_language?.takeIf { it.isNotBlank() }
 

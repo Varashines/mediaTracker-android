@@ -61,74 +61,12 @@ fun LibraryScreen(
     var isSearchingOnline by remember { mutableStateOf(false) }
     var onlineResults by remember { mutableStateOf<List<TMDBSearchItem>>(emptyList()) }
 
-    // Dynamic watch streak & activity calculation. The full ~9k-row episode table used to
-    // be collected and scanned here on the main thread; it now comes from the shared,
-    // off-main ViewModel join (see LibraryViewModel) and the scan runs on a background
-    // dispatcher.
+    // The library join is produced once, off the UI thread, by the activity-scoped
+    // ViewModel (see LibraryViewModel). The watch streak + stats moved to the Hub.
     val libraryVm: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(container))
     val core by libraryVm.core.collectAsState()
-    val allEpisodes = core.allEpisodes
-    val todayCal = remember { Calendar.getInstance() }
-    val todayDateStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(todayCal.time) }
-    val currentMonthPrefix = remember { SimpleDateFormat("yyyy-MM", Locale.US).format(todayCal.time) }
-
-    val streakActivity by produceState(
-        initialValue = 0 to 0,
-        allEpisodes, items, todayDateStr, currentMonthPrefix
-    ) {
-        value = withContext(Dispatchers.Default) {
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-
-            // 1. Gather all unique dates of watched activity
-            val watchedDates = mutableSetOf<String>()
-            var thisMonthCount = 0
-
-            for (ep in allEpisodes) {
-                if (ep.isWatched) {
-                    val datePart = ep.watchedDate?.take(10) ?: ep.airDate?.take(10)
-                    if (!datePart.isNullOrBlank()) {
-                        watchedDates.add(datePart)
-                        if (datePart.startsWith(currentMonthPrefix)) {
-                            thisMonthCount++
-                        }
-                    }
-                }
-            }
-
-            for (item in items) {
-                if (item.state.equals("Completed", ignoreCase = true)) {
-                    val datePart = item.lastStateChangeDate?.take(10) ?: item.lastInteractionDate?.take(10)
-                    if (!datePart.isNullOrBlank()) {
-                        watchedDates.add(datePart)
-                        if (datePart.startsWith(currentMonthPrefix)) {
-                            thisMonthCount++
-                        }
-                    }
-                }
-            }
-
-            // 2. Count consecutive days backwards starting from today or yesterday
-            var streak = 0
-            val checkCal = Calendar.getInstance()
-            var checkStr = dateFormat.format(checkCal.time)
-
-            if (!watchedDates.contains(checkStr)) {
-                // Check yesterday
-                checkCal.add(Calendar.DAY_OF_YEAR, -1)
-                checkStr = dateFormat.format(checkCal.time)
-            }
-
-            while (watchedDates.contains(checkStr)) {
-                streak++
-                checkCal.add(Calendar.DAY_OF_YEAR, -1)
-                checkStr = dateFormat.format(checkCal.time)
-            }
-
-            streak to thisMonthCount
-        }
-    }
-    val streakDays = streakActivity.first
-    val watchedThisMonth = streakActivity.second
+    val badgeLabels = remember(core.badges) { core.badges.mapValues { it.value.badge.label } }
+    val badgeCounts = remember(core.badgeRows) { core.badgeRows.groupingBy { it.badgeLabel }.eachCount() }
 
     val syncManager = remember { container.syncManager() }
 
@@ -157,7 +95,7 @@ fun LibraryScreen(
     // Discovery folded into the Library: every facet (network/studio/genre/language) is
     // a filter here, and the grid can be grouped into sections.
     val filteredItems = remember(items, searchQuery, filters) {
-        LibraryQuery.apply(items, searchQuery, filters)
+        LibraryQuery.apply(items, searchQuery, filters, badgeLabels)
     }
     val sections = remember(filteredItems, filters.groupBy) {
         LibraryQuery.group(filteredItems, filters.groupBy)
@@ -439,78 +377,7 @@ fun LibraryScreen(
                 }
             }
         } else {
-            // 3. M3E Expressive Streak Banner
-            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
-                Surface(
-                    shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
-                    tonalElevation = 2.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = if (streakDays > 0) "🔥" else "✨",
-                                    fontSize = 13.sp
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (streakDays > 0) "$streakDays DAY WATCH STREAK" else "START A WATCH STREAK",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    letterSpacing = 0.8.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = when {
-                                    streakDays >= 7 -> "Unstoppable momentum!"
-                                    streakDays >= 3 -> "You're in the zone!"
-                                    streakDays >= 1 -> "Great start! Keep going!"
-                                    else -> "Pick something to watch!"
-                                },
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = if (watchedThisMonth > 0) {
-                                    "$watchedThisMonth watched this month • ${items.count { it.state.equals("Watching", true) || it.state.equals("Active", true) }} active shows"
-                                } else {
-                                    "${items.count { it.state.equals("Watching", true) || it.state.equals("Active", true) }} active shows • ${items.count { it.state.equals("Completed", true) }} completed"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
-                            modifier = Modifier.size(44.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                Text(
-                                    text = "🍿",
-                                    fontSize = 20.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 4. M3E Segmented Controls: Type Switcher (All / Movies / TV Shows)
+            // 3. M3E Segmented Controls: Type Switcher (All / Movies / TV Shows)
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
                 ExpressiveSegmentedControl(
                     items = listOf("All", "Movies", "TV Shows"),
@@ -621,7 +488,7 @@ fun LibraryScreen(
     if (showFilters) {
         LibraryFilterSheet(
             items = items,
-            logos = core.logos,
+            badgeCounts = badgeCounts,
             filters = filters,
             onFiltersChange = { filters = it },
             onDismiss = { showFilters = false }
@@ -837,7 +704,7 @@ private fun FilterBarChip(
 @Composable
 private fun LibraryFilterSheet(
     items: List<MediaItemEntity>,
-    logos: Map<String, String>,
+    badgeCounts: Map<String, Int>,
     filters: LibraryFilters,
     onFiltersChange: (LibraryFilters) -> Unit,
     onDismiss: () -> Unit
@@ -861,27 +728,23 @@ private fun LibraryFilterSheet(
                 )
                 if (filters.activeCount > 0) {
                     TextButton(onClick = {
-                        onFiltersChange(
-                            filters.copy(
-                                tastes = emptySet(),
-                                networks = emptySet(),
-                                studios = emptySet(),
-                                genres = emptySet(),
-                                languages = emptySet()
-                            )
-                        )
+                        onFiltersChange(filters.copy(badges = emptySet(), genres = emptySet(), languages = emptySet()))
                     }) { Text("Clear all") }
                 }
             }
 
-            FilterGroup(title = "Taste") {
-                LibraryFilters.TASTES.forEach { taste ->
-                    FacetChip(
-                        label = taste,
-                        selected = taste in filters.tastes,
-                        logo = null,
-                        onClick = { onFiltersChange(filters.copy(tastes = filters.tastes.toggle(taste))) }
-                    )
+            if (badgeCounts.isNotEmpty()) {
+                FilterGroup(title = "Badges") {
+                    badgeCounts.entries
+                        .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+                        .forEach { (label, count) ->
+                            FacetChip(
+                                label = "$label ($count)",
+                                selected = label in filters.badges,
+                                logo = null,
+                                onClick = { onFiltersChange(filters.copy(badges = filters.badges.toggle(label))) }
+                            )
+                        }
                 }
             }
 
@@ -893,7 +756,7 @@ private fun LibraryFilterSheet(
                             FacetChip(
                                 label = if (facet == LibraryFacet.LANGUAGE) LibraryQuery.languageLabel(value) else value,
                                 selected = filters.isSelected(facet, value),
-                                logo = logos[value.lowercase(Locale.US)],
+                                logo = null,
                                 onClick = { onFiltersChange(filters.toggled(facet, value)) }
                             )
                         }
@@ -962,15 +825,11 @@ private fun FacetChip(label: String, selected: Boolean, logo: String?, onClick: 
 }
 
 private fun LibraryFilters.isSelected(facet: LibraryFacet, value: String): Boolean = when (facet) {
-    LibraryFacet.NETWORK -> value in networks
-    LibraryFacet.STUDIO -> value in studios
     LibraryFacet.GENRE -> value in genres
     LibraryFacet.LANGUAGE -> value in languages
 }
 
 private fun LibraryFilters.toggled(facet: LibraryFacet, value: String): LibraryFilters = when (facet) {
-    LibraryFacet.NETWORK -> copy(networks = networks.toggle(value))
-    LibraryFacet.STUDIO -> copy(studios = studios.toggle(value))
     LibraryFacet.GENRE -> copy(genres = genres.toggle(value))
     LibraryFacet.LANGUAGE -> copy(languages = languages.toggle(value))
 }

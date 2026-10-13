@@ -27,18 +27,23 @@ import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.ExpressiveCard
+import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
 import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.ui.common.rememberTodayDateString
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** The Hub's two tabs. */
+private enum class HubTab(val label: String) {
+    SMART("Smart"),
+    DISCOVER("Discover")
+}
+
 /**
- * Hub screen hosting the Smart collections.
- *
- * Counts and membership come from data Android already stores (persisted badges, state,
- * taste, release dates, cached runtimes). Discovery used to live here as a second tab;
- * it is now folded into the Library as facet filters + group-by, so this is Smart-only.
+ * Hub screen with two tabs: Smart (the system collections) and Discover (watch stats,
+ * badges, genres and languages). Counts and membership come from data Android already
+ * stores (persisted badges, state, taste, release dates, cached runtimes).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +53,7 @@ fun SmartHubScreen(
     onSelectMedia: (String) -> Unit,
     onOpenSearch: (() -> Unit)? = null
 ) {
+    var hubTab by remember { mutableStateOf(HubTab.SMART) }
     var activeTitle by remember { mutableStateOf<String?>(null) }
     var activeItems by remember { mutableStateOf<List<MediaItemEntity>>(emptyList()) }
     var activeGroupByWeek by remember { mutableStateOf(false) }
@@ -136,7 +142,7 @@ fun SmartHubScreen(
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Smart Hub",
+                    text = if (hubTab == HubTab.SMART) "Smart Hub" else "Discover",
                     style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
@@ -161,30 +167,50 @@ fun SmartHubScreen(
             }
         }
 
+        ExpressiveSegmentedControl(
+            items = HubTab.values().toList(),
+            selectedItem = hubTab,
+            onItemSelected = { hubTab = it },
+            labelProvider = { it.label },
+            iconProvider = { if (it == HubTab.SMART) Icons.Default.AutoAwesome else Icons.Default.Explore },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 2.dp)
+        )
+
         Spacer(modifier = Modifier.height(8.dp))
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 108.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(SmartCategory.values().toList(), key = { it.name }) { category ->
-                val members = memberships[category].orEmpty()
-                SmartCategoryCard(
-                    category = category,
-                    count = members.size,
-                    onClick = {
-                        openSection(
-                            title = category.title,
-                            filtered = members,
-                            // Released This Week is bucketed by weekday, like macOS.
-                            groupByWeek = category == SmartCategory.ON_THIS_WEEK
-                        )
-                    }
-                )
+        when (hubTab) {
+            HubTab.SMART -> LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 108.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(SmartCategory.values().toList(), key = { it.name }) { category ->
+                    val members = memberships[category].orEmpty()
+                    SmartCategoryCard(
+                        category = category,
+                        count = members.size,
+                        onClick = {
+                            openSection(
+                                title = category.title,
+                                filtered = members,
+                                // Released This Week is bucketed by weekday, like macOS.
+                                groupByWeek = category == SmartCategory.ON_THIS_WEEK
+                            )
+                        }
+                    )
+                }
             }
+
+            HubTab.DISCOVER -> HubDiscoverContent(
+                items = items,
+                allEpisodes = core.allEpisodes,
+                badgeRows = core.badgeRows,
+                onSelectNode = { title, filtered -> openSection(title, filtered) }
+            )
         }
     }
 }

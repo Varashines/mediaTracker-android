@@ -12,8 +12,6 @@ class LibraryQueryTest {
         type: String = "Movie",
         state: String = "Wishlist",
         taste: String = "None",
-        network: String? = null,
-        studios: String? = null,
         genres: String? = null,
         language: String? = null,
         releaseDate: String? = null,
@@ -24,8 +22,6 @@ class LibraryQueryTest {
         type = type,
         state = state,
         taste = taste,
-        network = network,
-        studios = studios,
         genres = genres,
         language = language,
         releaseDate = releaseDate,
@@ -34,18 +30,20 @@ class LibraryQueryTest {
 
     private val library = listOf(
         item("movie_1", "Alpha", type = "Movie", state = "Completed", taste = "Loved",
-            studios = "Marvel Studios, Paramount", genres = "Action, Sci-Fi", language = "en",
+            genres = "Action, Science Fiction", language = "en",
             releaseDate = "2019-05-01", lastInteractionDate = "2026-01-03"),
         item("movie_2", "Beta", type = "Movie", state = "Wishlist", taste = "None",
-            studios = "Lucasfilm Ltd.", genres = "Sci-Fi", language = "en",
+            genres = "Science Fiction", language = "en",
             releaseDate = "1983-05-01", lastInteractionDate = "2026-01-02"),
         item("tv_3", "Gamma", type = "TV Show", state = "Watching", taste = "Like",
-            network = "Disney+", studios = "Marvel Studios", genres = "Animation",
-            language = "en", releaseDate = "2021-01-01", lastInteractionDate = "2026-01-01"),
+            genres = "Animation", language = "en",
+            releaseDate = "2021-01-01", lastInteractionDate = "2026-01-01"),
         item("tv_4", "Delta", type = "TV Show", state = "Watching", taste = "Dislike",
-            network = "HBO", genres = "Drama", language = "hi",
+            genres = "Drama", language = "hi",
             releaseDate = "1995-01-01", lastInteractionDate = "2026-01-04")
     )
+
+    private val badges = mapOf("movie_1" to "PREMIERE", "tv_3" to "NEW")
 
     @Test
     fun `type filter narrows to movies or tv`() {
@@ -57,31 +55,33 @@ class LibraryQueryTest {
     }
 
     @Test
-    fun `state and taste filters combine`() {
-        val loved = LibraryQuery.apply(library, "", LibraryFilters(tastes = setOf("Loved")))
-        assertEquals(listOf("movie_1"), loved.map { it.id })
-
-        // "Like" stored singular still matches the "Liked" filter.
-        val liked = LibraryQuery.apply(library, "", LibraryFilters(tastes = setOf("Liked")))
-        assertEquals(listOf("tv_3"), liked.map { it.id })
-
+    fun `state filter matches`() {
         val watching = LibraryQuery.apply(library, "", LibraryFilters(state = "Watching"))
         assertEquals(listOf("tv_3", "tv_4"), watching.map { it.id }.sorted())
+
+        val loved = LibraryQuery.apply(library, "", LibraryFilters(state = "Loved"))
+        assertEquals(listOf("movie_1"), loved.map { it.id })
     }
 
     @Test
-    fun `studio and genre filters match comma-joined values`() {
-        val marvel = LibraryQuery.apply(library, "", LibraryFilters(studios = setOf("Marvel Studios")))
-        assertEquals(listOf("movie_1", "tv_3"), marvel.map { it.id }.sorted())
+    fun `badge filter matches on the item badge label`() {
+        val premieres = LibraryQuery.apply(library, "", LibraryFilters(badges = setOf("PREMIERE")), badges)
+        assertEquals(listOf("movie_1"), premieres.map { it.id })
 
-        val sciFi = LibraryQuery.apply(library, "", LibraryFilters(genres = setOf("Sci-Fi")))
+        val newAndPremiere = LibraryQuery.apply(library, "", LibraryFilters(badges = setOf("NEW", "PREMIERE")), badges)
+        assertEquals(listOf("movie_1", "tv_3"), newAndPremiere.map { it.id }.sorted())
+    }
+
+    @Test
+    fun `genre filter matches comma-joined values`() {
+        val sciFi = LibraryQuery.apply(library, "", LibraryFilters(genres = setOf("Science Fiction")))
         assertEquals(listOf("movie_1", "movie_2"), sciFi.map { it.id }.sorted())
     }
 
     @Test
-    fun `network filter is exact and case-insensitive`() {
-        val disney = LibraryQuery.apply(library, "", LibraryFilters(networks = setOf("disney+")))
-        assertEquals(listOf("tv_3"), disney.map { it.id })
+    fun `language filter is exact and case-insensitive`() {
+        val hindi = LibraryQuery.apply(library, "", LibraryFilters(languages = setOf("HI")))
+        assertEquals(listOf("tv_4"), hindi.map { it.id })
     }
 
     @Test
@@ -97,12 +97,10 @@ class LibraryQueryTest {
     }
 
     @Test
-    fun `group by network buckets shows and falls back for movies`() {
-        val groups = LibraryQuery.group(library, LibraryFilters.GROUP_NETWORK).toMap()
-        assertEquals(listOf("tv_3"), groups.getValue("Disney+").map { it.id })
-        assertEquals(listOf("tv_4"), groups.getValue("HBO").map { it.id })
-        // Movies carry no network, so they land in the fallback bucket together.
-        assertEquals(listOf("movie_1", "movie_2"), groups.getValue("Unknown network").map { it.id }.sorted())
+    fun `group by genre buckets by the first genre`() {
+        val groups = LibraryQuery.group(library, LibraryFilters.GROUP_GENRE).toMap()
+        assertEquals(listOf("movie_1"), groups.getValue("Action").map { it.id })
+        assertEquals(listOf("tv_4"), groups.getValue("Drama").map { it.id })
     }
 
     @Test
@@ -114,8 +112,8 @@ class LibraryQueryTest {
 
     @Test
     fun `facet values are ranked by count`() {
-        val studios = LibraryQuery.facetValues(library, LibraryFacet.STUDIO)
-        assertEquals("Marvel Studios", studios.first())
+        val genres = LibraryQuery.facetValues(library, LibraryFacet.GENRE)
+        assertEquals("Science Fiction", genres.first())
     }
 
     @Test

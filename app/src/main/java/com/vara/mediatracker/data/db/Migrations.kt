@@ -164,9 +164,20 @@ object Migrations {
         }
     }
 
+    /**
+     * v11 -> v12: re-enrich once so stored genres are standardized by the shared
+     * GenreMapper (matching macOS `cachedGenres`). Same trigger as v11 — clearing
+     * `providers` drops every row back into the enrichment query.
+     */
+    val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("UPDATE media_items SET providers = NULL")
+        }
+    }
+
     val ALL: Array<Migration> =
         arrayOf(
             MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-            MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11
+            MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12
         )
 }
