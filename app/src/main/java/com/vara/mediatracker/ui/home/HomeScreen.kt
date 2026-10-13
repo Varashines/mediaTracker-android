@@ -474,22 +474,11 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .width(6.dp)
-                                    .height(18.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Up Next For You",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+                        SectionHeader(
+                            title = "Up Next For You",
+                            accent = MaterialTheme.colorScheme.primary,
+                            horizontalPadding = 0.dp
+                        )
 
                         SectionViewAllLink(
                             text = "View All (${resumeItems.size})",
