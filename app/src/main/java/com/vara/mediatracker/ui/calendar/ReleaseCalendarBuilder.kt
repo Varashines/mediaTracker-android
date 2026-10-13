@@ -3,6 +3,7 @@ package com.vara.mediatracker.ui.calendar
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.util.AirTimeResolver
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -51,17 +52,16 @@ fun buildMonthReleaseEvents(
         )
     }
 
-    // 2. Episode drops, grouped by (show, day)
+    // 2. Episode drops, grouped by (show, local day)
     val groups = LinkedHashMap<Pair<String, String>, MutableList<EpisodeEntity>>()
     for (episode in episodes) {
-        val air = episode.airDate ?: continue
-        if (air.length < 10) continue
-        val datePart = air.take(10)
-        if (!inMonth(datePart)) continue
-
+        if (episode.airDate == null || episode.airDate.length < 10) continue
         val show = resolveShow(itemsById, items, episode) ?: continue
         if (show.isSoftDeleted) continue
-
+        // Group by the local date of the resolved drop, so a 9 PM ET Marvel premiere
+        // lands on the next day in IST rather than on its US air date.
+        val datePart = effectiveLocalDate(episode, show) ?: continue
+        if (!inMonth(datePart)) continue
         groups.getOrPut(show.id to datePart) { mutableListOf() } += episode
     }
 
@@ -75,6 +75,7 @@ fun buildMonthReleaseEvents(
             isEpisode = true,
             episodeCount = ordered.size,
             episodeLabels = ordered.map { "S${it.seasonNumber} E${it.episodeNumber}" },
+            airDate = first?.airDate?.take(10),
             airTime = first?.airTime,
             airstamp = first?.airstamp
         )
@@ -99,6 +100,24 @@ private fun resolveShow(
     itemsById[MediaIds.tvShowKey(episode.showId)]
         ?: itemsById[episode.showId]
         ?: items.firstOrNull { it.id.endsWith(episode.showId) }
+
+/**
+ * The local calendar day an episode drops.
+ *
+ * Uses the streaming rule (or a real airtime) when one is known, so a Marvel 9 PM ET
+ * premiere groups on the next day in IST. When nothing is known, the US air date is
+ * kept rather than shifted by the 8 PM ET default.
+ */
+private fun effectiveLocalDate(episode: EpisodeEntity, show: MediaItemEntity): String? {
+    val air = episode.airDate?.take(10) ?: return null
+    if (air.length < 10) return null
+    val hint = AirTimeResolver.serviceHint(show.network, show.studios, show.genres)
+    val hasRealTime = !episode.airTime.isNullOrBlank() || !episode.airstamp.isNullOrBlank()
+    if (!hasRealTime && AirTimeResolver.ruleFor(hint) == null) return air
+    val instant = AirTimeResolver.resolveAirInstant(air, episode.airTime, episode.airstamp, show.timezone, hint)
+        ?: return air
+    return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(instant)
+}
 
 private val monthDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 

@@ -62,10 +62,12 @@ import java.util.*
  */
 data class CalendarReleaseEvent(
     val mediaItem: MediaItemEntity,
-    val dateString: String,      // "yyyy-MM-dd"
+    val dateString: String,      // "yyyy-MM-dd" local drop day
     val isEpisode: Boolean,
     val episodeCount: Int = 0,
     val episodeLabels: List<String> = emptyList(),   // ["S2 E4", "S2 E5", ...]
+    /** Original US air date of the first episode, for rule resolution. */
+    val airDate: String? = null,
     /** Real air time of the first episode that day, from TVMaze, when known. */
     val airTime: String? = null,
     val airstamp: String? = null
@@ -376,7 +378,7 @@ private fun resolveEventAirTimeLabel(
     serviceName: String?,
     timezone: String?
 ): String? {
-    val instant = parseAirInstant(event.dateString, event.airTime, event.airstamp, timezone, serviceName)
+    val instant = parseAirInstant(event.airDate ?: event.dateString, event.airTime, event.airstamp, timezone, serviceName)
         ?: return null
     return SimpleDateFormat("h:mm a", Locale.getDefault()).format(instant)
 }
@@ -432,11 +434,11 @@ fun CalendarReleaseCard(
     val serviceHint = remember(item, netInfo.name) {
         AirTimeResolver.serviceHint(item.network ?: netInfo.name, item.studios, item.genres)
     }
-    val airTimeLabel = remember(event.dateString, event.airTime, event.airstamp, serviceHint, item.timezone) {
+    val airTimeLabel = remember(event.airDate, event.airTime, event.airstamp, serviceHint, item.timezone) {
         resolveEventAirTimeLabel(event, serviceHint, item.timezone)
     }
-    val alertInstant = remember(event.dateString, event.airTime, event.airstamp, serviceHint, item.timezone) {
-        parseAirInstant(event.dateString, event.airTime, event.airstamp, item.timezone, serviceHint)
+    val alertInstant = remember(event.airDate, event.airTime, event.airstamp, serviceHint, item.timezone) {
+        parseAirInstant(event.airDate ?: event.dateString, event.airTime, event.airstamp, item.timezone, serviceHint)
     }
     val canAlert = alertInstant != null && alertInstant.time > System.currentTimeMillis()
 

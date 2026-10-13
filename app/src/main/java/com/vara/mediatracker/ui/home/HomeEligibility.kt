@@ -231,6 +231,31 @@ object HomeEligibility {
             .minByOrNull { it.airDate ?: "" }
     }
 
+    /**
+     * Rule-based instant of the title's next drop: the first unwatched episode's resolved
+     * instant, else the soonest future one; movies use their release date.
+     *
+     * This is what Coming Soon compares against, so a Marvel premiere at 9 PM ET on the
+     * 13th correctly counts as upcoming in IST (where it lands on the 14th) instead of
+     * being judged by its raw US air date.
+     */
+    fun nextAiringInstant(item: MediaItemEntity, episodes: List<EpisodeEntity>): Date? {
+        if (!item.type.contains("TV", ignoreCase = true)) return parseDay(item.releaseDate)
+        val ordered = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+        ordered.firstOrNull { !it.isWatched }?.let { epInstant(it, item) }?.let { return it }
+        return ordered.asSequence().mapNotNull { epInstant(it, item) }.minOrNull()
+    }
+
+    /** Coming Soon evaluated against a resolved [instant]. */
+    fun isComingSoonAt(item: MediaItemEntity, instant: Date?, now: Date): Boolean {
+        if (item.isSoftDeleted) return false
+        if (item.state.equals("Completed", ignoreCase = true)) return false
+        if (item.state.equals("Dropped", ignoreCase = true)) return false
+        if (item.state.equals("On Hold", ignoreCase = true)) return false
+        if (item.taste.equals("Dislike", ignoreCase = true)) return false
+        return instant != null && instant.after(now)
+    }
+
     /** Everything Continue Watching should offer as a resume action, soonest-to-prioritised. */
     fun resumeCandidates(
         items: List<MediaItemEntity>,

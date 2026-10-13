@@ -149,27 +149,21 @@ fun HomeScreen(
     var forceNetworkRefreshCount by remember { mutableIntStateOf(0) }
 
     // COMING SOON: anything with an unaired episode or an unreleased film, soonest
-    // first. Uses the ported macOS eligibility rules, and excludes anything already in
-    // Up Next so a title never appears in two rails.
+    // first. Judged on the rule-based drop instant, so a Marvel 9 PM ET premiere on the
+    // 13th counts as upcoming in IST (where it lands on the 14th).
     val comingSoonItems = remember(items, episodesByShow, resumeItems, todayDateStr) {
+        val now = Date()
         val resumeIds = resumeItems.map { it.id }.toSet()
         items.filter { item ->
             if (item.isSoftDeleted || resumeIds.contains(item.id)) return@filter false
             val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-            val air = if (key != null) {
-                HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
-            } else {
-                item.releaseDate?.take(10)
-            }
-            HomeEligibility.isComingSoon(item, air, todayDateStr)
+            val instant = HomeEligibility.nextAiringInstant(item, key?.let { episodesByShow[it] }.orEmpty())
+            HomeEligibility.isComingSoonAt(item, instant, now)
         }
             .sortedBy { item ->
                 val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-                if (key != null) {
-                    HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
-                } else {
-                    item.releaseDate?.take(10)
-                } ?: "9999-99-99"
+                HomeEligibility.nextAiringInstant(item, key?.let { episodesByShow[it] }.orEmpty())?.time
+                    ?: Long.MAX_VALUE
             }
             .take(15)
     }
