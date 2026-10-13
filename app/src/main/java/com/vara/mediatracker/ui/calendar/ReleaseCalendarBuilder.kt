@@ -68,12 +68,15 @@ fun buildMonthReleaseEvents(
     for ((key, sameDay) in groups) {
         val show = itemsById[key.first] ?: continue
         val ordered = sameDay.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+        val first = ordered.firstOrNull()
         events += CalendarReleaseEvent(
             mediaItem = show,
             dateString = key.second,
             isEpisode = true,
             episodeCount = ordered.size,
-            episodeLabels = ordered.map { "S${it.seasonNumber} E${it.episodeNumber}" }
+            episodeLabels = ordered.map { "S${it.seasonNumber} E${it.episodeNumber}" },
+            airTime = first?.airTime,
+            airstamp = first?.airstamp
         )
     }
 

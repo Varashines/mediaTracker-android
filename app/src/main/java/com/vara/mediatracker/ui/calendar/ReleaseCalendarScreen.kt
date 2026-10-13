@@ -35,7 +35,7 @@ import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.MediaIds
-import com.vara.mediatracker.ui.common.parseTargetAirDateTime
+import com.vara.mediatracker.ui.common.parseAirInstant
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.formatReleaseAirTime
 import com.vara.mediatracker.ui.common.formatReleaseDay
@@ -65,7 +65,10 @@ data class CalendarReleaseEvent(
     val dateString: String,      // "yyyy-MM-dd"
     val isEpisode: Boolean,
     val episodeCount: Int = 0,
-    val episodeLabels: List<String> = emptyList()   // ["S2 E4", "S2 E5", ...]
+    val episodeLabels: List<String> = emptyList(),   // ["S2 E4", "S2 E5", ...]
+    /** Real air time of the first episode that day, from TVMaze, when known. */
+    val airTime: String? = null,
+    val airstamp: String? = null
 ) {
     /** Compact secondary line: "Movie Premiere", "S2 E4", or "S2 E4 +2 more". */
     val contextLabel: String
@@ -410,6 +413,28 @@ fun ReleaseCalendarScreen(
     }
 }
 
+/**
+ * The Radar's air-time label.
+ *
+ * Prefers the real TVMaze instant (formatted in the device's local zone, which is what
+ * the user actually cares about) and falls back to the network's streaming drop time
+ * when no episode-level time is known.
+ */
+private fun resolveEventAirTimeLabel(
+    event: CalendarReleaseEvent,
+    serviceName: String?,
+    timezone: String?
+): String? {
+    val hasRealTime = !event.airstamp.isNullOrBlank() || !event.airTime.isNullOrBlank()
+    if (hasRealTime) {
+        val instant = parseAirInstant(event.dateString, event.airTime, event.airstamp, timezone, serviceName)
+        if (instant != null) {
+            return SimpleDateFormat("h:mm a", Locale.getDefault()).format(instant)
+        }
+    }
+    return formatReleaseAirTime(event.dateString, serviceName)
+}
+
 @Composable
 fun CalendarReleaseCard(
     event: CalendarReleaseEvent,
@@ -423,11 +448,11 @@ fun CalendarReleaseCard(
         mutableStateOf(prefs.isReleaseAlertSet(item.id, event.dateString))
     }
     val netInfo = remember(item) { NetworkResolver.resolve(item) }
-    val airTimeLabel = remember(event.dateString, netInfo.name) {
-        formatReleaseAirTime(event.dateString, netInfo.name)
+    val airTimeLabel = remember(event.dateString, event.airTime, event.airstamp, netInfo.name, item.timezone) {
+        resolveEventAirTimeLabel(event, netInfo.name, item.timezone)
     }
-    val alertInstant = remember(event.dateString, netInfo.name) {
-        parseTargetAirDateTime(event.dateString, netInfo.name)
+    val alertInstant = remember(event.dateString, event.airTime, event.airstamp, netInfo.name, item.timezone) {
+        parseAirInstant(event.dateString, event.airTime, event.airstamp, item.timezone, netInfo.name)
     }
     val canAlert = alertInstant != null && alertInstant.time > System.currentTimeMillis()
 

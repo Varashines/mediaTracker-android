@@ -33,7 +33,9 @@ object SyncScheduler {
 
     const val PERIODIC_WORK_NAME = "mediatracker-periodic-sync"
     const val BADGE_WORK_NAME = "mediatracker-badge-refresh"
+    const val BADGE_ONESHOT_WORK_NAME = "mediatracker-badge-refresh-now"
     const val ENRICHMENT_WORK_NAME = "mediatracker-episode-enrichment"
+    const val ENRICHMENT_ONESHOT_WORK_NAME = "mediatracker-episode-enrichment-now"
     const val ONESHOT_WORK_NAME = "mediatracker-immediate-sync"
 
     /** WorkManager's floor for periodic work is 15 minutes. */
@@ -142,8 +144,10 @@ object SyncScheduler {
             .setConstraints(networkConstraints())
             .addTag(TAG_ENRICH)
             .build()
+        // A dedicated name: reusing ENRICHMENT_WORK_NAME would collide with the
+        // periodic job, and KEEP would silently drop this one-shot.
         WorkManager.getInstance(context).enqueueUniqueWork(
-            ENRICHMENT_WORK_NAME, ExistingWorkPolicy.KEEP, request
+            ENRICHMENT_ONESHOT_WORK_NAME, ExistingWorkPolicy.REPLACE, request
         )
     }
 
@@ -154,7 +158,7 @@ object SyncScheduler {
             .addTag(TAG_BADGE)
             .build()
         WorkManager.getInstance(context)
-            .enqueueUniqueWork(BADGE_WORK_NAME, ExistingWorkPolicy.REPLACE, request)
+            .enqueueUniqueWork(BADGE_ONESHOT_WORK_NAME, ExistingWorkPolicy.REPLACE, request)
     }
 
     fun cancelAll(context: Context) {
@@ -162,7 +166,9 @@ object SyncScheduler {
             cancelUniqueWork(PERIODIC_WORK_NAME)
             cancelUniqueWork(ONESHOT_WORK_NAME)
             cancelUniqueWork(BADGE_WORK_NAME)
+            cancelUniqueWork(BADGE_ONESHOT_WORK_NAME)
             cancelUniqueWork(ENRICHMENT_WORK_NAME)
+            cancelUniqueWork(ENRICHMENT_ONESHOT_WORK_NAME)
         }
     }
 
@@ -206,6 +212,21 @@ object SyncScheduler {
         syncNow(context)
     }
 
+    /**
+     * Kick the TVMaze episode backfill when the app opens, throttled separately from
+     * the cloud sync because it is a heavier TMDB/TVMaze crawl. The hourly periodic
+     * run is only a safety net — this is what makes air times show up promptly on a
+     * fresh install instead of waiting an hour for the first periodic pass.
+     */
+    fun enrichOnForeground(context: Context, throttleMs: Long = FOREGROUND_ENRICH_THROTTLE_MS) {
+        if (!isEnabled(context)) return
+        val now = System.currentTimeMillis()
+        val last = prefs(context).getLong(KEY_LAST_FOREGROUND_ENRICH, 0L)
+        if (now - last < throttleMs) return
+        prefs(context).edit().putLong(KEY_LAST_FOREGROUND_ENRICH, now).apply()
+        enrichEpisodesNow(context)
+    }
+
     const val TAG_SYNC = "mediatracker-sync"
     const val TAG_BADGE = "mediatracker-badge"
     const val TAG_ENRICH = "mediatracker-enrichment"
@@ -220,7 +241,11 @@ object SyncScheduler {
 
     private const val KEY_BACKGROUND_SYNC_ENABLED = "background_sync_enabled"
     private const val KEY_LAST_FOREGROUND_SYNC = "last_foreground_sync"
+    private const val KEY_LAST_FOREGROUND_ENRICH = "last_foreground_enrich"
     private const val KEY_LAST_SYNC = "last_sync"
     private const val PREFS_NAME = "media_tracker_sync_prefs"
     private const val FOREGROUND_THROTTLE_MS = 5 * 60 * 1000L
+
+    /** Episode backfill is heavier, so it runs at most every 30 minutes on foreground. */
+    private const val FOREGROUND_ENRICH_THROTTLE_MS = 30 * 60 * 1000L
 }

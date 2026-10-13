@@ -66,6 +66,8 @@ class MainActivity : ComponentActivity() {
         // Background sync keeps the library fresh while the app is closed; this covers
         // the gap when the periodic run has not landed yet.
         SyncScheduler.syncOnForeground(this)
+        // TVMaze air-time backfill, so the Radar/Coming Soon show real times promptly.
+        SyncScheduler.enrichOnForeground(this)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -38,12 +38,16 @@ class EpisodeEnrichmentWorker(
     override suspend fun doWork(): Result {
         val container = com.vara.mediatracker.di.AppContainer(applicationContext)
         val prefs = container.preferences
-        if (prefs.tmdbApiKey.isBlank() || prefs.supabaseUrl.isBlank()) {
+        // TVMaze needs no key, but resolving a show's TVMaze id goes through TMDB, so a
+        // TMDB key is required. Supabase is deliberately NOT required: air times are
+        // local enrichment and must work for users who never set up cloud sync.
+        if (prefs.tmdbApiKey.isBlank()) {
             return Result.success(workDataOf(KEY_SHOWS to 0))
         }
 
         val db = container.database
         val todo = db.mediaDao().getShowsNeedingEpisodeEnrichment(BATCH_SIZE)
+        android.util.Log.i("EpisodeEnrich", "doWork: ${todo.size} shows to enrich")
         if (todo.isEmpty()) return Result.success(workDataOf(KEY_SHOWS to 0))
 
         val tmdb = container.tmdbClient()
@@ -178,11 +182,10 @@ class EpisodeEnrichmentWorker(
         const val KEY_SHOWS = "shows"
 
         /**
-         * Shows per pass. Was 8 on a 3-hour cadence, which put the 128 shows with no
-         * air data roughly two days out — far too slow for Coming Soon to ever be
-         * populated. Raised alongside the cadence below.
+         * Shows per pass. A full library of a few hundred shows converges in a handful
+         * of on-demand passes; the periodic schedule is the safety net.
          */
-        const val BATCH_SIZE = 20
+        const val BATCH_SIZE = 40
 
         /** Concurrent shows. TMDB is rate limited; this stays well inside it. */
         const val MAX_CONCURRENT_SHOWS = 4
