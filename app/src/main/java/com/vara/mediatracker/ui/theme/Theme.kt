@@ -5,7 +5,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -458,6 +461,7 @@ val LocalSemanticColors = staticCompositionLocalOf { DarkSemanticColors }
 val LocalThemePreset = staticCompositionLocalOf { 0 }
 val LocalIsDarkTheme = staticCompositionLocalOf { true }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MediaTrackerTheme(
     presetIndex: Int = 0,
@@ -480,8 +484,11 @@ fun MediaTrackerTheme(
         LocalIsDarkTheme provides isDark,
         LocalSemanticColors provides if (isDark) DarkSemanticColors else LightSemanticColors
     ) {
-        MaterialTheme(
+        // Material 3 Expressive theme: supplies the expressive motion scheme (springy
+        // spatial motion) on top of the app's own colour scheme, shapes and typography.
+        MaterialExpressiveTheme(
             colorScheme = colorScheme,
+            motionScheme = MotionScheme.expressive(),
             typography = AppTypography,
             shapes = AppShapes,
             content = content

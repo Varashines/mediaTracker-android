@@ -45,11 +45,14 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleButton
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -59,6 +62,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -230,11 +236,11 @@ fun <T> ExpressiveSegmentedControl(
 }
 
 /**
- * M3 Expressive connected toggle group: a wrapping row of pill toggles where the
- * selected one fills with the accent colour and springs on tap. Used for the detail
- * status picker and the Library's group-by / sort, replacing dropdown menus.
+ * M3 Expressive connected toggle group, built on the real `ToggleButton` +
+ * `ButtonGroupDefaults` connected shapes (shape-morph selection, springy press). Used for
+ * the detail status picker and the Library's group-by / sort.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun <T> ExpressiveToggleGroup(
     items: List<T>,
@@ -244,51 +250,31 @@ fun <T> ExpressiveToggleGroup(
     modifier: Modifier = Modifier,
     iconProvider: (@Composable (T) -> ImageVector?)? = null
 ) {
-    val motion = LocalMotion.current
     FlowRow(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         items.forEach { item ->
-            val isSelected = item == selectedItem
-            val scale by animateFloatAsState(
-                targetValue = if (isSelected) 1f else 0.97f,
-                animationSpec = motion.snappy,
-                label = "toggleScale"
-            )
-
-            Surface(
-                onClick = { onItemSelected(item) },
-                shape = RoundedCornerShape(14.dp),
-                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                border = if (isSelected) null
-                else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                modifier = Modifier.graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
+            ToggleButton(
+                checked = item == selectedItem,
+                onCheckedChange = { onItemSelected(item) },
+                shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
+                modifier = Modifier.semantics { role = Role.RadioButton }
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val icon = iconProvider?.invoke(item)
-                    if (icon != null) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
-                    Text(
-                        text = labelProvider(item),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                val icon = iconProvider?.invoke(item)
+                if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp)
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
                 }
+                Text(
+                    text = labelProvider(item),
+                    style = MaterialTheme.typography.labelLarge
+                )
             }
         }
     }
