@@ -326,7 +326,7 @@ val AppDestinations = listOf(
     NavDestination("Home", Icons.Default.Home),
     NavDestination("Radar", Icons.Default.CalendarMonth),
     NavDestination("Library", Icons.Default.VideoLibrary),
-    NavDestination("Detail", Icons.Default.Tv)
+    NavDestination("Settings", Icons.Default.Settings)
 )
 
 /**

@@ -64,34 +64,6 @@ fun MonthCalendarGrid(
     val days = remember(month) { buildMonthDays(month, dayFormat) }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onPreviousMonth) {
-                Icon(
-                    Icons.Filled.KeyboardArrowLeft,
-                    contentDescription = "Previous month",
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Text(
-                text = monthFormat.format(month.time),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            IconButton(onClick = onNextMonth) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowForwardIos,
-                    contentDescription = "Next month",
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-
-        Spacer(Modifier.height(4.dp))
-
         // Weekday header uses the same seven equal columns as the day rows.
         Row(modifier = Modifier.fillMaxWidth()) {
             listOf("M", "T", "W", "T", "F", "S", "S").forEach { label ->

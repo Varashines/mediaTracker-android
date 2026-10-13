@@ -52,6 +52,7 @@ import java.util.*
 
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.prefs.PreferencesManager
+import com.vara.mediatracker.util.NetworkResolver
 import kotlinx.coroutines.launch
 
 enum class HomeFocusSection(val title: String) {
@@ -73,7 +74,8 @@ fun HomeScreen(
     items: List<MediaItemEntity>,
     container: AppContainer,
     onSelectMedia: (String) -> Unit,
-    onOpenCalendar: () -> Unit = {}
+    onOpenCalendar: () -> Unit = {},
+    onOpenSearch: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val allEpisodes by container.mediaDao.getAllEpisodesFlow()
@@ -355,13 +357,13 @@ fun HomeScreen(
     val listState = rememberLazyListState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Sticky Top App Bar matching M3E HTML showcase: "EXPLORE" / "MediaTracker" + Action buttons
+        // Sticky Top App Bar matching M3E HTML showcase: "EXPLORE" / "MediaTracker" + Actions
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.background)
                 .statusBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -401,7 +403,7 @@ fun HomeScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.CalendarMonth,
-                        contentDescription = "Calendar",
+                        contentDescription = "Radar",
                         tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(19.dp)
                     )
@@ -423,6 +425,51 @@ fun HomeScreen(
                         contentDescription = "Sync",
                         tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(19.dp)
+                    )
+                }
+            }
+        }
+
+        // Top Search Bar (M3E squircle container with tactile spring click)
+        Surface(
+            onClick = onOpenSearch,
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .height(48.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Search movies, series, or library...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    modifier = Modifier.weight(1f)
+                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest
+                ) {
+                    Text(
+                        text = "FIND",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                     )
                 }
             }
@@ -550,12 +597,18 @@ fun HomeScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
+                                        val heroNetwork = NetworkResolver.resolve(spotlightItem)
+                                        val heroProgress = showProgressMap[spotlightItem.id]
+                                        val epTag = if (spotlightItem.type.contains("TV", ignoreCase = true)) {
+                                            heroProgress?.nextEpisode?.let { " • S${it.seasonNumber} E${it.episodeNumber}" } ?: " • S1 E1"
+                                        } else ""
+
                                         Surface(
                                             color = Color.White.copy(alpha = 0.15f),
                                             shape = RoundedCornerShape(6.dp)
                                         ) {
                                             Text(
-                                                text = if (spotlightItem.type.contains("TV", ignoreCase = true)) "HBO • S2 E1" else "FEATURE FILM",
+                                                text = if (spotlightItem.type.contains("TV", ignoreCase = true)) "${heroNetwork.shortName}$epTag" else "FEATURE FILM",
                                                 fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color.White,
@@ -747,13 +800,14 @@ fun HomeScreen(
                                     Spacer(modifier = Modifier.width(14.dp))
 
                                     Column(modifier = Modifier.weight(1f)) {
+                                        val netInfo = NetworkResolver.resolve(item)
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = if (item.type.contains("TV", ignoreCase = true)) "APPLE TV+" else "THEATRICAL",
+                                                text = netInfo.name.uppercase(),
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = MaterialTheme.colorScheme.primary,
@@ -943,8 +997,9 @@ fun HomeScreen(
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
+                                        val antNet = NetworkResolver.resolve(item)
                                         Text(
-                                            text = if (item.type.contains("TV", ignoreCase = true)) "Original Series" else "Feature Film",
+                                            text = if (item.type.contains("TV", ignoreCase = true)) "${antNet.name} Original" else "${antNet.name} Theatrical",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,

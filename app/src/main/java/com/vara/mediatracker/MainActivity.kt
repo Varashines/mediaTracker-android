@@ -107,15 +107,13 @@ fun MainAppScreen(container: AppContainer) {
 
     Scaffold(
         topBar = {
-            // Home draws its own collapsing large title driven by its own scroll state.
-            // Every other screen gets a compact bar here, since nothing else owns one.
-            if (selectedTab != 0) {
+            // Home and Radar draw their own expressive headers.
+            // Other screens get a compact bar here.
+            if (selectedTab != 0 && selectedTab != 1) {
                 TopAppBar(
                     title = {
                         Text(
                             text = when (selectedTab) {
-                                CalendarTab -> "Calendar"
-                                1 -> "Search"
                                 2 -> "Library"
                                 else -> "Settings"
                             },
@@ -170,20 +168,17 @@ fun MainAppScreen(container: AppContainer) {
                         items = mediaItems,
                         container = container,
                         onSelectMedia = { activeDetailMediaId = it },
-                        onOpenCalendar = { selectedTab = CalendarTab }
+                        onOpenCalendar = { selectedTab = 1 },
+                        onOpenSearch = { selectedTab = 2 }
                     )
-                    // Calendar is a view of upcoming releases, not a place you live, so
-                    // it is reached from Home rather than holding a nav slot.
-                    CalendarTab -> ReleaseCalendarScreen(
-                        items = mediaItems, container = container,
-                        onSelectMedia = { activeDetailMediaId = it }
-                    )
-                    1 -> SearchScreen(
-                        items = mediaItems, container = container,
+                    1 -> ReleaseCalendarScreen(
+                        items = mediaItems,
+                        container = container,
                         onSelectMedia = { activeDetailMediaId = it }
                     )
                     2 -> LibraryScreen(
-                        items = mediaItems, container = container,
+                        items = mediaItems,
+                        container = container,
                         onSelectMedia = { activeDetailMediaId = it }
                     )
                     else -> SettingsScreen(container = container)

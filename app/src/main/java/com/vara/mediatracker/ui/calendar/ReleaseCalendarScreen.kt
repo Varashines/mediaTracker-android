@@ -43,6 +43,7 @@ import com.vara.mediatracker.ui.home.SectionHeader
 import com.vara.mediatracker.ui.home.SmartBadgePill
 import com.vara.mediatracker.ui.theme.AppColors
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
+import com.vara.mediatracker.util.NetworkResolver
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -172,6 +173,7 @@ fun ReleaseCalendarScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .statusBarsPadding()
                     .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -352,10 +354,11 @@ fun CalendarReleaseCard(
     val item = event.mediaItem
     var isAlertSet by remember { mutableStateOf(false) }
     val isTV = item.type.contains("TV", ignoreCase = true)
+    val netInfo = remember(item) { NetworkResolver.resolve(item) }
 
     ExpressiveCard(
         onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(22.dp),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         tonalElevation = 2.dp,
@@ -368,28 +371,80 @@ fun CalendarReleaseCard(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Network Chip (HBO / TV+ / FILM)
+            // Series Poster Artwork Thumbnail with dynamic network overlay
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .width(52.dp)
+                    .height(68.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        if (isTV) Color(0xFFD97706).copy(alpha = 0.20f)
-                        else Color(0xFF0284C7).copy(alpha = 0.20f)
-                    ),
-                contentAlignment = Alignment.Center
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             ) {
-                Text(
-                    text = if (isTV) "HBO" else "TV+",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Black,
-                    color = if (isTV) Color(0xFFFBBF24) else Color(0xFF38BDF8)
-                )
+                val poster = item.posterUrl ?: item.backdropUrl
+                if (poster != null) {
+                    AsyncImage(
+                        model = poster,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(netInfo.badgeColor.copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = netInfo.shortName,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = netInfo.textColor
+                        )
+                    }
+                }
+
+                // Tiny dynamic network badge at bottom of poster
+                Surface(
+                    color = Color.Black.copy(alpha = 0.75f),
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(3.dp)
+                ) {
+                    Text(
+                        text = netInfo.shortName,
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(14.dp))
 
             Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = netInfo.badgeColor.copy(alpha = 0.20f)
+                    ) {
+                        Text(
+                            text = netInfo.name.uppercase(),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 0.5.sp,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
                 Text(
                     text = item.title,
                     style = MaterialTheme.typography.titleSmall,
