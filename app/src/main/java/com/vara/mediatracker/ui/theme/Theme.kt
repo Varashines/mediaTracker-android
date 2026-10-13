@@ -233,6 +233,7 @@ object ExpressiveShapes {
      */
     val AsymHero = RoundedCornerShape(topStart = 34.dp, topEnd = 12.dp, bottomEnd = 34.dp, bottomStart = 12.dp)
     val AsymCard = RoundedCornerShape(topStart = 24.dp, topEnd = 8.dp, bottomEnd = 24.dp, bottomStart = 8.dp)
+    val AsymPoster = RoundedCornerShape(topStart = 22.dp, topEnd = 8.dp, bottomEnd = 22.dp, bottomStart = 8.dp)
     val AsymTag = RoundedCornerShape(topStart = 14.dp, topEnd = 4.dp, bottomEnd = 14.dp, bottomStart = 4.dp)
 
     /** Uniform hero card shape. */

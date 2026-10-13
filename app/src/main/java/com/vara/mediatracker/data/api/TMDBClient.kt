@@ -24,6 +24,14 @@ data class TMDBGenre(
     val name: String
 )
 
+/** A creator / crew person (used for a TV show's `created_by`). */
+@Serializable
+data class TMDBPerson(
+    val id: Int,
+    val name: String,
+    val profile_path: String? = null
+)
+
 @Serializable
 data class TMDBCastMember(
     val id: Int,
@@ -94,7 +102,62 @@ data class TMDBDetailsResponse(
     val number_of_episodes: Int? = null,
     val seasons: List<TMDBSeasonInfo>? = null,
     val networks: List<TMDBNetwork>? = null,
-    val production_companies: List<TMDBProductionCompany>? = null
+    val production_companies: List<TMDBProductionCompany>? = null,
+    /** TMDB status, e.g. "Ended", "Returning Series", "Released". */
+    val status: String? = null,
+    /** TV creators. */
+    val created_by: List<TMDBPerson>? = null
+)
+
+@Serializable
+data class TMDBContentRating(
+    val iso_3166_1: String? = null,
+    val rating: String? = null
+)
+
+@Serializable
+data class TMDBContentRatingsResponse(
+    val results: List<TMDBContentRating> = emptyList()
+)
+
+@Serializable
+data class TMDBReleaseDateEntry(
+    val certification: String? = null
+)
+
+@Serializable
+data class TMDBReleaseDateResult(
+    val iso_3166_1: String? = null,
+    val release_dates: List<TMDBReleaseDateEntry> = emptyList()
+)
+
+@Serializable
+data class TMDBReleaseDatesResponse(
+    val results: List<TMDBReleaseDateResult> = emptyList()
+)
+
+@Serializable
+data class TMDBPersonDetailsResponse(
+    val id: Int? = null,
+    val name: String? = null,
+    val biography: String? = null,
+    val known_for_department: String? = null,
+    val profile_path: String? = null
+)
+
+@Serializable
+data class TMDBCombinedCredit(
+    val id: Int,
+    val title: String? = null,
+    val name: String? = null,
+    val media_type: String? = null,
+    val poster_path: String? = null,
+    val character: String? = null
+)
+
+@Serializable
+data class TMDBCombinedCreditsResponse(
+    val cast: List<TMDBCombinedCredit> = emptyList()
 )
 
 @Serializable
@@ -213,6 +276,34 @@ class TMDBClient(
         client.get("https://api.themoviedb.org/3/tv/$id/images") {
             applyAuth()
             parameter("include_image_language", "en,null")
+        }.body()
+    }
+
+    /** US content rating for a TV show, e.g. "TV-MA". */
+    suspend fun getTVContentRatings(id: Int): Result<TMDBContentRatingsResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/tv/$id/content_ratings") {
+            applyAuth()
+        }.body()
+    }
+
+    /** US certification for a movie, e.g. "R", "PG-13". */
+    suspend fun getMovieReleaseDates(id: Int): Result<TMDBReleaseDatesResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/movie/$id/release_dates") {
+            applyAuth()
+        }.body()
+    }
+
+    /** Person bio + filmography, used by the detail cast bio sheet. */
+    suspend fun getPersonDetails(id: Int): Result<TMDBPersonDetailsResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/person/$id") {
+            applyAuth()
+        }.body()
+    }
+
+    /** A person's combined movie + TV credits, used for "Known Works". */
+    suspend fun getPersonCombinedCredits(id: Int): Result<TMDBCombinedCreditsResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/person/$id/combined_credits") {
+            applyAuth()
         }.body()
     }
 

@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import java.util.Locale
@@ -48,16 +49,17 @@ fun SectionHeader(
     ) {
         Box(
             modifier = Modifier
-                .width(4.dp)
-                .height(16.dp)
-                .clip(RoundedCornerShape(2.dp))
+                .width(6.dp)
+                .height(18.dp)
+                .clip(RoundedCornerShape(3.dp))
                 .background(accentColor)
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.ExtraBold,
+            text = title.uppercase(Locale.US),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.8.sp,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
             maxLines = 1,

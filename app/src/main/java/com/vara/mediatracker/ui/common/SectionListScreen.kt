@@ -31,6 +31,7 @@ import com.vara.mediatracker.util.AirTimeResolver
 import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.home.SmartBadgePill
+import com.vara.mediatracker.ui.home.HomeEligibility
 import com.vara.mediatracker.ui.common.TVShowProgress
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.util.NetworkResolver
@@ -212,28 +213,10 @@ fun SectionListScreen(
                                         letterSpacing = 0.5.sp
                                     )
 
-                                    // Days-left from the resolved drop instant (rules),
-                                    // matching the Home row. Falls back to the badge.
+                                    // Days-left from the resolved drop instant (rules);
+                                    // movies use their release date. Falls back to the badge.
                                     val nextEp = progress?.nextEpisode
-                                    val daysLeftLabel = remember(nextEp?.uniqueId, item.timezone, item.network) {
-                                        if (nextEp == null) return@remember null
-                                        val instant = AirTimeResolver.resolveAirInstant(
-                                            dateString = nextEp.airDate?.take(10),
-                                            time = nextEp.airTime,
-                                            airstamp = nextEp.airstamp,
-                                            timezone = item.timezone,
-                                            serviceName = AirTimeResolver.serviceHint(
-                                                networkMap[item.id] ?: item.network, item.studios, item.genres
-                                            )
-                                        ) ?: return@remember null
-                                        val hours = (instant.time - System.currentTimeMillis()) / 3_600_000.0
-                                        when {
-                                            hours < 0 -> "READY"
-                                            hours < 24 -> "AIRING TODAY"
-                                            hours < 48 -> "1 day left"
-                                            else -> "${(hours / 24).toInt()} days left"
-                                        }
-                                    }
+                                    val daysLeftLabel = HomeEligibility.daysLeftLabel(item, nextEp, networkMap)
                                     if (daysLeftLabel != null) {
                                         Text(
                                             text = daysLeftLabel,

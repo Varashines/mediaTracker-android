@@ -476,14 +476,14 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             SectionHeader(
-                                title = "Continue Watching",
+                                title = "In Progress",
                                 accent = MaterialTheme.colorScheme.primary,
                                 horizontalPadding = 0.dp
                             )
                             SectionViewAllLink(
                                 text = "View All (${resumeItems.size})",
                                 onClick = {
-                                    activeSectionListTitle = "Continue Watching"
+                                    activeSectionListTitle = "In Progress"
                                     activeSectionListItems = resumeItems
                                 }
                             )
@@ -647,16 +647,18 @@ fun SectionHeader(
         if (accent != null) {
             Box(
                 modifier = Modifier
-                    .size(7.dp)
-                    .clip(CircleShape)
+                    .width(6.dp)
+                    .height(18.dp)
+                    .clip(RoundedCornerShape(3.dp))
                     .background(accent)
             )
-            Spacer(modifier = Modifier.width(7.dp))
+            Spacer(modifier = Modifier.width(8.dp))
         }
         Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
+            text = title.uppercase(Locale.US),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.8.sp,
             color = MaterialTheme.colorScheme.onSurface
         )
     }
@@ -865,26 +867,9 @@ private fun HomeUpNextRow(
                     NetworkResolver.resolve(item)
                 }
 
-                // Days-left from the resolved drop instant (rules), not the raw air date.
-                val daysLeftLabel = remember(nextEp?.uniqueId, item.timezone, item.network) {
-                    if (nextEp == null) return@remember "READY"
-                    val instant = AirTimeResolver.resolveAirInstant(
-                        dateString = nextEp.airDate?.take(10),
-                        time = nextEp.airTime,
-                        airstamp = nextEp.airstamp,
-                        timezone = item.timezone,
-                        serviceName = AirTimeResolver.serviceHint(
-                            networkMap[item.id] ?: item.network, item.studios, item.genres
-                        )
-                    ) ?: return@remember "READY"
-                    val hours = (instant.time - System.currentTimeMillis()) / 3_600_000.0
-                    when {
-                        hours < 0 -> "READY"
-                        hours < 24 -> "AIRING TODAY"
-                        hours < 48 -> "1 day left"
-                        else -> "${(hours / 24).toInt()} days left"
-                    }
-                }
+                // Days-left from the resolved drop instant (rules); movies use their
+                // release date, TV the next unwatched episode.
+                val daysLeftLabel = HomeEligibility.daysLeftLabel(item, nextEp, networkMap) ?: "READY"
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),

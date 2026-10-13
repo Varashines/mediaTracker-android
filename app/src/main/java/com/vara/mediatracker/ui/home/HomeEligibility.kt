@@ -317,4 +317,43 @@ object HomeEligibility {
             SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateStr.take(10))
         }.getOrNull()
     }
+
+    /**
+     * Human label for how far off a title's next drop is: "READY" (past), "AIRING TODAY"
+     * (<24h), "1 day left", or "N days left". Null when there is no resolvable instant.
+     *
+     * TV uses the next unwatched episode's resolved drop instant; movies use their
+     * release date through the same streaming rules, so both behave identically.
+     */
+    fun daysLeftLabel(
+        item: MediaItemEntity,
+        nextEpisode: EpisodeEntity?,
+        networkMap: Map<String, String>
+    ): String? {
+        val serviceName = AirTimeResolver.serviceHint(
+            networkMap[item.id] ?: item.network, item.studios, item.genres
+        )
+        val isTv = item.type.contains("TV", ignoreCase = true)
+        val instant = if (isTv) {
+            nextEpisode?.let {
+                AirTimeResolver.resolveAirInstant(
+                    dateString = it.airDate?.take(10),
+                    time = it.airTime,
+                    airstamp = it.airstamp,
+                    timezone = item.timezone,
+                    serviceName = serviceName
+                )
+            }
+        } else {
+            AirTimeResolver.resolveAirInstant(dateString = item.releaseDate?.take(10), serviceName = serviceName)
+        } ?: return null
+
+        val hours = (instant.time - System.currentTimeMillis()) / 3_600_000.0
+        return when {
+            hours < 0 -> "READY"
+            hours < 24 -> "AIRING TODAY"
+            hours < 48 -> "1 day left"
+            else -> "${(hours / 24).toInt()} days left"
+        }
+    }
 }

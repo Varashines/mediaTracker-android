@@ -245,11 +245,20 @@ fun MainAppScreen(
                     },
                     onBack = { isSearchActive = false }
                 )
-                is Overlay.Detail -> DetailScreen(
-                    mediaId = ov.id,
-                    container = container,
-                    onBack = { activeDetailMediaId = null }
-                )
+                is Overlay.Detail -> Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    // Surface (not a bare Box) so the pushed screen provides
+                    // LocalContentColor = onBackground; without it, any Text that does
+                    // not set an explicit colour falls back to black and vanishes in
+                    // dark mode.
+                    DetailScreen(
+                        mediaId = ov.id,
+                        container = container,
+                        onBack = { activeDetailMediaId = null }
+                    )
+                }
             }
         }
 

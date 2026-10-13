@@ -10,7 +10,6 @@ composeBom = "2026.09.00"
 composeMaterial3 = "1.5.0-beta01"
 room = "2.8.5"
 coil = "2.7.0"
-haze = "1.7.2"
 ktor = "3.0.1"
 coroutines = "1.9.0"
 serialization = "1.7.3"
@@ -46,8 +45,6 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 
 # Async Image Loading
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
-haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
-haze-blur = { group = "dev.chrisbanes.haze", name = "haze-blur", version.ref = "haze" }
 
 # Networking & JSON Serialization
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
