@@ -55,7 +55,8 @@ class BadgeEngineTest {
         number: Int,
         watched: Boolean = false,
         airDate: String? = null,
-        watchedDate: String? = null
+        watchedDate: String? = null,
+        airstamp: String? = null
     ) = EpisodeEntity(
         uniqueId = MediaIds.buildEpisodeUniqueId("tv_1399", season, number),
         showId = "tv_1399",
@@ -63,7 +64,8 @@ class BadgeEngineTest {
         episodeNumber = number,
         isWatched = watched,
         airDate = airDate,
-        watchedDate = watchedDate
+        watchedDate = watchedDate,
+        airstamp = airstamp
     )
 
     private fun badgeFor(item: MediaItemEntity, episodes: List<EpisodeEntity> = emptyList()): SmartBadge? =
@@ -189,11 +191,16 @@ class BadgeEngineTest {
     fun `tv airing inside 48 hours is SOON`() {
         // Five episodes so the next unwatched one is E4: not a premiere, not the
         // season's last episode, and no same-day cluster.
+        //
+        // The air instant is pinned with an airstamp (now + 12h) instead of a bare date.
+        // A date-only air date resolves to 20:00 ET, so "tomorrow" crossed the 48-hour
+        // window just after local midnight and this test flipped with the wall clock.
+        val soonInstant = java.time.Instant.ofEpochMilli(now.time + 12L * 60 * 60 * 1000).toString()
         val episodes = listOf(
             ep(1, 1, watched = true, airDate = day(-30), watchedDate = day(-30)),
             ep(1, 2, watched = true, airDate = day(-30), watchedDate = day(-30)),
             ep(1, 3, watched = true, airDate = day(-30), watchedDate = day(-30)),
-            ep(1, 4, airDate = day(1)),
+            ep(1, 4, airDate = day(1), airstamp = soonInstant),
             ep(1, 5, airDate = day(20))
         )
         assertEquals(SmartBadge.SOON, badgeFor(show(), episodes))
