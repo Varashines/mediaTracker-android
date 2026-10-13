@@ -106,6 +106,33 @@ object Migrations {
         }
     }
 
+    /**
+     * v8 -> v9: indices for the hot read paths.
+     *
+     * `media_items` is read on every screen with `WHERE isSoftDeleted = 0 ORDER BY
+     * lastInteractionDate DESC`; `tv_episodes` is filtered by `showId` for per-show
+     * lists, eligibility scans, and the enrichment `NOT EXISTS` subqueries. Purely
+     * additive — no rows are touched.
+     */
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_media_items_isSoftDeleted_lastInteractionDate` " +
+                    "ON `media_items` (`isSoftDeleted`, `lastInteractionDate`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_media_items_state_isSoftDeleted` " +
+                    "ON `media_items` (`state`, `isSoftDeleted`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_tv_episodes_showId` ON `tv_episodes` (`showId`)"
+            )
+        }
+    }
+
     val ALL: Array<Migration> =
-        arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+        arrayOf(
+            MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
+            MIGRATION_7_8, MIGRATION_8_9
+        )
 }

@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.badge.SmartBadge
 import com.vara.mediatracker.data.model.MediaIds
@@ -27,9 +28,12 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
+import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.ui.common.rememberTodayDateString
 import com.vara.mediatracker.ui.discovery.DiscoveryHubContent
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** The two hubs hosted by the Smart tab. */
 private enum class HubTab(val label: String) {
@@ -57,34 +61,36 @@ fun SmartHubScreen(
     var activeItems by remember { mutableStateOf<List<MediaItemEntity>>(emptyList()) }
     var activeGroupByWeek by remember { mutableStateOf(false) }
 
-    val allEpisodes by container.mediaDao.getAllEpisodesFlow().collectAsState(initial = emptyList())
-    val badgeRows by container.database.badgeDao().observeBadges().collectAsState(initial = emptyList())
-    val smartBadgesMap = remember(badgeRows) {
-        badgeRows.associate { row ->
-            row.mediaId to BadgeResult(
-                SmartBadge.fromLabel(row.badgeLabel) ?: SmartBadge.NEW,
-                isSparkle = row.isSparkle
-            )
-        }
-    }
-    val episodesByShow = remember(allEpisodes) { allEpisodes.groupBy { it.showId } }
+    // The library join is produced once, off the UI thread, by the activity-scoped
+    // ViewModel (see LibraryViewModel). This screen used to collect the whole ~9k-row
+    // episode table and group it on the main thread.
+    val libraryVm: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(container))
+    val core by libraryVm.core.collectAsState()
+    val smartBadgesMap = core.badges
+    val episodesByShow = core.episodesByShow
     val todayDate = rememberTodayDateString()
 
     // Runtime hints for Quick Bites: the cached movie runtime, and a show's typical
-    // episode runtime from its episode rows.
-    val memberships = remember(items, smartBadgesMap, episodesByShow, todayDate) {
-        SmartCategory.values().associateWith { category ->
-            items.filter { item ->
-                val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-                SmartCategoryMatcher.matches(
-                    category = category,
-                    item = item,
-                    badgeLabel = smartBadgesMap[item.id]?.badge?.label,
-                    runtimeMinutes = container.preferences.getCachedRuntime(item.id),
-                    episodeRuntimeMinutes = key?.let { k ->
-                        episodesByShow[k]?.firstOrNull { (it.runtime ?: 0) > 0 }?.runtime
-                    }
-                )
+    // episode runtime from its episode rows. Eight category passes over the library, so
+    // it runs on a background dispatcher and the UI only reads the finished result.
+    val memberships by produceState(
+        initialValue = emptyMap<SmartCategory, List<MediaItemEntity>>(),
+        items, smartBadgesMap, episodesByShow, todayDate
+    ) {
+        value = withContext(Dispatchers.Default) {
+            SmartCategory.values().associateWith { category ->
+                items.filter { item ->
+                    val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+                    SmartCategoryMatcher.matches(
+                        category = category,
+                        item = item,
+                        badgeLabel = smartBadgesMap[item.id]?.badge?.label,
+                        runtimeMinutes = container.preferences.getCachedRuntime(item.id),
+                        episodeRuntimeMinutes = key?.let { k ->
+                            episodesByShow[k]?.firstOrNull { (it.runtime ?: 0) > 0 }?.runtime
+                        }
+                    )
+                }
             }
         }
     }
@@ -204,7 +210,7 @@ fun SmartHubScreen(
 
             HubTab.DISCOVER -> DiscoveryHubContent(
                 items = items,
-                badgeRows = badgeRows,
+                badgeRows = core.badgeRows,
                 smartBadgesMap = smartBadgesMap,
                 onSelectNode = { sectionTitle, filtered -> openSection(sectionTitle, filtered) }
             )

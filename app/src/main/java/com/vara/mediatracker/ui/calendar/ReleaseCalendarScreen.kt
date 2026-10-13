@@ -27,6 +27,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.vara.mediatracker.ui.common.LibraryViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.vara.mediatracker.data.badge.BadgeEngine
 import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.badge.SmartBadge
@@ -89,7 +93,14 @@ fun ReleaseCalendarScreen(
     onSelectMedia: (String) -> Unit,
     onOpenSearch: (() -> Unit)? = null
 ) {
-    val allEpisodes by container.mediaDao.getAllEpisodesFlow().collectAsState(initial = emptyList())
+    // The library join is produced once, off the UI thread, by the activity-scoped
+    // ViewModel (see LibraryViewModel) instead of collecting and grouping the whole
+    // episode table here on the main thread.
+    val libraryVm: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(container))
+    val core by libraryVm.core.collectAsState()
+    val allEpisodes = core.allEpisodes
+    val episodesByShow = core.episodesByShow
+    val smartBadgesMap = core.badges
 
     val todayString = rememberTodayDateString()
 
@@ -102,37 +113,25 @@ fun ReleaseCalendarScreen(
     var selectedDateString by remember { mutableStateOf<String?>(todayString) }
     var selectedFilter by remember { mutableStateOf("All") } // "All", "Movies", "TV Shows"
 
-    val episodesByShow = remember(allEpisodes) {
-        allEpisodes.groupBy { it.showId }
-    }
-
-    // Badges are read from Room rather than recomputed here. A background worker
-    // keeps this table current, so the UI never runs BadgeEngine across the whole
-    // library on the main thread — and badges are already correct on first paint.
-    val badgeRows by container.database.badgeDao().observeBadges()
-        .collectAsState(initial = emptyList())
-    val smartBadgesMap = remember(badgeRows) {
-        badgeRows.associate { row ->
-            row.mediaId to BadgeResult(
-                SmartBadge.fromLabel(row.badgeLabel) ?: SmartBadge.NEW,
-                isSparkle = row.isSparkle
-            )
-        }
-    }
-
     // Compute month boundaries
     val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()) }
 
-    // Precalculate all events in current month
-    val monthEventsMap = remember(items, allEpisodes, selectedYearMonth) {
-        val cal = selectedYearMonth.clone() as Calendar
-        cal.set(Calendar.DAY_OF_MONTH, 1)
-        buildMonthReleaseEvents(
-            items = items,
-            episodes = allEpisodes,
-            year = cal.get(Calendar.YEAR),
-            month = cal.get(Calendar.MONTH)
-        ).groupBy { it.dateString }
+    // Precalculate all events in current month. Building a month walks every item and
+    // every episode, so it runs on a background dispatcher.
+    val monthEventsMap by produceState(
+        initialValue = emptyMap<String, List<CalendarReleaseEvent>>(),
+        items, allEpisodes, selectedYearMonth
+    ) {
+        value = withContext(Dispatchers.Default) {
+            val cal = selectedYearMonth.clone() as Calendar
+            cal.set(Calendar.DAY_OF_MONTH, 1)
+            buildMonthReleaseEvents(
+                items = items,
+                episodes = allEpisodes,
+                year = cal.get(Calendar.YEAR),
+                month = cal.get(Calendar.MONTH)
+            ).groupBy { it.dateString }
+        }
     }
 
     // Events for selected date or whole month

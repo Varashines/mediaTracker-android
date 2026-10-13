@@ -1,10 +1,10 @@
 package com.vara.mediatracker.util
 
-import java.text.SimpleDateFormat
-import java.util.Calendar
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
-import java.util.TimeZone
 
 /**
  * Resolves the real instant an episode airs, ported from the macOS
@@ -27,6 +27,12 @@ import java.util.TimeZone
  *  6. US 8 PM ET fallback.
  */
 object AirTimeResolver {
+
+    // java.time formatters are immutable and thread-safe, so they are shared instead of
+    // allocated per parse — these run thousands of times per Home/Smart Hub pass.
+    private val DATE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.US)
+    private val TIME_FORMAT = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+    private val ZONE_FORMAT = DateTimeFormatter.ofPattern("zzz", Locale.US)
 
     data class StreamingServiceRule(
         val patterns: List<String>,
@@ -166,32 +172,25 @@ object AirTimeResolver {
         val rule = ruleFor(serviceName)
         val timePart = rule?.releaseTime ?: "20:00"
         val zoneId = rule?.timeZoneId ?: "America/New_York"
-        val tz = TimeZone.getTimeZone(zoneId)
         return try {
-            val base = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-                .apply { timeZone = tz }
-                .parse("$day $timePart") ?: return null
-            val time = SimpleDateFormat("h:mm a", Locale.US).apply { timeZone = tz }.format(base)
-            val zone = tz.getDisplayName(false, TimeZone.SHORT, Locale.US)
-            "$time $zone"
+            val zone = ZoneId.of(zoneId)
+            val zoned = LocalDateTime.parse("$day $timePart", DATE_TIME_FORMAT).atZone(zone)
+            val time = zoned.format(TIME_FORMAT)
+            val zoneLabel = ZONE_FORMAT.withZone(zone).format(zoned)
+            "$time $zoneLabel"
         } catch (_: Exception) {
             null
         }
     }
 
     private fun parseInZone(day: String, time: String, zoneId: String): Date? = try {
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-            .apply { timeZone = TimeZone.getTimeZone(zoneId) }
-            .parse("$day $time")
+        Date.from(LocalDateTime.parse("$day $time", DATE_TIME_FORMAT).atZone(ZoneId.of(zoneId)).toInstant())
     } catch (_: Exception) {
         null
     }
 
     private fun offsetDays(base: Date, dayOffset: Int, zoneId: String): Date {
         if (dayOffset == 0) return base
-        return Calendar.getInstance(TimeZone.getTimeZone(zoneId)).apply {
-            time = base
-            add(Calendar.DAY_OF_YEAR, dayOffset)
-        }.time
+        return Date.from(base.toInstant().atZone(ZoneId.of(zoneId)).plusDays(dayOffset.toLong()).toInstant())
     }
 }

@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.badge.BadgeEngine
 import com.vara.mediatracker.data.badge.BadgeResult
@@ -44,6 +45,7 @@ import com.vara.mediatracker.ui.common.parseTargetAirDateTime
 import com.vara.mediatracker.ui.common.rememberCountdownText
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
+import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.ui.common.rememberTodayDateString
 import com.vara.mediatracker.ui.common.springClickable
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
@@ -75,66 +77,27 @@ fun HomeScreen(
 ) {
     val scope = rememberCoroutineScope()
     val sem = LocalSemanticColors.current
-    val allEpisodes by container.mediaDao.getAllEpisodesFlow()
-        .collectAsState(initial = emptyList())
+    // Everything below is derived once, off the UI thread, by the activity-scoped
+    // ViewModel — grouping ~9k episodes, per-show sorts, eligibility scans and air-instant
+    // resolution used to run here on the main thread and were redone on every tab switch.
+    // The screen now only renders the result.
+    val libraryVm: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(container))
+    val core by libraryVm.core.collectAsState()
+    val home by libraryVm.home.collectAsState()
+
+    val episodesByShow = core.episodesByShow
+    val smartBadgesMap = core.badges
+    val showProgressMap = home.showProgressMap
+    val resumeItems = home.resumeItems
+    val comingSoonItems = home.comingSoonItems
+    val recentlyAddedItems = home.recentlyAddedItems
+    val lovedItems = home.lovedItems
+    val spotlightItem = home.spotlightItem
 
     var activeSectionListTitle by remember { mutableStateOf<String?>(null) }
     var activeSectionListItems by remember { mutableStateOf<List<MediaItemEntity>>(emptyList()) }
 
-    // Map showId -> List<EpisodeEntity>
-    val episodesByShow = remember(allEpisodes) {
-        allEpisodes.groupBy { it.showId }
-    }
-
     val todayDateStr = rememberTodayDateString()
-
-    // Precalculate progress and next episode per show
-    val showProgressMap = remember(items, episodesByShow, todayDateStr) {
-        items.filter { it.type.contains("TV", ignoreCase = true) }.associate { item ->
-            val showKey = MediaIds.tvShowKey(item.id)
-            val showEps = (episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList())
-                .sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
-            val total = showEps.size
-            val watched = showEps.count { it.isWatched }
-            val nextEp = showEps.firstOrNull { !it.isWatched }
-            // nextAir is the FIRST unwatched episode that airs in the STRICT FUTURE (> today)
-            val nextAir = showEps.firstOrNull { ep ->
-                !ep.isWatched && !ep.airDate.isNullOrBlank() && ep.airDate > todayDateStr
-            }?.airDate
-            item.id to TVShowProgress(
-                totalEpisodes = total,
-                watchedEpisodes = watched,
-                nextEpisode = nextEp,
-                nextAiringDate = nextAir
-            )
-        }
-    }
-
-    // Badges are read from Room rather than recomputed here. A background worker
-    // keeps this table current, so the UI never runs BadgeEngine across the whole
-    // library on the main thread — and badges are already correct on first paint.
-    val badgeRows by container.database.badgeDao().observeBadges()
-        .collectAsState(initial = emptyList())
-    val smartBadgesMap = remember(badgeRows) {
-        badgeRows.associate { row ->
-            row.mediaId to BadgeResult(
-                SmartBadge.fromLabel(row.badgeLabel) ?: SmartBadge.NEW,
-                isSparkle = row.isSparkle
-            )
-        }
-    }
-
-    // Up Next / Continue Watching: eligibility rules ported from the macOS app.
-    // This is the single source for the hero spotlight, the "Up Next" list, and its
-    // "View All" screen, so a title can never appear in two differently-ranked rails.
-    val resumeItems = remember(items, episodesByShow, smartBadgesMap, todayDateStr) {
-        HomeEligibility.resumeCandidates(
-            items = items,
-            episodesByShow = episodesByShow,
-            badges = smartBadgesMap,
-            now = Date()
-        )
-    }
 
     // Network name cache: mediaId -> realNetworkName (initialized from persistent prefs cache)
     val networkMap = remember {
@@ -148,52 +111,16 @@ fun HomeScreen(
     // Force network refresh trigger state
     var forceNetworkRefreshCount by remember { mutableIntStateOf(0) }
 
-    // COMING SOON: anything with an unaired episode or an unreleased film, soonest
-    // first. Judged on the rule-based drop instant, so a Marvel 9 PM ET premiere on the
-    // 13th counts as upcoming in IST (where it lands on the 14th).
-    val comingSoonItems = remember(items, episodesByShow, resumeItems, todayDateStr) {
-        val now = Date()
-        val resumeIds = resumeItems.map { it.id }.toSet()
-        items.filter { item ->
-            if (item.isSoftDeleted || resumeIds.contains(item.id)) return@filter false
-            val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-            val instant = HomeEligibility.nextAiringInstant(item, key?.let { episodesByShow[it] }.orEmpty())
-            HomeEligibility.isComingSoonAt(item, instant, now)
-        }
-            .sortedBy { item ->
-                val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-                HomeEligibility.nextAiringInstant(item, key?.let { episodesByShow[it] }.orEmpty())?.time
-                    ?: Long.MAX_VALUE
-            }
-            .take(15)
-    }
-
-    // RECENTLY ADDED: Sorted by last added / interacted, max 15
-    val recentlyAddedItems = remember(items) {
-        items.filter { !it.isSoftDeleted }
-            .sortedByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
-            .take(15)
-    }
-
-    val lovedItems = remember(items) {
-        items.filter { !it.isSoftDeleted && (it.taste.equals("Loved", ignoreCase = true) || it.taste.equals("Love", ignoreCase = true)) }
-    }
-
-    // Hero Spotlight: highest priority title with backdrop or poster
-    val spotlightItem = remember(resumeItems, comingSoonItems, lovedItems, items) {
-        resumeItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
-            ?: comingSoonItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
-            ?: lovedItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
-            ?: items.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
-    }
-
     // Pre-fetch real TMDB networks for the items Home actually renders.
     val itemsToEnrich = remember(spotlightItem, resumeItems, comingSoonItems, recentlyAddedItems, items) {
         (listOfNotNull(spotlightItem) + resumeItems + comingSoonItems + recentlyAddedItems + items.take(15))
             .distinctBy { it.id }
     }
+    // Key the fetch on the ids, not the list instances: `home` re-emits on every episode
+    // change, and restarting the whole enrichment pass each time thrashed the network.
+    val enrichIds = remember(itemsToEnrich) { itemsToEnrich.map { it.id } }
 
-    LaunchedEffect(itemsToEnrich, container.preferences.tmdbApiKey, forceNetworkRefreshCount) {
+    LaunchedEffect(enrichIds, container.preferences.tmdbApiKey, forceNetworkRefreshCount) {
         val apiKey = container.preferences.tmdbApiKey
         if (!apiKey.isNullOrBlank()) {
             val tmdbClient = TMDBClient(apiKey)

@@ -4,7 +4,15 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "media_items")
+@Entity(
+    tableName = "media_items",
+    indices = [
+        // Covers the hot `WHERE isSoftDeleted = 0 ORDER BY lastInteractionDate DESC`
+        // query every screen reads from, plus the per-state variant.
+        Index(value = ["isSoftDeleted", "lastInteractionDate"]),
+        Index(value = ["state", "isSoftDeleted"])
+    ]
+)
 data class MediaItemEntity(
     @PrimaryKey val id: String,              // e.g. "movie_550" or "tv_1399"
     val title: String,
@@ -52,7 +60,12 @@ data class MediaItemEntity(
     val updatedAt: String? = null
 )
 
-@Entity(tableName = "tv_episodes")
+@Entity(
+    tableName = "tv_episodes",
+    // Every episode read filters by showId (per-show lists, eligibility scans, and the
+    // enrichment `NOT EXISTS` subqueries). Without this the whole table is scanned.
+    indices = [Index(value = ["showId"])]
+)
 data class EpisodeEntity(
     @PrimaryKey val uniqueId: String,        // e.g. "tv_1399_s1_e1"
     val showId: String,

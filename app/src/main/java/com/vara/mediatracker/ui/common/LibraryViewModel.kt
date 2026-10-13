@@ -1,0 +1,174 @@
+package com.vara.mediatracker.ui.common
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.vara.mediatracker.data.badge.BadgeResult
+import com.vara.mediatracker.data.badge.SmartBadge
+import com.vara.mediatracker.data.model.EpisodeEntity
+import com.vara.mediatracker.data.model.MediaBadgeEntity
+import com.vara.mediatracker.data.model.MediaIds
+import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.ui.home.HomeEligibility
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
+import java.time.LocalDate
+import java.util.Date
+
+/** Episode totals / next-episode state for one show, shown on Home rails and detail lists. */
+data class TVShowProgress(
+    val totalEpisodes: Int,
+    val watchedEpisodes: Int,
+    val nextEpisode: EpisodeEntity?,
+    val nextAiringDate: String?
+)
+
+/**
+ * The whole library joined once, off the UI thread.
+ *
+ * Every screen used to collect `getAllEpisodesFlow()` (~9k rows) itself and then group,
+ * sort and scan that list inside a `remember {}` on the main thread. Tab switches also
+ * threw the result away, because `AnimatedContent` disposes the outgoing screen — so the
+ * same work was redone on every transition and stuttered the animation.
+ *
+ * This holder is produced once per DB change on [Dispatchers.Default] and shared by the
+ * activity-scoped ViewModel, so the UI only ever reads the finished result.
+ */
+data class LibraryCore(
+    val items: List<MediaItemEntity> = emptyList(),
+    val allEpisodes: List<EpisodeEntity> = emptyList(),
+    val episodesByShow: Map<String, List<EpisodeEntity>> = emptyMap(),
+    val badges: Map<String, BadgeResult> = emptyMap(),
+    val badgeRows: List<MediaBadgeEntity> = emptyList()
+)
+
+/** Home-specific derivations (Continue Watching, Coming Soon, hero) off the UI thread. */
+data class HomeData(
+    val showProgressMap: Map<String, TVShowProgress> = emptyMap(),
+    val resumeItems: List<MediaItemEntity> = emptyList(),
+    val comingSoonItems: List<MediaItemEntity> = emptyList(),
+    val recentlyAddedItems: List<MediaItemEntity> = emptyList(),
+    val lovedItems: List<MediaItemEntity> = emptyList(),
+    val spotlightItem: MediaItemEntity? = null
+)
+
+/**
+ * Activity-scoped so its state survives tab switches (see [LibraryCore]).
+ *
+ * Both flows are `WhileSubscribed`: [core] stays warm while any screen is open, and
+ * [home] is only computed while Home is on screen — but its last value is retained, so
+ * returning to Home shows the previous result until the fresh one lands.
+ */
+class LibraryViewModel(private val container: AppContainer) : ViewModel() {
+
+    val core: StateFlow<LibraryCore> = combine(
+        container.mediaDao.getAllActiveMedia(),
+        container.mediaDao.getAllEpisodesFlow(),
+        container.database.badgeDao().observeBadges()
+    ) { items, episodes, badgeRows ->
+        Triple(items, episodes, badgeRows)
+    }.mapLatest { (items, episodes, badgeRows) ->
+        withContext(Dispatchers.Default) {
+            LibraryCore(
+                items = items,
+                allEpisodes = episodes,
+                episodesByShow = episodes.groupBy { it.showId },
+                badges = badgeRows.associate { row ->
+                    row.mediaId to BadgeResult(
+                        SmartBadge.fromLabel(row.badgeLabel) ?: SmartBadge.NEW,
+                        isSparkle = row.isSparkle
+                    )
+                },
+                badgeRows = badgeRows
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryCore())
+
+    val home: StateFlow<HomeData> = core
+        .mapLatest { withContext(Dispatchers.Default) { computeHome(it) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeData())
+
+    private fun computeHome(core: LibraryCore): HomeData {
+        val items = core.items
+        val episodesByShow = core.episodesByShow
+        val badges = core.badges
+        val todayDateStr = LocalDate.now().toString()
+        val now = Date()
+
+        val showProgressMap = items.filter { it.type.contains("TV", ignoreCase = true) }.associate { item ->
+            val showKey = MediaIds.tvShowKey(item.id)
+            val showEps = (episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList())
+                .sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+            val total = showEps.size
+            val watched = showEps.count { it.isWatched }
+            val nextEp = showEps.firstOrNull { !it.isWatched }
+            // nextAir is the FIRST unwatched episode that airs in the STRICT FUTURE (> today)
+            val nextAir = showEps.firstOrNull { ep ->
+                !ep.isWatched && !ep.airDate.isNullOrBlank() && ep.airDate > todayDateStr
+            }?.airDate
+            item.id to TVShowProgress(
+                totalEpisodes = total,
+                watchedEpisodes = watched,
+                nextEpisode = nextEp,
+                nextAiringDate = nextAir
+            )
+        }
+
+        val resumeItems = HomeEligibility.resumeCandidates(
+            items = items,
+            episodesByShow = episodesByShow,
+            badges = badges,
+            now = now
+        )
+
+        val resumeIds = resumeItems.map { it.id }.toSet()
+        val comingSoonItems = items.filter { item ->
+            if (item.isSoftDeleted || resumeIds.contains(item.id)) return@filter false
+            val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+            val instant = HomeEligibility.nextAiringInstant(item, key?.let { episodesByShow[it] }.orEmpty())
+            HomeEligibility.isComingSoonAt(item, instant, now)
+        }
+            .sortedBy { item ->
+                val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+                HomeEligibility.nextAiringInstant(item, key?.let { episodesByShow[it] }.orEmpty())?.time
+                    ?: Long.MAX_VALUE
+            }
+            .take(15)
+
+        val recentlyAddedItems = items.filter { !it.isSoftDeleted }
+            .sortedByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
+            .take(15)
+
+        val lovedItems = items.filter {
+            !it.isSoftDeleted &&
+                (it.taste.equals("Loved", ignoreCase = true) || it.taste.equals("Love", ignoreCase = true))
+        }
+
+        val spotlightItem = resumeItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+            ?: comingSoonItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+            ?: lovedItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+            ?: items.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+
+        return HomeData(
+            showProgressMap = showProgressMap,
+            resumeItems = resumeItems,
+            comingSoonItems = comingSoonItems,
+            recentlyAddedItems = recentlyAddedItems,
+            lovedItems = lovedItems,
+            spotlightItem = spotlightItem
+        )
+    }
+
+    companion object {
+        fun factory(container: AppContainer) = viewModelFactory {
+            initializer { LibraryViewModel(container) }
+        }
+    }
+}

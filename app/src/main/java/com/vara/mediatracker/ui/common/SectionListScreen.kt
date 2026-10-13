@@ -28,7 +28,7 @@ import coil.compose.AsyncImage
 import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.home.SmartBadgePill
-import com.vara.mediatracker.ui.home.TVShowProgress
+import com.vara.mediatracker.ui.common.TVShowProgress
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.util.NetworkResolver
 

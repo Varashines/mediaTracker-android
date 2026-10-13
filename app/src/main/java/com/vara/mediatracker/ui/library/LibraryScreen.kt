@@ -24,10 +24,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
+import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBSearchItem
 import com.vara.mediatracker.data.db.AppDatabase
@@ -58,62 +60,74 @@ fun LibraryScreen(
     var isSearchingOnline by remember { mutableStateOf(false) }
     var onlineResults by remember { mutableStateOf<List<TMDBSearchItem>>(emptyList()) }
 
-    // Dynamic watch streak & activity calculation
-    val allEpisodes by container.mediaDao.getAllEpisodesFlow().collectAsState(initial = emptyList())
+    // Dynamic watch streak & activity calculation. The full ~9k-row episode table used to
+    // be collected and scanned here on the main thread; it now comes from the shared,
+    // off-main ViewModel join (see LibraryViewModel) and the scan runs on a background
+    // dispatcher.
+    val libraryVm: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(container))
+    val core by libraryVm.core.collectAsState()
+    val allEpisodes = core.allEpisodes
     val todayCal = remember { Calendar.getInstance() }
     val todayDateStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(todayCal.time) }
     val currentMonthPrefix = remember { SimpleDateFormat("yyyy-MM", Locale.US).format(todayCal.time) }
 
-    val (streakDays, watchedThisMonth) = remember(allEpisodes, items, todayDateStr) {
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        
-        // 1. Gather all unique dates of watched activity
-        val watchedDates = mutableSetOf<String>()
-        var thisMonthCount = 0
+    val streakActivity by produceState(
+        initialValue = 0 to 0,
+        allEpisodes, items, todayDateStr, currentMonthPrefix
+    ) {
+        value = withContext(Dispatchers.Default) {
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
-        for (ep in allEpisodes) {
-            if (ep.isWatched) {
-                val datePart = ep.watchedDate?.take(10) ?: ep.airDate?.take(10)
-                if (!datePart.isNullOrBlank()) {
-                    watchedDates.add(datePart)
-                    if (datePart.startsWith(currentMonthPrefix)) {
-                        thisMonthCount++
+            // 1. Gather all unique dates of watched activity
+            val watchedDates = mutableSetOf<String>()
+            var thisMonthCount = 0
+
+            for (ep in allEpisodes) {
+                if (ep.isWatched) {
+                    val datePart = ep.watchedDate?.take(10) ?: ep.airDate?.take(10)
+                    if (!datePart.isNullOrBlank()) {
+                        watchedDates.add(datePart)
+                        if (datePart.startsWith(currentMonthPrefix)) {
+                            thisMonthCount++
+                        }
                     }
                 }
             }
-        }
 
-        for (item in items) {
-            if (item.state.equals("Completed", ignoreCase = true)) {
-                val datePart = item.lastStateChangeDate?.take(10) ?: item.lastInteractionDate?.take(10)
-                if (!datePart.isNullOrBlank()) {
-                    watchedDates.add(datePart)
-                    if (datePart.startsWith(currentMonthPrefix)) {
-                        thisMonthCount++
+            for (item in items) {
+                if (item.state.equals("Completed", ignoreCase = true)) {
+                    val datePart = item.lastStateChangeDate?.take(10) ?: item.lastInteractionDate?.take(10)
+                    if (!datePart.isNullOrBlank()) {
+                        watchedDates.add(datePart)
+                        if (datePart.startsWith(currentMonthPrefix)) {
+                            thisMonthCount++
+                        }
                     }
                 }
             }
+
+            // 2. Count consecutive days backwards starting from today or yesterday
+            var streak = 0
+            val checkCal = Calendar.getInstance()
+            var checkStr = dateFormat.format(checkCal.time)
+
+            if (!watchedDates.contains(checkStr)) {
+                // Check yesterday
+                checkCal.add(Calendar.DAY_OF_YEAR, -1)
+                checkStr = dateFormat.format(checkCal.time)
+            }
+
+            while (watchedDates.contains(checkStr)) {
+                streak++
+                checkCal.add(Calendar.DAY_OF_YEAR, -1)
+                checkStr = dateFormat.format(checkCal.time)
+            }
+
+            streak to thisMonthCount
         }
-
-        // 2. Count consecutive days backwards starting from today or yesterday
-        var streak = 0
-        val checkCal = Calendar.getInstance()
-        var checkStr = dateFormat.format(checkCal.time)
-
-        if (!watchedDates.contains(checkStr)) {
-            // Check yesterday
-            checkCal.add(Calendar.DAY_OF_YEAR, -1)
-            checkStr = dateFormat.format(checkCal.time)
-        }
-
-        while (watchedDates.contains(checkStr)) {
-            streak++
-            checkCal.add(Calendar.DAY_OF_YEAR, -1)
-            checkStr = dateFormat.format(checkCal.time)
-        }
-
-        Pair(streak, thisMonthCount)
     }
+    val streakDays = streakActivity.first
+    val watchedThisMonth = streakActivity.second
 
     val syncManager = remember { container.syncManager() }
 
