@@ -373,12 +373,23 @@ fun DetailScreen(
             )
         }
     ) { padding ->
+        // Start the content at y=0 (ignoring the Scaffold's top inset) so the hero scrolls
+        // UNDER the top bar, giving the Haze blur something to sample; the LazyColumn's own
+        // top content padding keeps the first item clear of the bar.
+        val layoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .hazeSource(state = hazeState)
-                .padding(padding),
-            contentPadding = PaddingValues(bottom = 32.dp)
+                .padding(
+                    PaddingValues(
+                        start = padding.calculateStartPadding(layoutDirection),
+                        top = 0.dp,
+                        end = padding.calculateEndPadding(layoutDirection),
+                        bottom = padding.calculateBottomPadding()
+                    )
+                ),
+            contentPadding = PaddingValues(top = 88.dp, bottom = 32.dp)
         ) {
             // Full-bleed backdrop hero with the title overlaid, per the prototype.
             item {

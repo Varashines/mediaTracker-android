@@ -464,14 +464,14 @@ fun HomeScreen(
                 }
             }
 
-            // Continue Watching — poster rail (no countdown; these are mid-way, not upcoming).
+            // Continue Watching — same row layout as Up Next (same gutter, so same width).
             if (resumeItems.isNotEmpty()) {
                 item {
-                    Column {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
+                                .padding(bottom = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -488,7 +488,6 @@ fun HomeScreen(
                                 }
                             )
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             resumeItems.take(3).forEach { item ->
                                 HomeUpNextRow(
