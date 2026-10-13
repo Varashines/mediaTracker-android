@@ -385,7 +385,9 @@ fun ReleaseCalendarScreen(
             // Whole-month view: group the releases under a day header so a long list
             // reads as a schedule rather than a wall of cards.
             displayedEvents.groupBy { it.dateString }.forEach { (date, dayEvents) ->
-                item(key = "day_$date") {
+                // Sticky: the day label holds at the top until its last title scrolls by,
+                // then the next day takes over.
+                stickyHeader(key = "day_$date") {
                     ReleaseDayHeader(dateString = date, count = dayEvents.size)
                 }
                 items(dayEvents, key = { "${it.mediaItem.id}_${it.dateString}_${it.isEpisode}" }) { event ->
@@ -407,7 +409,8 @@ private fun ReleaseDayHeader(dateString: String, count: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 6.dp),
+            .background(MaterialTheme.colorScheme.background)
+            .padding(top = 8.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
