@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -55,8 +56,8 @@ fun LibraryScreen(
     val scope = rememberCoroutineScope()
     var searchQuery by remember { mutableStateOf("") }
     var searchOnlineTMDB by remember { mutableStateOf(false) }
-    var selectedFilter by remember { mutableStateOf("All") }
-    var selectedType by remember { mutableStateOf("All") }
+    var filters by remember { mutableStateOf(LibraryFilters()) }
+    var showFilters by remember { mutableStateOf(false) }
     var isSearchingOnline by remember { mutableStateOf(false) }
     var onlineResults by remember { mutableStateOf<List<TMDBSearchItem>>(emptyList()) }
 
@@ -153,25 +154,13 @@ fun LibraryScreen(
         }
     }
 
-    val filteredItems = remember(items, searchQuery, selectedFilter, selectedType) {
-        items.filter { item ->
-            val matchesQuery = searchQuery.isBlank() || item.title.contains(searchQuery, ignoreCase = true)
-            val matchesFilter = when (selectedFilter) {
-                "All" -> true
-                "Watching" -> item.state.equals("Watching", ignoreCase = true) || item.state.equals("Active", ignoreCase = true)
-                "Wishlist" -> item.state.equals("Wishlist", ignoreCase = true)
-                "Completed" -> item.state.equals("Completed", ignoreCase = true)
-                "Loved" -> item.taste.equals("Loved", ignoreCase = true) || item.taste.equals("Love", ignoreCase = true)
-                else -> true
-            }
-            val matchesType = when (selectedType) {
-                "All" -> true
-                "Movies" -> item.type.contains("Movie", ignoreCase = true)
-                "TV Shows" -> item.type.contains("TV", ignoreCase = true)
-                else -> true
-            }
-            matchesQuery && matchesFilter && matchesType
-        }
+    // Discovery folded into the Library: every facet (network/studio/genre/language) is
+    // a filter here, and the grid can be grouped into sections.
+    val filteredItems = remember(items, searchQuery, filters) {
+        LibraryQuery.apply(items, searchQuery, filters)
+    }
+    val sections = remember(filteredItems, filters.groupBy) {
+        LibraryQuery.group(filteredItems, filters.groupBy)
     }
 
     Column(
@@ -525,18 +514,18 @@ fun LibraryScreen(
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
                 ExpressiveSegmentedControl(
                     items = listOf("All", "Movies", "TV Shows"),
-                    selectedItem = selectedType,
-                    onItemSelected = { selectedType = it },
+                    selectedItem = filters.type,
+                    onItemSelected = { filters = filters.copy(type = it) },
                     labelProvider = { it },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
-            // 5. M3E Horizontal Scrolling Status Filter Pills with item counts
+            // 5. Quick state pills + the facet filter / group / sort bar
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
-                val filterCounts = remember(items, selectedType) {
+                val filterCounts = remember(items, filters.type) {
                     val scoped = items.filter { item ->
-                        when (selectedType) {
+                        when (filters.type) {
                             "Movies" -> item.type.contains("Movie", ignoreCase = true)
                             "TV Shows" -> item.type.contains("TV", ignoreCase = true)
                             else -> true
@@ -551,44 +540,53 @@ fun LibraryScreen(
                     )
                 }
 
-                androidx.compose.foundation.lazy.LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val filters = listOf("All", "Watching", "Wishlist", "Completed", "Loved")
-                    items(filters.size) { idx ->
-                        val filter = filters[idx]
-                        val isSelected = selectedFilter == filter
-                        val count = filterCounts[filter] ?: 0
-                        Surface(
-                            onClick = { selectedFilter = filter },
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            border = BorderStroke(
-                                1.dp,
-                                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.foundation.lazy.LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val statusFilters = listOf("All", "Watching", "Wishlist", "Completed", "Loved")
+                        items(statusFilters.size) { idx ->
+                            val status = statusFilters[idx]
+                            val isSelected = filters.state == status
+                            val count = filterCounts[status] ?: 0
+                            Surface(
+                                onClick = { filters = filters.copy(state = status) },
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                )
                             ) {
-                                Text(
-                                    text = filter,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Text(
-                                    text = "($count)",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = status,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = "($count)",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    )
+                                }
                             }
                         }
                     }
+
+                    LibraryFilterBar(
+                        filters = filters,
+                        onFiltersClick = { showFilters = true },
+                        onGroupChange = { filters = filters.copy(groupBy = it) },
+                        onSortChange = { filters = filters.copy(sort = it) }
+                    )
                 }
             }
 
@@ -603,11 +601,31 @@ fun LibraryScreen(
                     )
                 }
             } else {
-                items(filteredItems, key = { it.id }) { item ->
-                    LibraryPosterCard(item = item, onClick = { onSelectMedia(item.id) })
+                sections.forEach { (groupTitle, groupItems) ->
+                    if (groupTitle.isNotEmpty()) {
+                        item(
+                            span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) },
+                            key = "group_$groupTitle"
+                        ) {
+                            LibraryGroupHeader(title = groupTitle, count = groupItems.size)
+                        }
+                    }
+                    items(groupItems, key = { it.id }) { item ->
+                        LibraryPosterCard(item = item, onClick = { onSelectMedia(item.id) })
+                    }
                 }
             }
         }
+    }
+
+    if (showFilters) {
+        LibraryFilterSheet(
+            items = items,
+            logos = core.logos,
+            filters = filters,
+            onFiltersChange = { filters = it },
+            onDismiss = { showFilters = false }
+        )
     }
 }
 }
@@ -690,3 +708,271 @@ fun LibraryPosterCard(item: MediaItemEntity, onClick: () -> Unit) {
         }
     }
 }
+
+/** Section header shown when the grid is grouped. */
+@Composable
+private fun LibraryGroupHeader(title: String, count: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = "$count",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** Filters / Group / Sort controls above the grid. */
+@Composable
+private fun LibraryFilterBar(
+    filters: LibraryFilters,
+    onFiltersClick: () -> Unit,
+    onGroupChange: (String) -> Unit,
+    onSortChange: (String) -> Unit
+) {
+    var groupMenu by remember { mutableStateOf(false) }
+    var sortMenu by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        FilterBarChip(
+            label = if (filters.activeCount > 0) "Filters · ${filters.activeCount}" else "Filters",
+            icon = Icons.Default.FilterList,
+            highlighted = filters.activeCount > 0,
+            onClick = onFiltersClick
+        )
+
+        Box {
+            FilterBarChip(
+                label = if (filters.groupBy == LibraryFilters.GROUP_NONE) "Group" else "Group: ${filters.groupBy}",
+                icon = Icons.Default.ViewAgenda,
+                highlighted = filters.groupBy != LibraryFilters.GROUP_NONE,
+                onClick = { groupMenu = true }
+            )
+            DropdownMenu(expanded = groupMenu, onDismissRequest = { groupMenu = false }) {
+                LibraryFilters.GROUPS.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = { onGroupChange(option); groupMenu = false }
+                    )
+                }
+            }
+        }
+
+        Box {
+            FilterBarChip(
+                label = filters.sort,
+                icon = Icons.Default.SwapVert,
+                highlighted = false,
+                onClick = { sortMenu = true }
+            )
+            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                LibraryFilters.SORTS.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = { onSortChange(option); sortMenu = false }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterBarChip(
+    label: String,
+    icon: ImageVector,
+    highlighted: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = if (highlighted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(
+            1.dp,
+            if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (highlighted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LibraryFilterSheet(
+    items: List<MediaItemEntity>,
+    logos: Map<String, String>,
+    filters: LibraryFilters,
+    onFiltersChange: (LibraryFilters) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Filters",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.weight(1f)
+                )
+                if (filters.activeCount > 0) {
+                    TextButton(onClick = {
+                        onFiltersChange(
+                            filters.copy(
+                                tastes = emptySet(),
+                                networks = emptySet(),
+                                studios = emptySet(),
+                                genres = emptySet(),
+                                languages = emptySet()
+                            )
+                        )
+                    }) { Text("Clear all") }
+                }
+            }
+
+            FilterGroup(title = "Taste") {
+                LibraryFilters.TASTES.forEach { taste ->
+                    FacetChip(
+                        label = taste,
+                        selected = taste in filters.tastes,
+                        logo = null,
+                        onClick = { onFiltersChange(filters.copy(tastes = filters.tastes.toggle(taste))) }
+                    )
+                }
+            }
+
+            LibraryFacet.entries.forEach { facet ->
+                val values = remember(items, facet) { LibraryQuery.facetValues(items, facet).take(24) }
+                if (values.isNotEmpty()) {
+                    FilterGroup(title = facet.title) {
+                        values.forEach { value ->
+                            FacetChip(
+                                label = if (facet == LibraryFacet.LANGUAGE) LibraryQuery.languageLabel(value) else value,
+                                selected = filters.isSelected(facet, value),
+                                logo = logos[value.lowercase(Locale.US)],
+                                onClick = { onFiltersChange(filters.toggled(facet, value)) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FilterGroup(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = title.uppercase(Locale.US),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.primary,
+            letterSpacing = 1.0.sp
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun FacetChip(label: String, selected: Boolean, logo: String?, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (logo != null) {
+                AsyncImage(
+                    model = TMDBClient.buildLogoUrl(logo),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .height(14.dp)
+                        .widthIn(max = 42.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+private fun LibraryFilters.isSelected(facet: LibraryFacet, value: String): Boolean = when (facet) {
+    LibraryFacet.NETWORK -> value in networks
+    LibraryFacet.STUDIO -> value in studios
+    LibraryFacet.GENRE -> value in genres
+    LibraryFacet.LANGUAGE -> value in languages
+}
+
+private fun LibraryFilters.toggled(facet: LibraryFacet, value: String): LibraryFilters = when (facet) {
+    LibraryFacet.NETWORK -> copy(networks = networks.toggle(value))
+    LibraryFacet.STUDIO -> copy(studios = studios.toggle(value))
+    LibraryFacet.GENRE -> copy(genres = genres.toggle(value))
+    LibraryFacet.LANGUAGE -> copy(languages = languages.toggle(value))
+}
+
+private fun Set<String>.toggle(value: String): Set<String> = if (value in this) this - value else this + value

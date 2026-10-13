@@ -131,6 +131,9 @@ interface FacetLogoDao {
     @Query("SELECT * FROM facet_logos")
     fun observeLogos(): Flow<List<FacetLogoEntity>>
 
+    @Query("SELECT logoPath FROM facet_logos WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun logoFor(name: String): String?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertLogos(logos: List<FacetLogoEntity>)
 }

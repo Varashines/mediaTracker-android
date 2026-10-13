@@ -730,6 +730,15 @@ fun DetailScreen(
                         "NA"
                     }
 
+                    // Real network/studio logo from the enrichment cache, shown in place
+                    // of the NETWORK / PRODUCTION caption when available.
+                    var networkLogo by remember(displayNetwork) { mutableStateOf<String?>(null) }
+                    LaunchedEffect(displayNetwork) {
+                        networkLogo = if (displayNetwork != "NA") {
+                            db.facetLogoDao().logoFor(displayNetwork)
+                        } else null
+                    }
+
                     if (isTV) {
                         // Pill 1: EPISODES
                         Surface(
@@ -798,13 +807,7 @@ fun DetailScreen(
                                 modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Text(
-                                    text = "NETWORK",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    letterSpacing = 0.5.sp
-                                )
+                                NetworkPillLabel(logo = networkLogo, fallback = "NETWORK")
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = displayNetwork,
@@ -862,13 +865,7 @@ fun DetailScreen(
                                 modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Text(
-                                    text = "PRODUCTION",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    letterSpacing = 0.5.sp
-                                )
+                                NetworkPillLabel(logo = networkLogo, fallback = "PRODUCTION")
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = displayNetwork,
@@ -1309,5 +1306,28 @@ fun EpisodeCard(
                 }
             }
         }
+    }
+}
+
+/** The real network/studio logo when we have one, else the caption text. */
+@Composable
+private fun NetworkPillLabel(logo: String?, fallback: String) {
+    if (logo != null) {
+        AsyncImage(
+            model = TMDBClient.buildLogoUrl(logo),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .height(12.dp)
+                .widthIn(max = 72.dp)
+        )
+    } else {
+        Text(
+            text = fallback,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            letterSpacing = 0.5.sp
+        )
     }
 }
