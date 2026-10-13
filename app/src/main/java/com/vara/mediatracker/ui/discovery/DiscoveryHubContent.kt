@@ -5,8 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,11 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -39,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,11 +50,10 @@ import com.vara.mediatracker.util.NetworkResolver
  * Discovery Hub: the library aggregated into Networks, Studios, Genres, Languages,
  * Providers, and Recent Activity.
  *
- * Tapping a node hands back the filtered titles for the caller to open in the shared
- * section list. While the metadata backfill is still running a progress note explains
- * why sections may look sparse.
+ * Each section is a two-column grid capped at [TOP_N] entries, so the hub stays a
+ * scannable overview instead of a wall of chips. Tapping a tile opens the filtered
+ * titles in the shared section list.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DiscoveryHubContent(
     items: List<MediaItemEntity>,
@@ -103,7 +97,7 @@ fun DiscoveryHubContent(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = 4.dp, bottom = 108.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         item(key = "summary") {
             DiscoverySummary(
@@ -115,50 +109,82 @@ fun DiscoveryHubContent(
         }
 
         if (badges.isNotEmpty()) {
-            badgeRail(badges) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.BADGE, node.name)) }
+            item(key = "badges") {
+                FacetSection(
+                    title = "Recent Activity",
+                    icon = Icons.Default.AutoAwesome,
+                    subtitle = "Your library, lately",
+                    nodes = badges,
+                    style = FacetStyle.BADGE
+                ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.BADGE, node.name)) }
+            }
         }
 
         if (networks.isNotEmpty()) {
-            networkRail(networks) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.NETWORK, node.name)) }
+            item(key = "networks") {
+                FacetSection(
+                    title = "Networks",
+                    icon = Icons.Default.Tv,
+                    subtitle = "Top ${minOf(networks.size, TOP_N)} of ${networks.size}",
+                    nodes = networks,
+                    style = FacetStyle.NETWORK
+                ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.NETWORK, node.name)) }
+            }
         }
 
         if (studios.isNotEmpty()) {
-            chipSection(
-                title = "Studios",
-                icon = Icons.Default.LocalMovies,
-                subtitle = "${studios.size} represented",
-                nodes = studios
-            ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.STUDIO, node.name)) }
+            item(key = "studios") {
+                FacetSection(
+                    title = "Studios",
+                    icon = Icons.Default.LocalMovies,
+                    subtitle = "Top ${minOf(studios.size, TOP_N)} of ${studios.size}",
+                    nodes = studios,
+                    style = FacetStyle.NETWORK
+                ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.STUDIO, node.name)) }
+            }
         }
 
         if (genres.isNotEmpty()) {
-            chipSection(
-                title = "Genres",
-                icon = Icons.Default.Movie,
-                subtitle = "${genres.size} represented",
-                nodes = genres
-            ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.GENRE, node.name)) }
+            item(key = "genres") {
+                FacetSection(
+                    title = "Genres",
+                    icon = Icons.Default.Movie,
+                    subtitle = "${genres.size} represented",
+                    nodes = genres,
+                    style = FacetStyle.PLAIN
+                ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.GENRE, node.name)) }
+            }
         }
 
         if (languages.isNotEmpty()) {
-            chipSection(
-                title = "Languages",
-                icon = Icons.Default.Language,
-                subtitle = "${languages.size} represented",
-                nodes = languages
-            ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.LANGUAGE, node.name)) }
+            item(key = "languages") {
+                FacetSection(
+                    title = "Languages",
+                    icon = Icons.Default.Language,
+                    subtitle = "${languages.size} represented",
+                    nodes = languages,
+                    style = FacetStyle.PLAIN
+                ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.LANGUAGE, node.name)) }
+            }
         }
 
         if (providers.isNotEmpty()) {
-            chipSection(
-                title = "Providers",
-                icon = Icons.Default.Public,
-                subtitle = "${providers.size} available",
-                nodes = providers
-            ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.PROVIDER, node.name)) }
+            item(key = "providers") {
+                FacetSection(
+                    title = "Providers",
+                    icon = Icons.Default.Public,
+                    subtitle = "${providers.size} available",
+                    nodes = providers,
+                    style = FacetStyle.PLAIN
+                ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.PROVIDER, node.name)) }
+            }
         }
     }
 }
+
+private const val TOP_N = 12
+
+private enum class FacetStyle { NETWORK, BADGE, PLAIN }
 
 @Composable
 private fun DiscoverySummary(total: Int, enriched: Int, networks: Int, genres: Int) {
@@ -178,7 +204,7 @@ private fun DiscoverySummary(total: Int, enriched: Int, networks: Int, genres: I
                 color = MaterialTheme.colorScheme.primary,
                 letterSpacing = 1.0.sp
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
                 SummaryStat(total, "titles")
                 SummaryStat(networks, "networks")
@@ -198,7 +224,7 @@ private fun DiscoverySummary(total: Int, enriched: Int, networks: Int, genres: I
 
 @Composable
 private fun SummaryStat(value: Int, label: String) {
-    Column(modifier = Modifier.width(90.dp)) {
+    Column(modifier = Modifier.width(92.dp)) {
         Text(
             text = "$value",
             style = MaterialTheme.typography.headlineMedium,
@@ -213,216 +239,127 @@ private fun SummaryStat(value: Int, label: String) {
     }
 }
 
-private fun LazyListScope.badgeRail(
-    nodes: List<DiscoveryNode>,
-    onNodeClick: (DiscoveryNode) -> Unit
-) {
-    item(key = "recent_header") {
-        SectionHeader(
-            title = "Recent Activity",
-            icon = Icons.Default.AutoAwesome,
-            subtitle = "Your library, lately"
-        )
-    }
-    item(key = "recent_rail") {
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(nodes, key = { "badge-${it.name}" }) { node ->
-                val badge = SmartBadge.fromLabel(node.name)
-                Surface(
-                    onClick = { onNodeClick(node) },
-                    shape = RoundedCornerShape(16.dp),
-                    color = badge?.backgroundColor ?: MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = badge?.textColor ?: MaterialTheme.colorScheme.onSurface
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text(
-                            text = "${node.count}",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                        Text(
-                            text = node.name,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.4.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun LazyListScope.networkRail(
-    nodes: List<DiscoveryNode>,
-    onNodeClick: (DiscoveryNode) -> Unit
-) {
-    item(key = "networks_header") {
-        SectionHeader(
-            title = "Networks",
-            icon = Icons.Default.Tv,
-            subtitle = "${nodes.size} in your library"
-        )
-    }
-    item(key = "networks_rail") {
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(nodes, key = { "net-${it.name}" }) { node ->
-                val info = remember(node.name) { NetworkResolver.resolveByName(node.name, isTV = true) }
-                Surface(
-                    onClick = { onNodeClick(node) },
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
-                    modifier = Modifier.widthIn(min = 120.dp, max = 180.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = info.badgeColor,
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                Text(
-                                    text = info.shortName.take(3),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = info.textColor
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = node.name,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "${node.count} ${if (node.count == 1) "title" else "titles"}",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-private fun LazyListScope.chipSection(
-    title: String,
-    icon: ImageVector,
-    subtitle: String,
-    nodes: List<DiscoveryNode>,
-    onNodeClick: (DiscoveryNode) -> Unit
-) {
-    item(key = "chips_$title") {
-        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-            SectionHeader(title = title, icon = icon, subtitle = subtitle, padded = false)
-            Spacer(modifier = Modifier.height(10.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                nodes.forEach { node ->
-                    DiscoveryChip(node = node, onClick = { onNodeClick(node) })
-                }
-            }
-        }
-    }
-}
-
 @Composable
-private fun SectionHeader(
+private fun FacetSection(
     title: String,
     icon: ImageVector,
     subtitle: String,
-    padded: Boolean = true
+    nodes: List<DiscoveryNode>,
+    style: FacetStyle,
+    onNodeClick: (DiscoveryNode) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (padded) Modifier.padding(horizontal = 16.dp) else Modifier),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-            modifier = Modifier.size(30.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                modifier = Modifier.size(30.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
-        Spacer(modifier = Modifier.width(10.dp))
-        Column {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        nodes.take(TOP_N).chunked(2).forEach { rowNodes ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                rowNodes.forEach { node ->
+                    FacetTile(
+                        node = node,
+                        style = style,
+                        onClick = { onNodeClick(node) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                // Keep the last odd tile at half width rather than stretching it.
+                if (rowNodes.size == 1) Spacer(modifier = Modifier.weight(1f))
+            }
         }
     }
 }
 
 @Composable
-private fun DiscoveryChip(node: DiscoveryNode, onClick: () -> Unit) {
+private fun FacetTile(
+    node: DiscoveryNode,
+    style: FacetStyle,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val badge = if (style == FacetStyle.BADGE) SmartBadge.fromLabel(node.name) else null
+    val network = if (style == FacetStyle.NETWORK) {
+        remember(node.name) { NetworkResolver.resolveByName(node.name, isTV = true) }
+    } else null
+
+    val markerColor: Color = badge?.backgroundColor
+        ?: network?.badgeColor
+        ?: MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+    val markerTextColor: Color = badge?.textColor
+        ?: network?.textColor
+        ?: MaterialTheme.colorScheme.primary
+    val markerLabel: String = network?.shortName?.take(3)?.uppercase()
+        ?: node.name.take(2).uppercase()
+
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f))
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+        modifier = modifier
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = node.name,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Box(
-                modifier = Modifier
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center
-            ) {
+            Surface(shape = RoundedCornerShape(9.dp), color = markerColor, modifier = Modifier.size(32.dp)) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Text(
+                        text = markerLabel,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        color = markerTextColor
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "${node.count}",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.primary
+                    text = node.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${node.count} ${if (node.count == 1) "title" else "titles"}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

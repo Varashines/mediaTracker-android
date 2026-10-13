@@ -38,20 +38,40 @@ class MetadataEnrichmentWorker(
         }
 
         val db = container.database
-        val todo = db.mediaDao().getItemsNeedingMetadataEnrichment(BATCH_SIZE)
-        if (todo.isEmpty()) return Result.success(workDataOf(KEY_ITEMS to 0))
-
         val tmdb = container.tmdbClient()
+        val region = deviceRegion()
+
+        // Region changed (e.g. the user travelled): drop cached providers so they are
+        // re-fetched for the new region instead of showing the old country's services.
+        if (container.preferences.lastEnrichRegion != region) {
+            db.mediaDao().clearProviders()
+            container.preferences.lastEnrichRegion = region
+        }
+
         var processed = 0
 
         try {
-            val gate = Semaphore(MAX_CONCURRENT)
-            coroutineScope {
-                todo.map { item ->
-                    async(Dispatchers.IO) {
-                        gate.withPermit { if (enrich(db, tmdb, item)) processed++ }
-                    }
-                }.awaitAll()
+            // Drain the backlog in one run instead of one small batch, so the Discovery
+            // Hub fills on the first pass rather than over many foreground openings.
+            var iterations = 0
+            while (processed < MAX_TOTAL && iterations < MAX_ITERATIONS) {
+                iterations++
+                val todo = db.mediaDao().getItemsNeedingMetadataEnrichment(BATCH_SIZE)
+                if (todo.isEmpty()) break
+
+                val gate = Semaphore(MAX_CONCURRENT)
+                val results = coroutineScope {
+                    todo.map { item ->
+                        async(Dispatchers.IO) {
+                            gate.withPermit { enrich(db, tmdb, item, region) }
+                        }
+                    }.awaitAll()
+                }
+                val batchProcessed = results.count { it }
+                processed += batchProcessed
+                // A pass that wrote nothing means every item failed (bad key, offline);
+                // stop rather than spin on the same rows.
+                if (batchProcessed == 0) break
             }
         } catch (e: Exception) {
             return Result.retry()
@@ -60,11 +80,19 @@ class MetadataEnrichmentWorker(
         return Result.success(workDataOf(KEY_ITEMS to processed))
     }
 
+    /** The device's ISO-3166 region, used to pick region-specific watch providers. */
+    private fun deviceRegion(): String {
+        val locale = applicationContext.resources.configuration.locales[0]
+        val country = locale.country
+        return if (country.length == 2) country.uppercase(java.util.Locale.US) else "US"
+    }
+
     /** @return true when the row was written (or was already fully populated). */
     private suspend fun enrich(
         db: AppDatabase,
         tmdb: TMDBClient,
-        item: MediaItemEntity
+        item: MediaItemEntity,
+        region: String
     ): Boolean {
         val tmdbId = MediaIds.tmdbIdOf(item.id)
         if (tmdbId <= 0) return false
@@ -94,7 +122,7 @@ class MetadataEnrichmentWorker(
         } else {
             tmdb.getTVWatchProviders(tmdbId)
         }).getOrNull()
-        val providers = providerNames(providersResponse).takeIf { it.isNotEmpty() }?.joinToString(", ")
+        val providers = providerNames(providersResponse, region).takeIf { it.isNotEmpty() }?.joinToString(", ")
 
         db.mediaDao().upsertMedia(
             item.copy(
@@ -111,15 +139,17 @@ class MetadataEnrichmentWorker(
     }
 
     /**
-     * Flatrate provider names for the US region, falling back to the first region that
-     * has any. Matches the macOS Discovery provider facet.
+     * Flatrate provider names for the device's region, falling back to the US, then to
+     * the first region that has any. Region-specific so a user in India sees JioHotstar
+     * rather than a US-only list.
      */
-    private fun providerNames(response: TMDBWatchProvidersResponse?): List<String> {
+    private fun providerNames(response: TMDBWatchProvidersResponse?, region: String): List<String> {
         if (response == null) return emptyList()
-        val region = response.results["US"]
+        val selected = response.results[region]
+            ?: response.results["US"]
             ?: response.results.values.firstOrNull { !it.flatrate.isNullOrEmpty() }
             ?: return emptyList()
-        return (region.flatrate ?: emptyList())
+        return (selected.flatrate ?: emptyList())
             .map { it.provider_name }
             .filter { it.isNotBlank() }
             .distinct()
@@ -133,5 +163,9 @@ class MetadataEnrichmentWorker(
 
         /** Concurrent TMDB calls, kept inside the rate limit. */
         const val MAX_CONCURRENT = 6
+
+        /** Cap a single run so it cannot crawl a huge library forever. */
+        const val MAX_TOTAL = 750
+        const val MAX_ITERATIONS = 6
     }
 }

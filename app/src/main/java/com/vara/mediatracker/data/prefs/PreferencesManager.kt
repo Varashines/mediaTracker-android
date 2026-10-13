@@ -27,6 +27,14 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putLong("last_sync_timestamp", value).apply()
 
     /**
+     * ISO-3166 region the Discovery providers were last enriched for. When the device
+     * region changes, providers are cleared and re-fetched so they stay region-correct.
+     */
+    var lastEnrichRegion: String
+        get() = prefs.getString("last_enrich_region", "") ?: ""
+        set(value) = prefs.edit().putString("last_enrich_region", value).apply()
+
+    /**
      * Theme Preset (0: Mac, 1: Trippy, 2: Chill, 3: Epic, 4: Emotional, 5: Sunset)
      * Matches the macOS AppThemeCoordinator presets.
      */

@@ -96,6 +96,10 @@ interface MediaDao {
     )
     suspend fun getItemsNeedingMetadataEnrichment(limit: Int): List<MediaItemEntity>
 
+    /** Clears cached providers so they are re-fetched for a new region. */
+    @Query("UPDATE media_items SET providers = NULL")
+    suspend fun clearProviders()
+
     // --- Used by EpisodeKeyReconciler to rewrite legacy primary keys ---
     @Query("SELECT * FROM tv_episodes")
     suspend fun getAllEpisodesList(): List<EpisodeEntity>
