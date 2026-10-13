@@ -25,6 +25,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.runtime.remember
+import com.vara.mediatracker.ui.theme.AppTextStyles
+import com.vara.mediatracker.util.AirTimeResolver
 import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.home.SmartBadgePill
@@ -209,7 +212,35 @@ fun SectionListScreen(
                                         letterSpacing = 0.5.sp
                                     )
 
-                                    if (smartBadge != null) {
+                                    // Days-left from the resolved drop instant (rules),
+                                    // matching the Home row. Falls back to the badge.
+                                    val nextEp = progress?.nextEpisode
+                                    val daysLeftLabel = remember(nextEp?.uniqueId, item.timezone, item.network) {
+                                        if (nextEp == null) return@remember null
+                                        val instant = AirTimeResolver.resolveAirInstant(
+                                            dateString = nextEp.airDate?.take(10),
+                                            time = nextEp.airTime,
+                                            airstamp = nextEp.airstamp,
+                                            timezone = item.timezone,
+                                            serviceName = AirTimeResolver.serviceHint(
+                                                networkMap[item.id] ?: item.network, item.studios, item.genres
+                                            )
+                                        ) ?: return@remember null
+                                        val hours = (instant.time - System.currentTimeMillis()) / 3_600_000.0
+                                        when {
+                                            hours < 0 -> "READY"
+                                            hours < 24 -> "AIRING TODAY"
+                                            hours < 48 -> "1 day left"
+                                            else -> "${(hours / 24).toInt()} days left"
+                                        }
+                                    }
+                                    if (daysLeftLabel != null) {
+                                        Text(
+                                            text = daysLeftLabel,
+                                            style = AppTextStyles.MonoLabel,
+                                            color = if (daysLeftLabel == "READY") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    } else if (smartBadge != null) {
                                         SmartBadgePill(badge = smartBadge.badge, isSparkle = smartBadge.isSparkle)
                                     }
                                 }
