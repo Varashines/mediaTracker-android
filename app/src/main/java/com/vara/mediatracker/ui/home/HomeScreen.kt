@@ -468,8 +468,58 @@ fun HomeScreen(
                 }
             }
 
-            // Up Next For You Section (Vertical list matching HTML prototype)
+            // Continue Watching — poster rail (no countdown; these are mid-way, not upcoming).
             if (resumeItems.isNotEmpty()) {
+                item {
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            SectionHeader(
+                                title = "Continue Watching",
+                                accent = MaterialTheme.colorScheme.primary,
+                                horizontalPadding = 0.dp
+                            )
+                            SectionViewAllLink(
+                                text = "View All (${resumeItems.size})",
+                                onClick = {
+                                    activeSectionListTitle = "Continue Watching"
+                                    activeSectionListItems = resumeItems
+                                }
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        SnapRail {
+                            items(resumeItems, key = { it.id }) { item ->
+                                val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+                                val nextEp = key?.let { HomeEligibility.nextAiringEpisode(episodesByShow[it].orEmpty(), todayDateStr) }
+                                HomePosterCard(
+                                    item = item,
+                                    nextAirDate = if (key != null) {
+                                        HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
+                                    } else {
+                                        item.releaseDate?.take(10)
+                                    },
+                                    smartBadge = smartBadgesMap[item.id],
+                                    showCountdown = false,
+                                    airTime = nextEp?.airTime,
+                                    airstamp = nextEp?.airstamp,
+                                    timezone = item.timezone,
+                                    serviceName = AirTimeResolver.serviceHint(networkMap[item.id] ?: item.network, item.studios, item.genres),
+                                    onClick = { onSelectMedia(item.id) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Up Next For You — the Coming Soon list, where a day countdown makes sense.
+            if (comingSoonItems.isNotEmpty()) {
             item {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Row(
@@ -486,17 +536,17 @@ fun HomeScreen(
                         )
 
                         SectionViewAllLink(
-                            text = "View All (${resumeItems.size})",
+                            text = "View All (${comingSoonItems.size})",
                             onClick = {
-                                activeSectionListTitle = "Continue Watching"
-                                activeSectionListItems = resumeItems
+                                activeSectionListTitle = "Up Next For You"
+                                activeSectionListItems = comingSoonItems
                             }
                         )
                     }
 
                     // Render vertical up next items
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        resumeItems.take(3).forEach { item ->
+                        comingSoonItems.take(3).forEach { item ->
                             val progress = showProgressMap[item.id]
                             FlatCard(
                                 onClick = { onSelectMedia(item.id) },
@@ -638,66 +688,7 @@ fun HomeScreen(
             }
             }
 
-            // Coming Soon is rendered once, below, as a snapping poster rail. An
-            // earlier "Anticipated Releases" carousel duplicated this exact list.
-
-        // Coming Soon — anything with an unaired episode or an unreleased film,
-        // soonest first, matching macOS.
-        if (comingSoonItems.isNotEmpty()) {
-            item {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            SectionHeader(
-                                title = "Coming Soon",
-                                accent = sem.gold,
-                                horizontalPadding = 0.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Next 30 days",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        SectionViewAllLink(
-                            text = "View All (${comingSoonItems.size})",
-                            onClick = {
-                                activeSectionListTitle = "Coming Soon"
-                                activeSectionListItems = comingSoonItems
-                            }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    SnapRail {
-                        items(comingSoonItems, key = { it.id }) { item ->
-                            val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-                            val nextEp = key?.let { HomeEligibility.nextAiringEpisode(episodesByShow[it].orEmpty(), todayDateStr) }
-                            HomePosterCard(
-                                item = item,
-                                nextAirDate = if (key != null) {
-                                    HomeEligibility.nextAiringDate(episodesByShow[key].orEmpty(), todayDateStr)
-                                } else {
-                                    item.releaseDate?.take(10)
-                                },
-                                smartBadge = smartBadgesMap[item.id],
-                                showCountdown = true,
-                                airTime = nextEp?.airTime,
-                                airstamp = nextEp?.airstamp,
-                                timezone = item.timezone,
-                                serviceName = AirTimeResolver.serviceHint(networkMap[item.id] ?: item.network, item.studios, item.genres),
-                                onClick = { onSelectMedia(item.id) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
+            // (Coming Soon moved up into "Up Next For You".)
 
         if (recentlyAddedItems.isNotEmpty()) {
             item {
