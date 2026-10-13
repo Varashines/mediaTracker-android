@@ -148,20 +148,23 @@ fun ReleaseCalendarScreen(
         }
     }
 
-    // Track scrolling to shrink calendar to single-week mode when browsing releases
+    // Track scrolling to shrink calendar to single-week mode when browsing releases.
     val listState = rememberLazyListState()
-    var isManuallyExpanded by remember { mutableStateOf<Boolean?>(null) }
-    
-    // Automatically collapse if scrolled down past top, unless manually overridden
-    val isCompactWeek by remember {
+
+    // null = follow the scroll position; true/false = the user pinned Week/Month. The
+    // override resets when the month changes so scrolling keeps working afterwards.
+    var manualWeekMode by remember { mutableStateOf<Boolean?>(null) }
+    val scrolledPastTop by remember {
         derivedStateOf {
-            val manual = isManuallyExpanded
-            if (manual != null) {
-                !manual
-            } else {
-                listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 80
-            }
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 80
         }
+    }
+    val isCompactWeek = manualWeekMode ?: scrolledPastTop
+
+    fun changeMonth(delta: Int) {
+        selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply { add(Calendar.MONTH, delta) }
+        selectedDateString = null
+        manualWeekMode = null
     }
 
     LazyColumn(
@@ -199,75 +202,30 @@ fun ReleaseCalendarScreen(
                     )
                 }
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (onOpenSearch != null) {
-                        IconButton(
-                            onClick = onOpenSearch,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(19.dp)
-                            )
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                if (onOpenSearch != null) {
+                    IconButton(
+                        onClick = onOpenSearch,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(
-                                onClick = {
-                                    selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
-                                        add(Calendar.MONTH, -1)
-                                    }
-                                    selectedDateString = null
-                                },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Prev", modifier = Modifier.size(14.dp))
-                            }
-                            Text(
-                                text = SimpleDateFormat("MMM yyyy", Locale.US).format(selectedYearMonth.time).uppercase(),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 0.5.sp,
-                                modifier = Modifier.padding(horizontal = 6.dp)
-                            )
-                            IconButton(
-                                onClick = {
-                                    selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply {
-                                        add(Calendar.MONTH, 1)
-                                    }
-                                    selectedDateString = null
-                                },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = "Next", modifier = Modifier.size(12.dp))
-                            }
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(19.dp)
+                        )
                     }
                 }
             }
         }
 
-        // 2. Month grid Card (with breathable spacing & collapse/expand toggle)
+        // 2. Month grid Card: month navigation and the Week/Month toggle live together
+        // here, next to the grid they control.
         item {
             Card(
-                shape = RoundedCornerShape(26.dp),
+                shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f)
                 ),
@@ -276,56 +234,50 @@ fun ReleaseCalendarScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
                 ) {
-                    // Top sub-bar with Mode Toggle indicator ("Week Strip" vs "Full Month")
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = if (isCompactWeek) "WEEK OVERVIEW" else "MONTH OVERVIEW",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 1.sp
-                        )
-
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .springClickable(
-                                    pressedScale = 0.92f,
-                                    onClick = { isManuallyExpanded = !isCompactWeek }
-                                )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { changeMonth(-1) },
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                Text(
-                                    text = if (isCompactWeek) "Expand" else "Shrink",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
                                 Icon(
-                                    imageVector = if (isCompactWeek) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                                    contentDescription = if (isCompactWeek) "Expand to Month" else "Shrink to Week",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp)
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Previous month",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Text(
+                                text = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(selectedYearMonth.time),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                            IconButton(
+                                onClick = { changeMonth(1) },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "Next month",
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
+
+                        WeekMonthToggle(
+                            isWeek = isCompactWeek,
+                            onSelect = { week -> manualWeekMode = week }
+                        )
                     }
 
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
 
                     MonthCalendarGrid(
                         month = selectedYearMonth,
@@ -433,6 +385,41 @@ private fun resolveEventAirTimeLabel(
         }
     }
     return formatReleaseAirTime(event.dateString, serviceName)
+}
+
+/**
+ * Compact Week/Month segmented control for the calendar card. Replaces the old
+ * "Expand"/"Shrink" pill, which described the action rather than the state and was
+ * easy to misread.
+ */
+@Composable
+private fun WeekMonthToggle(isWeek: Boolean, onSelect: (Boolean) -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest
+    ) {
+        Row(modifier = Modifier.padding(3.dp)) {
+            WeekMonthSegment("Week", selected = isWeek) { onSelect(true) }
+            WeekMonthSegment("Month", selected = !isWeek) { onSelect(false) }
+        }
+    }
+}
+
+@Composable
+private fun WeekMonthSegment(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(11.dp),
+        color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+    ) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        )
+    }
 }
 
 @Composable
