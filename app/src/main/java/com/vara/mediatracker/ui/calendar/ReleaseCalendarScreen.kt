@@ -155,13 +155,13 @@ fun ReleaseCalendarScreen(
     // null = follow the scroll position; true/false = the user pinned Week/Month. The
     // override resets when the month changes so scrolling keeps working afterwards.
     var manualWeekMode by remember { mutableStateOf<Boolean?>(null) }
-    // Collapse to the week strip only once the month card has genuinely left the
-    // viewport. The old check flipped on the first pixel of scroll (index > 0), which
-    // made the calendar feel twitchy; this waits until the grid is well out of view.
+    // Collapse to the week strip once the header has scrolled off and the month card has
+    // begun to leave (item 0 is the header, item 1 the month card). A little offset is
+    // required so a stray nudge does not flip it, but not so much that it never fires.
     val scrolledPastTop by remember {
         derivedStateOf {
-            listState.firstVisibleItemIndex > 2 ||
-                (listState.firstVisibleItemIndex == 2 && listState.firstVisibleItemScrollOffset > 220)
+            listState.firstVisibleItemIndex > 1 ||
+                (listState.firstVisibleItemIndex == 1 && listState.firstVisibleItemScrollOffset > 100)
         }
     }
     val isCompactWeek = manualWeekMode ?: scrolledPastTop
