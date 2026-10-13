@@ -155,16 +155,27 @@ fun ReleaseCalendarScreen(
     // null = follow the scroll position; true/false = the user pinned Week/Month. The
     // override resets when the month changes so scrolling keeps working afterwards.
     var manualWeekMode by remember { mutableStateOf<Boolean?>(null) }
-    // Collapse to the week strip once the header has scrolled off and the month card has
-    // begun to leave (item 0 is the header, item 1 the month card). A little offset is
-    // required so a stray nudge does not flip it, but not so much that it never fires.
+
+    // Any real scroll (the header starting to leave) counts.
     val scrolledPastTop by remember {
         derivedStateOf {
-            listState.firstVisibleItemIndex > 1 ||
-                (listState.firstVisibleItemIndex == 1 && listState.firstVisibleItemScrollOffset > 100)
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24
         }
     }
-    val isCompactWeek = manualWeekMode ?: scrolledPastTop
+
+    // Releases shown for the current selection; the whole month falls back to its total.
+    val shownDayCount = selectedDateString?.let { monthEventsMap[it]?.size } ?: displayedEvents.size
+
+    // Auto week mode latches on once the user scrolls while the shown day has more than
+    // two releases, and only releases when they scroll all the way back to the top.
+    // Changing the selected date does NOT drop out of week mode, even when the new day
+    // has two or fewer — the latch holds until the scroll returns to the top.
+    var autoWeek by remember { mutableStateOf(false) }
+    LaunchedEffect(scrolledPastTop, shownDayCount) {
+        if (!scrolledPastTop) autoWeek = false
+        else if (shownDayCount > 2) autoWeek = true
+    }
+    val isCompactWeek = manualWeekMode ?: autoWeek
 
     fun changeMonth(delta: Int) {
         selectedYearMonth = (selectedYearMonth.clone() as Calendar).apply { add(Calendar.MONTH, delta) }
