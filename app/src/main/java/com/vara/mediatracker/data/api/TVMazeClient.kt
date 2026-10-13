@@ -17,6 +17,25 @@ import java.time.Instant
 import java.util.Date
 
 /**
+ * Show-level TVMaze metadata: the timezone and network name that feed the shared
+ * [com.vara.mediatracker.util.AirTimeResolver], plus the next airing instant.
+ */
+data class TVMazeShowInfo(
+    val timezone: String?,
+    val network: String?,
+    val nextAirstamp: String?
+)
+
+/** One episode from TVMaze's `/shows/{id}/episodes`, keyed by season + number. */
+data class TVMazeEpisodeRef(
+    val season: Int?,
+    val number: Int?,
+    val airdate: String?,
+    val airtime: String?,
+    val airstamp: String?
+)
+
+/**
  * TVMaze client, used for one thing: the precise instant an episode airs.
  *
  * TMDB does not return `air_time` on `/tv/{id}/season/{n}` at all — verified against a
@@ -64,8 +83,45 @@ class TVMazeClient(private val client: HttpClient) {
      */
     suspend fun nextEpisodeInstant(tvMazeId: Int): Result<Date?> = runCatching {
         val show = getJsonObject("$BASE/shows/$tvMazeId?embed=nextepisode")
-        val next = show["_embedded"]?.jsonObject?.get("nextepisode")?.jsonObject
-        parseInstant(next?.get("airstamp")?.jsonPrimitive?.contentOrNull)
+        val next = show.obj("_embedded")?.obj("nextepisode")
+        parseInstant(next?.string("airstamp"))
+    }
+
+    /**
+     * Show-level air metadata: the broadcast timezone and network name (for the
+     * streaming drop-time rules) plus the next airing instant, in one request.
+     */
+    suspend fun showInfo(tvMazeId: Int): Result<TVMazeShowInfo> = runCatching {
+        val show = getJsonObject("$BASE/shows/$tvMazeId?embed=nextepisode")
+        val network = show.obj("network")
+        val webChannel = show.obj("webChannel")
+        val timezone = network?.obj("country")?.string("timezone")
+            ?: webChannel?.obj("country")?.string("timezone")
+        TVMazeShowInfo(
+            timezone = timezone,
+            network = network?.string("name") ?: webChannel?.string("name"),
+            nextAirstamp = show.obj("_embedded")?.obj("nextepisode")?.string("airstamp")
+        )
+    }
+
+    /**
+     * Every episode of a show with its real air `airstamp` and local `airtime`.
+     *
+     * This is the piece TMDB cannot provide: its season payload has no `air_time`, so
+     * without TVMaze an episode's instant is only known to the day.
+     */
+    suspend fun episodes(tvMazeId: Int): Result<List<TVMazeEpisodeRef>> = runCatching {
+        val arr = getJsonArray("$BASE/shows/$tvMazeId/episodes")
+        arr.mapNotNull { element ->
+            val o = element as? JsonObject ?: return@mapNotNull null
+            TVMazeEpisodeRef(
+                season = o.int("season"),
+                number = o.int("number"),
+                airdate = o.string("airdate"),
+                airtime = o.string("airtime"),
+                airstamp = o.string("airstamp")
+            )
+        }
     }
 
     /**
@@ -84,6 +140,15 @@ class TVMazeClient(private val client: HttpClient) {
         json.parseToJsonElement(get(url)) as JsonArray
 
     private suspend fun get(url: String): String = client.get(url).body()
+
+    private fun JsonObject.string(key: String): String? =
+        (this[key] as? JsonPrimitive)?.contentOrNull
+
+    private fun JsonObject.int(key: String): Int? =
+        (this[key] as? JsonPrimitive)?.intOrNull
+
+    private fun JsonObject.obj(key: String): JsonObject? =
+        this[key] as? JsonObject
 
     private fun encodeQuery(value: String): String =
         java.net.URLEncoder.encode(value, Charsets.UTF_8)

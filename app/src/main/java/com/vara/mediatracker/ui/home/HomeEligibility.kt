@@ -151,6 +151,19 @@ object HomeEligibility {
     fun hasUnwatchedAired(episodes: List<EpisodeEntity>, today: String): Boolean =
         episodes.any { !it.isWatched && (it.airDate?.take(10)?.let { d -> d <= today } ?: false) }
 
+    /**
+     * The episode [nextAiringDate] points at, so callers can use its TVMaze `airstamp`
+     * and airtime for an exact countdown. Returns the first unwatched episode, or the
+     * soonest future one when the user is caught up.
+     */
+    fun nextAiringEpisode(episodes: List<EpisodeEntity>, today: String): EpisodeEntity? {
+        val ordered = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+        ordered.firstOrNull { !it.isWatched }?.let { return it }
+        return ordered.asSequence()
+            .filter { (it.airDate?.take(10) ?: "") > today }
+            .minByOrNull { it.airDate ?: "" }
+    }
+
     /** Everything Continue Watching should offer as a resume action, soonest-to-prioritised. */
     fun resumeCandidates(
         items: List<MediaItemEntity>,

@@ -59,6 +59,10 @@ interface MediaDao {
      * episode table with no air date and made badge rules that depend on air times
      * unreachable. Ordered by recency so a backfill spends its budget on what the user
      * is most likely looking at.
+     *
+     * The `nextAiringInstant NOT LIKE '____-__-__T%'` clause re-enriches shows whose
+     * stored instant predates the TVMaze ISO format (it used to be a `Date.toString()`
+     * value), healing them without re-fetching shows that are already correct.
      */
     @Query(
         """
@@ -67,6 +71,7 @@ interface MediaDao {
           AND m.type LIKE '%TV%'
           AND (
             m.nextAiringInstant IS NULL
+            OR m.nextAiringInstant NOT LIKE '____-__-__T%'
             OR NOT EXISTS (SELECT 1 FROM tv_episodes e WHERE e.showId = m.id)
             OR EXISTS (SELECT 1 FROM tv_episodes e WHERE e.showId = m.id AND e.airDate IS NULL)
           )
@@ -141,7 +146,7 @@ interface BadgeDao {
         MediaBadgeEntity::class,
         TVSeasonEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

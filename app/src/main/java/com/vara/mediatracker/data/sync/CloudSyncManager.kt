@@ -174,6 +174,12 @@ class CloudSyncManager(
                 type = rem.type,
                 state = rem.state,
                 taste = rem.taste,
+                // Preserve locally-derived air metadata; the remote schema carries none
+                // of it, and reconstructing without these wiped the TVMaze timezone /
+                // network / instant on every pull.
+                nextAiringInstant = existing?.nextAiringInstant,
+                timezone = existing?.timezone,
+                network = existing?.network,
                 customPosterUrl = rem.custom_poster_url,
                 isSoftDeleted = rem.is_soft_deleted,
                 lastInteractionDate = rem.last_interaction_date,

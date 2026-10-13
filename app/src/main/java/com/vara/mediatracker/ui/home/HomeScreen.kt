@@ -39,6 +39,7 @@ import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.MediaIds
+import com.vara.mediatracker.ui.common.parseAirInstant
 import com.vara.mediatracker.ui.common.parseTargetAirDateTime
 import com.vara.mediatracker.ui.common.rememberCountdownText
 import com.vara.mediatracker.ui.common.EmptyState
@@ -813,6 +814,7 @@ fun HomeScreen(
                     SnapRail {
                         items(comingSoonItems, key = { it.id }) { item ->
                             val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+                            val nextEp = key?.let { HomeEligibility.nextAiringEpisode(episodesByShow[it].orEmpty(), todayDateStr) }
                             HomePosterCard(
                                 item = item,
                                 nextAirDate = if (key != null) {
@@ -822,6 +824,10 @@ fun HomeScreen(
                                 },
                                 smartBadge = smartBadgesMap[item.id],
                                 showCountdown = true,
+                                airTime = nextEp?.airTime,
+                                airstamp = nextEp?.airstamp,
+                                timezone = item.timezone,
+                                serviceName = networkMap[item.id] ?: item.network,
                                 onClick = { onSelectMedia(item.id) }
                             )
                         }
@@ -953,15 +959,25 @@ fun HomePosterCard(
     nextAirDate: String? = null,
     smartBadge: BadgeResult? = null,
     showCountdown: Boolean = false,
+    airTime: String? = null,
+    airstamp: String? = null,
+    timezone: String? = null,
+    serviceName: String? = null,
     onClick: () -> Unit
 ) {
     val sem = LocalSemanticColors.current
-    // Target date resolution using network / streaming service rules (only computed when countdown is enabled)
-    val targetAirDate = remember(nextAirDate, item.releaseDate, item.title, item.overview, showCountdown) {
+    // Target instant resolved through the shared AirTimeResolver. When episode data is
+    // available (TVMaze airstamp/time + the show timezone) this is exact; otherwise it
+    // falls back to the network's streaming drop time.
+    val targetAirDate = remember(nextAirDate, item.releaseDate, item.title, item.overview, showCountdown, airTime, airstamp, timezone, serviceName) {
         if (!showCountdown) null
         else {
             val rawDate = nextAirDate ?: item.releaseDate
-            parseTargetAirDateTime(rawDate, "${item.title} ${item.overview}")
+            if (airstamp != null || airTime != null || serviceName != null || timezone != null) {
+                parseAirInstant(rawDate, airTime, airstamp, timezone, serviceName)
+            } else {
+                parseTargetAirDateTime(rawDate, "${item.title} ${item.overview}")
+            }
         }
     }
 

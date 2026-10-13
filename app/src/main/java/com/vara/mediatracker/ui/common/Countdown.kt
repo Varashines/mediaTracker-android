@@ -60,61 +60,42 @@ fun rememberCountdownText(targetDate: Date?): String? {
 
 /**
  * Streaming service broadcast/release timing rule matching macOS DateUtils.
+ *
+ * Retained as a type alias for callers that still reference the shape; the actual
+ * rules and resolution now live in [com.vara.mediatracker.util.AirTimeResolver] so
+ * the badge engine and the UI share one implementation.
  */
-data class StreamingServiceRule(
-    val patterns: List<String>,
-    val releaseTime: String, // "HH:mm"
-    val timeZoneId: String,
-    val dayOffset: Int
-)
+typealias StreamingServiceRule = com.vara.mediatracker.util.AirTimeResolver.StreamingServiceRule
 
-val defaultStreamingRules = listOf(
-    // Apple TV Originals drop at 9 PM ET on the eve of release date
-    StreamingServiceRule(listOf("apple"), "21:00", "America/New_York", -1),
-    // Disney+ Marvel / Star Wars drops at 9 PM ET
-    StreamingServiceRule(listOf("star wars", "marvel"), "21:00", "America/New_York", 0),
-    // Disney+ standard Midnight PT
-    StreamingServiceRule(listOf("disney"), "00:00", "America/Los_Angeles", 0),
-    // Netflix: Midnight PT
-    StreamingServiceRule(listOf("netflix"), "00:00", "America/Los_Angeles", 0),
-    // Prime / Amazon / MGM+: Midnight PT
-    StreamingServiceRule(listOf("amazon", "prime", "mgm"), "00:00", "America/Los_Angeles", 0),
-    // Hulu / Peacock / Paramount+: Midnight ET
-    StreamingServiceRule(listOf("hulu", "peacock", "paramount"), "00:00", "America/New_York", 0),
-    // FX / FXX: Broadcasts evening / drops next morning on Hulu
-    StreamingServiceRule(listOf("fx", "fxx"), "00:00", "America/New_York", 1),
-    // HBO / Max: 9 PM ET
-    StreamingServiceRule(listOf("max", "hbo"), "21:00", "America/New_York", 0)
-)
+val defaultStreamingRules = com.vara.mediatracker.util.AirTimeResolver.defaultStreamingRules
 
 /**
  * Resolves exact Date for an airDate or releaseDate string using streaming/network rules or 8 PM ET default.
  */
-fun parseTargetAirDateTime(dateStr: String?, networkOrTitle: String?): Date? {
-    if (dateStr.isNullOrBlank()) return null
-    val cleanDate = dateStr.trim().take(10) // "yyyy-MM-dd"
-    if (cleanDate.length < 10) return null
+fun parseTargetAirDateTime(dateStr: String?, networkOrTitle: String?): Date? =
+    com.vara.mediatracker.util.AirTimeResolver.resolveAirInstant(
+        dateString = dateStr,
+        serviceName = networkOrTitle
+    )
 
-    val (timePart, tzId, dayOffset) = resolveReleaseRule(networkOrTitle)
-
-    return try {
-        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone(tzId)
-        }
-        val baseDate = sdf.parse("$cleanDate $timePart") ?: return null
-        if (dayOffset != 0) {
-            val cal = Calendar.getInstance(TimeZone.getTimeZone(tzId)).apply {
-                time = baseDate
-                add(Calendar.DAY_OF_YEAR, dayOffset)
-            }
-            cal.time
-        } else {
-            baseDate
-        }
-    } catch (_: Exception) {
-        null
-    }
-}
+/**
+ * Resolves the real airing instant for an episode, applying TVMaze airstamp/timezone
+ * and per-service streaming rules exactly as macOS does. Prefer this over
+ * [parseTargetAirDateTime] whenever episode metadata is available.
+ */
+fun parseAirInstant(
+    dateStr: String?,
+    airTime: String? = null,
+    airstamp: String? = null,
+    timezone: String? = null,
+    serviceName: String? = null
+): Date? = com.vara.mediatracker.util.AirTimeResolver.resolveAirInstant(
+    dateString = dateStr,
+    time = airTime,
+    airstamp = airstamp,
+    timezone = timezone,
+    serviceName = serviceName
+)
 
 /**
  * Human-readable drop time for a release, resolved from the network's streaming rule.
@@ -123,36 +104,8 @@ fun parseTargetAirDateTime(dateStr: String?, networkOrTitle: String?): Date? {
  * label matches what the service advertises. Previously every card hardcoded
  * "(9:00 PM EST)", which was simply wrong for Netflix, Disney, and movies.
  */
-fun formatReleaseAirTime(dateStr: String?, networkOrTitle: String?): String? {
-    if (dateStr.isNullOrBlank()) return null
-    val cleanDate = dateStr.trim().take(10)
-    if (cleanDate.length < 10) return null
-
-    val (timePart, tzId, _) = resolveReleaseRule(networkOrTitle)
-    val tz = TimeZone.getTimeZone(tzId)
-    return try {
-        val base = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply {
-            timeZone = tz
-        }.parse("$cleanDate $timePart") ?: return null
-        val time = SimpleDateFormat("h:mm a", Locale.US).apply { timeZone = tz }.format(base)
-        val zone = tz.getDisplayName(false, TimeZone.SHORT, Locale.US)
-        "$time $zone"
-    } catch (_: Exception) {
-        null
-    }
-}
-
-private fun resolveReleaseRule(networkOrTitle: String?): Triple<String, String, Int> {
-    val query = (networkOrTitle ?: "").lowercase(Locale.US)
-    val rule = defaultStreamingRules.firstOrNull { r ->
-        r.patterns.any { pattern -> query.contains(pattern) }
-    }
-    return if (rule != null) {
-        Triple(rule.releaseTime, rule.timeZoneId, rule.dayOffset)
-    } else {
-        Triple("20:00", "America/New_York", 0)
-    }
-}
+fun formatReleaseAirTime(dateStr: String?, networkOrTitle: String?): String? =
+    com.vara.mediatracker.util.AirTimeResolver.formatAirTime(dateStr, networkOrTitle)
 
 /**
  * Generates countdown label matching macOS MediaThumbnailView.upcomingCountdownLabel:

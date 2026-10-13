@@ -127,6 +127,15 @@ fun DetailScreen(
                             }
                             if (!net.isNullOrBlank()) {
                                 prefs.setCachedNetwork(item.id, net)
+                                // Persist the network on the entity too so the badge
+                                // engine can apply the streaming drop-time rules without
+                                // reading preferences.
+                                val current = mediaItem ?: item
+                                if (current.network != net) {
+                                    val withNet = current.copy(network = net)
+                                    db.mediaDao().upsertMedia(listOf(withNet))
+                                    mediaItem = withNet
+                                }
                             }
 
                             // Cache runtime, genres, and vote average
@@ -200,6 +209,7 @@ fun DetailScreen(
                                                 watchedDate = existing?.watchedDate,
                                                 airDate = ep.air_date ?: existing?.airDate,
                                                 airTime = ep.air_time ?: existing?.airTime,
+                                                airstamp = existing?.airstamp,
                                                 runtime = ep.runtime ?: existing?.runtime,
                                                 updatedAt = existing?.updatedAt
                                             )

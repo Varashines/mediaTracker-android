@@ -25,6 +25,17 @@ data class MediaItemEntity(
      * not precise enough for a 48-hour SOON window or a 3-day premiere boundary.
      */
     val nextAiringInstant: String? = null,
+    /**
+     * Show timezone identifier (e.g. "America/New_York"), from TVMaze's
+     * `network.country.timezone`. Used to interpret a real broadcast airtime; the
+     * macOS `TVShowDetails.timezone` is the equivalent.
+     */
+    val timezone: String? = null,
+    /**
+     * Resolved network / service name, used to select the streaming drop-time rule.
+     * macOS keeps this as `cachedNetwork`.
+     */
+    val network: String? = null,
     val isSoftDeleted: Boolean = false,
     val lastInteractionDate: String? = null,
     val lastStateChangeDate: String? = null,
@@ -52,6 +63,12 @@ data class EpisodeEntity(
      * macOS avoids this because it stores the real instant.
      */
     val airTime: String? = null,
+    /**
+     * Full ISO-8601 air instant from TVMaze (`airstamp`), the most precise source for
+     * an episode. macOS stores the same value on `TVEpisode.airstamp`; it wins over a
+     * bare date + time because it already encodes the correct offset.
+     */
+    val airstamp: String? = null,
     val runtime: Int? = null,
     val updatedAt: String? = null
 )

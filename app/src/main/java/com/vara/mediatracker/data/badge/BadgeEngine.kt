@@ -3,6 +3,7 @@ package com.vara.mediatracker.data.badge
 import androidx.compose.ui.graphics.Color
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.util.AirTimeResolver
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -77,17 +78,28 @@ object BadgeEngine {
     /**
      * Resolves an episode's real airing instant.
      *
-     * A bare `airDate` parses to midnight, which places the episode up to a day
-     * before it actually airs. Against the 3-day PREMIERE boundary that is enough to
-     * flip the badge: one title measured 3.013 days on Android against 1.76 on macOS,
-     * and lost its PREMIERE. macOS stores the true instant because TMDB also returns
-     * `air_time`, so compose the two when the time is known and fall back to the
-     * date-only parse when it is not.
-     *
-     * Interpreted in the device's local zone, matching how TMDB's local air date and
-     * air time pair up.
+     * When a TVMaze `airstamp` is available it is authoritative and resolution is
+     * delegated to [AirTimeResolver], which applies the same per-service rules and
+     * show-timezone handling as macOS. Without an `airstamp` this keeps the original
+     * behaviour: compose date + time in the device's local zone, falling back to a
+     * midnight parse when the time is unknown.
      */
-    fun parseAirInstant(airDate: String?, airTime: String?): Date? {
+    fun parseAirInstant(
+        airDate: String?,
+        airTime: String?,
+        airstamp: String? = null,
+        timezone: String? = null,
+        serviceName: String? = null
+    ): Date? {
+        if (!airstamp.isNullOrBlank()) {
+            return AirTimeResolver.resolveAirInstant(
+                dateString = airDate?.take(10),
+                time = airTime,
+                airstamp = airstamp,
+                timezone = timezone,
+                serviceName = serviceName
+            )
+        }
         if (airDate.isNullOrBlank()) return null
         val day = airDate.trim().take(10)
         if (day.length < 10) return null
@@ -126,7 +138,11 @@ object BadgeEngine {
         if (item.state.equals("Dropped", ignoreCase = true)) return null
 
         val isTv = item.type.contains("TV", ignoreCase = true)
-        val scan = if (isTv) scanEpisodes(episodes, now, declaredSeasonCounts) else null
+        val scan = if (isTv) {
+            scanEpisodes(episodes, now, declaredSeasonCounts, item.timezone, item.network)
+        } else {
+            null
+        }
 
         // Pipeline stage 1: Milestone Badges (Premiere, Finale, Binge Drop)
         if (scan != null) {
@@ -153,7 +169,9 @@ object BadgeEngine {
     fun scanEpisodes(
         episodes: List<EpisodeEntity>,
         now: Date,
-        declaredSeasonCounts: Map<Int, Int> = emptyMap()
+        declaredSeasonCounts: Map<Int, Int> = emptyMap(),
+        timezone: String? = null,
+        serviceName: String? = null
     ): EpisodeScan {
         val cutoff = now.time - RECENT_WATCH_CUTOFF_MS
 
@@ -180,7 +198,7 @@ object BadgeEngine {
         val seasonCounts = sorted.groupBy { it.seasonNumber }.mapValues { it.value.size }
 
         for (ep in sorted) {
-            val epDate = parseAirInstant(ep.airDate, ep.airTime)
+            val epDate = parseAirInstant(ep.airDate, ep.airTime, ep.airstamp, timezone, serviceName)
             val isAired = epDate != null && epDate <= now
 
             if (ep.isWatched) {
@@ -268,18 +286,24 @@ object BadgeEngine {
      * Prefers the stored TVMaze `airstamp`, then the next unwatched episode's air date
      * from the local table, then the release date. macOS reads `cachedNextAiringDate`
      * (TVMaze) in preference to the episode scan, so the ordering matches.
+     *
+     * The stored value goes through [AirTimeResolver] rather than a bare ISO parse so
+     * that TVMaze's noon-UTC placeholder for streaming originals still resolves to the
+     * service's real drop time via the network rule.
      */
     private fun nextAiringInstant(item: MediaItemEntity, nextAir: Date?): Date? =
-        item.nextAiringInstant?.let { parseInstant(it) }
-            ?: nextAir
-            ?: parseDate(item.releaseDate)
+        storedInstant(item) ?: nextAir ?: parseDate(item.releaseDate)
 
-    private fun parseInstant(iso: String): Date? = try {
-        java.time.Instant.parse(iso).let { Date.from(it) }
-    } catch (_: Exception) {
-        // Tolerate a non-ISO value rather than dropping the badge entirely.
-        parseDate(iso)
-    }
+    /** The persisted TVMaze instant, resolved through the shared air-time rules. */
+    private fun storedInstant(item: MediaItemEntity): Date? =
+        item.nextAiringInstant?.takeIf { it.isNotBlank() }?.let { iso ->
+            AirTimeResolver.resolveAirInstant(
+                dateString = iso.take(10),
+                airstamp = iso,
+                timezone = item.timezone,
+                serviceName = item.network
+            )
+        }
 
     private fun releaseWindowBadge(
         item: MediaItemEntity,
@@ -336,7 +360,7 @@ object BadgeEngine {
         if (!isLikedOrLoved) return null
 
         // BEHIND: User has unwatched aired episodes AND a new episode airs within 7 days
-        val nextUpcomingAir = item.nextAiringInstant?.let { parseInstant(it) } ?: scan.nextUpcomingAirDate
+        val nextUpcomingAir = storedInstant(item) ?: scan.nextUpcomingAirDate
         if (nextUpcomingAir != null) {
             val daysToAir = (nextUpcomingAir.time - now.time).toDouble() / MS_PER_DAY.toDouble()
             if (daysToAir in 0.0..BEHIND_DAYS) {

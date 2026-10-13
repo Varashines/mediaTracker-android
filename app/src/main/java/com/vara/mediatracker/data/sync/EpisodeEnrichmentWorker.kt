@@ -83,9 +83,19 @@ class EpisodeEnrichmentWorker(
         if (tmdbId <= 0) return false
         val showId = MediaIds.tvShowKey(show.id)
 
-        // Resolve the precise airing instant before anything else: this is what the
-        // badge windows actually need, and it is the one thing TMDB cannot supply.
-        val instant = resolveNextAiringInstant(tmdb, tvmaze, tmdbId, show.title)
+        // TVMaze supplies the two things TMDB cannot: the per-episode air instant and
+        // the show timezone/service that drive the streaming-time rules.
+        val tvMazeId = resolveTvMazeId(tmdb, tvmaze, tmdbId, show.title)
+        var showInfo: com.vara.mediatracker.data.api.TVMazeShowInfo? = null
+        val mazeByKey = HashMap<String, com.vara.mediatracker.data.api.TVMazeEpisodeRef>()
+        if (tvMazeId != null && tvMazeId > 0) {
+            showInfo = tvmaze.showInfo(tvMazeId).getOrNull()
+            tvmaze.episodes(tvMazeId).getOrNull()?.forEach { ref ->
+                val season = ref.season
+                val number = ref.number
+                if (season != null && number != null) mazeByKey["${season}_${number}"] = ref
+            }
+        }
 
         val details = tmdb.getTVDetails(tmdbId).getOrNull() ?: return false
         val existing = db.mediaDao().getEpisodesListForShow(showId).associateBy {
@@ -109,6 +119,7 @@ class EpisodeEnrichmentWorker(
 
             for (ep in eps) {
                 val prior = existing["${ep.season_number}_${ep.episode_number}"]
+                val maze = mazeByKey["${ep.season_number}_${ep.episode_number}"]
                 newEpisodes += EpisodeEntity(
                     uniqueId = prior?.uniqueId ?: MediaIds.buildEpisodeUniqueId(showId, ep.season_number, ep.episode_number),
                     showId = showId,
@@ -120,21 +131,29 @@ class EpisodeEnrichmentWorker(
                     // Watch state is the user's, never overwritten by a refresh.
                     isWatched = prior?.isWatched ?: false,
                     watchedDate = prior?.watchedDate,
-                    airDate = ep.air_date ?: prior?.airDate,
-                    airTime = ep.air_time ?: prior?.airTime,
+                    // TVMaze's airdate is the local broadcast day; prefer it over TMDB's.
+                    airDate = maze?.airdate ?: ep.air_date ?: prior?.airDate,
+                    airTime = maze?.airtime ?: ep.air_time ?: prior?.airTime,
+                    airstamp = maze?.airstamp ?: prior?.airstamp,
                     runtime = ep.runtime ?: prior?.runtime,
                     updatedAt = prior?.updatedAt
                 )
             }
         }
 
-        if (instant != null) {
+        if (showInfo != null) {
             db.mediaDao().upsertMedia(
-                show.copy(nextAiringInstant = instant.toString())
+                show.copy(
+                    // The ISO string is stored verbatim; BadgeEngine parses it back.
+                    nextAiringInstant = showInfo.nextAirstamp?.takeIf { it.isNotBlank() }
+                        ?: show.nextAiringInstant,
+                    timezone = showInfo.timezone ?: show.timezone,
+                    network = showInfo.network ?: show.network
+                )
             )
         }
 
-        if (newEpisodes.isEmpty()) return instant != null
+        if (newEpisodes.isEmpty()) return showInfo != null
         db.mediaDao().upsertEpisodes(newEpisodes)
         if (seasonRows.isNotEmpty()) db.seasonDao().upsertSeasons(seasonRows)
         return true
@@ -145,18 +164,15 @@ class EpisodeEnrichmentWorker(
      * TVDB id. Any failure is tolerated: the caller still gets episode dates, just
      * without a precise instant.
      */
-    private suspend fun resolveNextAiringInstant(
+    private suspend fun resolveTvMazeId(
         tmdb: TMDBClient,
         tvmaze: com.vara.mediatracker.data.api.TVMazeClient,
         tmdbId: Int,
         title: String
-    ): java.util.Date? {
-        val tvMazeId = tmdb.getTVExternalIds(tmdbId).getOrNull()?.tvdb_id
+    ): Int? =
+        tmdb.getTVExternalIds(tmdbId).getOrNull()?.tvdb_id
             ?.let { tvmaze.lookupByTvDbId(it).getOrNull() }
             ?: tvmaze.searchShowByTitle(title).getOrNull()
-            ?: return null
-        return tvmaze.nextEpisodeInstant(tvMazeId).getOrNull()
-    }
 
     companion object {
         const val KEY_SHOWS = "shows"

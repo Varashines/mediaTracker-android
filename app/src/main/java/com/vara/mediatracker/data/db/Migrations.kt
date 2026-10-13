@@ -78,5 +78,21 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+    /**
+     * v6 -> v7: TVMaze air-instant parity with macOS.
+     *
+     * `tv_episodes.airstamp` carries the exact instant; `media_items.timezone` and
+     * `media_items.network` let the shared [com.vara.mediatracker.util.AirTimeResolver]
+     * interpret a real broadcast airtime and pick the right streaming rule.
+     */
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `tv_episodes` ADD COLUMN `airstamp` TEXT")
+            db.execSQL("ALTER TABLE `media_items` ADD COLUMN `timezone` TEXT")
+            db.execSQL("ALTER TABLE `media_items` ADD COLUMN `network` TEXT")
+        }
+    }
+
+    val ALL: Array<Migration> =
+        arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
 }
