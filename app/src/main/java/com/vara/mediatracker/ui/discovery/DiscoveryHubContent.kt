@@ -115,7 +115,8 @@ fun DiscoveryHubContent(
                     icon = Icons.Default.AutoAwesome,
                     subtitle = "Your library, lately",
                     nodes = badges,
-                    style = FacetStyle.BADGE
+                    style = FacetStyle.BADGE,
+                    limit = BADGE_LIMIT
                 ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.BADGE, node.name)) }
             }
         }
@@ -125,9 +126,10 @@ fun DiscoveryHubContent(
                 FacetSection(
                     title = "Networks",
                     icon = Icons.Default.Tv,
-                    subtitle = "Top ${minOf(networks.size, TOP_N)} of ${networks.size}",
+                    subtitle = "Top ${minOf(networks.size, NETWORK_LIMIT)} of ${networks.size}",
                     nodes = networks,
-                    style = FacetStyle.NETWORK
+                    style = FacetStyle.NETWORK,
+                    limit = NETWORK_LIMIT
                 ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.NETWORK, node.name)) }
             }
         }
@@ -137,9 +139,10 @@ fun DiscoveryHubContent(
                 FacetSection(
                     title = "Studios",
                     icon = Icons.Default.LocalMovies,
-                    subtitle = "Top ${minOf(studios.size, TOP_N)} of ${studios.size}",
+                    subtitle = "Top ${minOf(studios.size, NETWORK_LIMIT)} of ${studios.size}",
                     nodes = studios,
-                    style = FacetStyle.NETWORK
+                    style = FacetStyle.NETWORK,
+                    limit = NETWORK_LIMIT
                 ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.STUDIO, node.name)) }
             }
         }
@@ -151,7 +154,8 @@ fun DiscoveryHubContent(
                     icon = Icons.Default.Movie,
                     subtitle = "${genres.size} represented",
                     nodes = genres,
-                    style = FacetStyle.PLAIN
+                    style = FacetStyle.PLAIN,
+                    limit = GENRE_LIMIT
                 ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.GENRE, node.name)) }
             }
         }
@@ -163,8 +167,12 @@ fun DiscoveryHubContent(
                     icon = Icons.Default.Language,
                     subtitle = "${languages.size} represented",
                     nodes = languages,
-                    style = FacetStyle.PLAIN
-                ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.LANGUAGE, node.name)) }
+                    style = FacetStyle.PLAIN,
+                    limit = LANGUAGE_LIMIT
+                ) { node ->
+                    // Match on the ISO code, not the display name ("English" vs "en").
+                    onSelectNode(node.name, filtered(DiscoveryFacet.LANGUAGE, node.code ?: node.name))
+                }
             }
         }
 
@@ -175,14 +183,20 @@ fun DiscoveryHubContent(
                     icon = Icons.Default.Public,
                     subtitle = "${providers.size} available",
                     nodes = providers,
-                    style = FacetStyle.PLAIN
+                    style = FacetStyle.PLAIN,
+                    limit = PROVIDER_LIMIT
                 ) { node -> onSelectNode(node.name, filtered(DiscoveryFacet.PROVIDER, node.name)) }
             }
         }
     }
 }
 
-private const val TOP_N = 12
+// Per-section caps, matching the macOS Discovery Hub visible counts.
+private const val BADGE_LIMIT = 6
+private const val NETWORK_LIMIT = 12
+private const val GENRE_LIMIT = 12
+private const val LANGUAGE_LIMIT = 6
+private const val PROVIDER_LIMIT = 6
 
 private enum class FacetStyle { NETWORK, BADGE, PLAIN }
 
@@ -246,6 +260,7 @@ private fun FacetSection(
     subtitle: String,
     nodes: List<DiscoveryNode>,
     style: FacetStyle,
+    limit: Int,
     onNodeClick: (DiscoveryNode) -> Unit
 ) {
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -282,7 +297,7 @@ private fun FacetSection(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        nodes.take(TOP_N).chunked(2).forEach { rowNodes ->
+        nodes.take(limit).chunked(2).forEach { rowNodes ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

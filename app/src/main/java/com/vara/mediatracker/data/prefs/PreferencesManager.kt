@@ -35,6 +35,14 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putString("last_enrich_region", value).apply()
 
     /**
+     * Manual provider region override (ISO-3166, e.g. "IN"). Empty means "auto", which
+     * uses the SIM country then the locale region.
+     */
+    var providerRegion: String
+        get() = prefs.getString("provider_region", "") ?: ""
+        set(value) = prefs.edit().putString("provider_region", value.trim().uppercase()).apply()
+
+    /**
      * Theme Preset (0: Mac, 1: Trippy, 2: Chill, 3: Epic, 4: Emotional, 5: Sunset)
      * Matches the macOS AppThemeCoordinator presets.
      */

@@ -51,6 +51,16 @@ import java.util.*
 /** Debounce for credential writes: long enough to coalesce typing, short enough to feel instant. */
 private const val SettingsScreenDebounceMs = 400L
 
+/** Curated provider regions offered in Settings (the common streaming markets). */
+private val ProviderRegions = listOf(
+    "US", "GB", "IN", "CA", "AU", "DE", "FR", "ES", "IT", "NL", "SE", "NO", "DK",
+    "FI", "PL", "PT", "IE", "CH", "AT", "BE", "JP", "KR", "CN", "HK", "TW", "SG",
+    "PH", "ID", "TH", "VN", "MY", "BR", "MX", "AR", "TR", "AE", "SA", "ZA", "NZ"
+)
+
+private fun regionDisplayName(code: String): String =
+    java.util.Locale("", code).getDisplayCountry(java.util.Locale.ENGLISH)
+
 /**
  * The four credential fields as one value.
  *
@@ -102,6 +112,8 @@ fun SettingsScreen(
     var showAnonKey by remember { mutableStateOf(false) }
     var showSyncKey by remember { mutableStateOf(false) }
     var showTmdbKey by remember { mutableStateOf(false) }
+    var providerRegion by remember { mutableStateOf(prefs.providerRegion) }
+    var regionMenuExpanded by remember { mutableStateOf(false) }
     var isSyncing by remember { mutableStateOf(false) }
     var isConfigExpanded by remember { mutableStateOf(false) }
     var isTmdbExpanded by remember { mutableStateOf(false) }
@@ -541,6 +553,107 @@ fun SettingsScreen(
                             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
                             modifier = Modifier.fillMaxWidth()
                         )
+                    }
+                }
+            }
+
+            // 3b. Discovery Region — which country's streaming providers to show.
+            Surface(
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
+                tonalElevation = 1.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = Icons.Default.Public,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Discovery Region",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (providerRegion.isBlank()) {
+                                        "Auto — picks streaming providers from your region"
+                                    } else {
+                                        "${regionDisplayName(providerRegion)} providers"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Box {
+                            Surface(
+                                onClick = { regionMenuExpanded = true },
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (providerRegion.isBlank()) "Auto" else providerRegion,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Choose region",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = regionMenuExpanded,
+                                onDismissRequest = { regionMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Auto") },
+                                    onClick = {
+                                        regionMenuExpanded = false
+                                        providerRegion = ""
+                                        prefs.providerRegion = ""
+                                        SyncScheduler.enrichMetadataNow(context)
+                                    }
+                                )
+                                ProviderRegions.forEach { code ->
+                                    DropdownMenuItem(
+                                        text = { Text("${regionDisplayName(code)} ($code)") },
+                                        onClick = {
+                                            regionMenuExpanded = false
+                                            providerRegion = code
+                                            prefs.providerRegion = code
+                                            SyncScheduler.enrichMetadataNow(context)
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

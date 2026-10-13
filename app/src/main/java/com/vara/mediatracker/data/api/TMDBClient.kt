@@ -159,6 +159,7 @@ data class TMDBWatchProvider(
 data class TMDBWatchRegion(
     val link: String? = null,
     val flatrate: List<TMDBWatchProvider>? = null,
+    val free: List<TMDBWatchProvider>? = null,
     val rent: List<TMDBWatchProvider>? = null,
     val buy: List<TMDBWatchProvider>? = null
 )

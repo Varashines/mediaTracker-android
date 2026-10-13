@@ -39,10 +39,10 @@ class MetadataEnrichmentWorker(
 
         val db = container.database
         val tmdb = container.tmdbClient()
-        val region = deviceRegion()
+        val region = effectiveRegion(container)
 
-        // Region changed (e.g. the user travelled): drop cached providers so they are
-        // re-fetched for the new region instead of showing the old country's services.
+        // Region changed (manual pick or the device moved): drop cached providers so they
+        // are re-fetched for the new region instead of showing the old country's services.
         if (container.preferences.lastEnrichRegion != region) {
             db.mediaDao().clearProviders()
             container.preferences.lastEnrichRegion = region
@@ -80,11 +80,30 @@ class MetadataEnrichmentWorker(
         return Result.success(workDataOf(KEY_ITEMS to processed))
     }
 
-    /** The device's ISO-3166 region, used to pick region-specific watch providers. */
-    private fun deviceRegion(): String {
-        val locale = applicationContext.resources.configuration.locales[0]
-        val country = locale.country
+    /**
+     * The region used to pick watch providers:
+     *  1. the manual override from Settings,
+     *  2. the SIM country (the best signal for where the user actually is — MIUI keeps
+     *     the region separate from the locale, so an Indian phone can report `en-US`),
+     *  3. the locale region,
+     *  4. US.
+     */
+    private fun effectiveRegion(container: com.vara.mediatracker.di.AppContainer): String {
+        val manual = container.preferences.providerRegion
+        if (manual.length == 2) return manual
+
+        val sim = simCountry()
+        if (sim.length == 2) return sim
+
+        val country = applicationContext.resources.configuration.locales[0].country
         return if (country.length == 2) country.uppercase(java.util.Locale.US) else "US"
+    }
+
+    private fun simCountry(): String = try {
+        val tm = applicationContext.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+        tm?.simCountryIso?.takeIf { it.length == 2 }?.uppercase(java.util.Locale.US).orEmpty()
+    } catch (_: Exception) {
+        ""
     }
 
     /** @return true when the row was written (or was already fully populated). */
@@ -139,17 +158,24 @@ class MetadataEnrichmentWorker(
     }
 
     /**
-     * Flatrate provider names for the device's region, falling back to the US, then to
-     * the first region that has any. Region-specific so a user in India sees JioHotstar
-     * rather than a US-only list.
+     * Flatrate + free providers for the device's region, mirroring macOS
+     * `extractWatchProviders`: only that region (no fallback), blocklisted
+     * carrier-bundled/add-on providers dropped, "... Channel" add-ons dropped, deduped
+     * by provider id.
      */
     private fun providerNames(response: TMDBWatchProvidersResponse?, region: String): List<String> {
-        if (response == null) return emptyList()
-        val selected = response.results[region]
-            ?: response.results["US"]
-            ?: response.results.values.firstOrNull { !it.flatrate.isNullOrEmpty() }
-            ?: return emptyList()
-        return (selected.flatrate ?: emptyList())
+        val regionData = response?.results?.get(region) ?: return emptyList()
+        val merged = (regionData.flatrate ?: emptyList()) + (regionData.free ?: emptyList())
+        val seen = mutableSetOf<Int>()
+        return merged
+            .filter { it.provider_id == null || it.provider_id !in BLOCKED_PROVIDER_IDS }
+            .filter {
+                val name = it.provider_name.lowercase()
+                !name.contains("amazon channel") &&
+                    !name.contains("prime video channel") &&
+                    !name.contains("apple tv channel")
+            }
+            .filter { it.provider_id == null || seen.add(it.provider_id) }
             .map { it.provider_name }
             .filter { it.isNotBlank() }
             .distinct()
@@ -167,5 +193,17 @@ class MetadataEnrichmentWorker(
         /** Cap a single run so it cannot crawl a huge library forever. */
         const val MAX_TOTAL = 750
         const val MAX_ITERATIONS = 6
+
+        /**
+         * Carrier-bundled, add-on channel, and aggregator providers, matching macOS
+         * `blockedProviderIDs`.
+         */
+        private val BLOCKED_PROVIDER_IDS = setOf(
+            614,  // VI movies and tv
+            502,  // Tata Play
+            1898, // Amazon MX Player
+            2100, // Amazon Prime Video with Ads
+            2285  // JustWatch TV
+        )
     }
 }

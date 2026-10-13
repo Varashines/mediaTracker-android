@@ -38,9 +38,15 @@ object DiscoveryAggregator {
             items.filter { it.type.contains("TV", ignoreCase = true) }.mapNotNull { it.network }
         ).filter { it.count >= NETWORK_MIN }
 
+    /**
+     * Production companies, from movies only. TV networks are surfaced via the network
+     * facet, so a show never contributes to Studios (matching macOS, where a studio is a
+     * movie's production company and a network is a show's broadcaster).
+     */
     fun studios(items: List<MediaItemEntity>): List<DiscoveryNode> =
-        aggregateList(items.mapNotNull { it.studios })
-            .filter { it.count >= NETWORK_MIN }
+        aggregateList(
+            items.filter { !it.type.contains("TV", ignoreCase = true) }.mapNotNull { it.studios }
+        ).filter { it.count >= NETWORK_MIN }
 
     fun genres(items: List<MediaItemEntity>): List<DiscoveryNode> =
         aggregateList(items.mapNotNull { it.genres })
