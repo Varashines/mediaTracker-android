@@ -37,7 +37,6 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.ui.common.parseAirInstant
 import com.vara.mediatracker.ui.common.ExpressiveCard
-import com.vara.mediatracker.ui.common.formatReleaseAirTime
 import com.vara.mediatracker.ui.common.formatReleaseDay
 import com.vara.mediatracker.ui.common.rememberCountdownText
 import com.vara.mediatracker.ui.common.rememberTodayDateString
@@ -367,25 +366,19 @@ fun ReleaseCalendarScreen(
 }
 
 /**
- * The Radar's air-time label.
+ * The Radar's air-time label, shown in the device's local zone with no suffix.
  *
- * Prefers the real TVMaze instant (formatted in the device's local zone, which is what
- * the user actually cares about) and falls back to the network's streaming drop time
- * when no episode-level time is known.
+ * Resolves the real instant (airstamp/airtime, else the streaming rule) and formats it
+ * locally — so a Marvel drop at 9 PM ET on Oct 13 reads as "6:30 AM" in IST.
  */
 private fun resolveEventAirTimeLabel(
     event: CalendarReleaseEvent,
     serviceName: String?,
     timezone: String?
 ): String? {
-    val hasRealTime = !event.airstamp.isNullOrBlank() || !event.airTime.isNullOrBlank()
-    if (hasRealTime) {
-        val instant = parseAirInstant(event.dateString, event.airTime, event.airstamp, timezone, serviceName)
-        if (instant != null) {
-            return SimpleDateFormat("h:mm a", Locale.getDefault()).format(instant)
-        }
-    }
-    return formatReleaseAirTime(event.dateString, serviceName)
+    val instant = parseAirInstant(event.dateString, event.airTime, event.airstamp, timezone, serviceName)
+        ?: return null
+    return SimpleDateFormat("h:mm a", Locale.getDefault()).format(instant)
 }
 
 /**

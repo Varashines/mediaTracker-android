@@ -1144,9 +1144,9 @@ fun DetailScreen(
 }
 
 /**
- * Episode date + the rule-based drop time, e.g. "Oct 13 • 9:00 PM ET". Uses the real
- * airstamp/airtime when present, otherwise the streaming rule — so a Marvel show on
- * Disney+ shows its 9 PM ET flagship drop rather than the bare date.
+ * Episode airing shown in the device's local zone (IST here), no "ET"/"IST" suffix.
+ * The date is derived from the resolved instant, so a Marvel drop at 9 PM ET on Oct 13
+ * reads as "Oct 14, 6:30 AM" locally.
  */
 private fun episodeAirLabel(
     episode: EpisodeEntity,
@@ -1154,19 +1154,9 @@ private fun episodeAirLabel(
     timezone: String?
 ): String? {
     val date = episode.airDate?.take(10) ?: return null
-    val dateLabel = runCatching {
-        SimpleDateFormat("MMM d", Locale.getDefault())
-            .format(SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(date))
-    }.getOrNull() ?: date
-
-    val hasRealTime = !episode.airTime.isNullOrBlank() || !episode.airstamp.isNullOrBlank()
-    val timeLabel = if (hasRealTime) {
-        AirTimeResolver.resolveAirInstant(date, episode.airTime, episode.airstamp, timezone, serviceHint)
-            ?.let { SimpleDateFormat("h:mm a", Locale.getDefault()).format(it) }
-    } else {
-        AirTimeResolver.formatAirTime(date, serviceHint)
-    }
-    return if (timeLabel != null) "$dateLabel • $timeLabel" else dateLabel
+    val instant = AirTimeResolver.resolveAirInstant(date, episode.airTime, episode.airstamp, timezone, serviceHint)
+        ?: return date
+    return SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(instant)
 }
 
 @Composable
