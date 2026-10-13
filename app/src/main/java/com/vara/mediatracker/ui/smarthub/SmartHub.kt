@@ -129,12 +129,9 @@ object SmartCategoryMatcher {
     }
 
     /**
-     * True when [releaseDate] falls within [now]'s calendar week (same year).
-     *
-     * This is the Android reading of "Released This Week". The macOS original
-     * (`DateUtils.sameWeek`) matched the release's month/day against the current week in
-     * a *different* year — a "this week in a prior year" rule — which is not what the
-     * label implies, so this uses the literal current week instead.
+     * Port of macOS `DateUtils.sameWeek`: true when the release's month/day falls on a
+     * day of [now]'s week **in a different year** (a "this week in a prior year" rule).
+     * Note the deliberate cross-year guard — a title released this year does not match.
      */
     internal fun sameWeek(
         releaseDate: String,
@@ -146,15 +143,15 @@ object SmartCategoryMatcher {
             SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(releaseDate.take(10))
         }.getOrNull() ?: return false
 
-        val a = (calendar.clone() as Calendar).apply {
-            time = release
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        val weekStart = (calendar.clone() as Calendar).apply {
-            time = now
+        val a = (calendar.clone() as Calendar).apply { time = release }
+        val b = (calendar.clone() as Calendar).apply { time = now }
+
+        if (a.get(Calendar.YEAR) == b.get(Calendar.YEAR)) return false
+
+        val targetMonth = a.get(Calendar.MONTH)
+        val targetDay = a.get(Calendar.DAY_OF_MONTH)
+
+        val weekStart = (b.clone() as Calendar).apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
@@ -163,8 +160,13 @@ object SmartCategoryMatcher {
         while (weekStart.get(Calendar.DAY_OF_WEEK) != weekStart.firstDayOfWeek) {
             weekStart.add(Calendar.DAY_OF_YEAR, -1)
         }
-        val weekEnd = (weekStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 6) }
 
-        return !a.before(weekStart) && !a.after(weekEnd)
+        for (offset in 0..6) {
+            val day = (weekStart.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, offset) }
+            if (day.get(Calendar.MONTH) == targetMonth && day.get(Calendar.DAY_OF_MONTH) == targetDay) {
+                return true
+            }
+        }
+        return false
     }
 }
