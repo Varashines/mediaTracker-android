@@ -57,6 +57,7 @@ import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.TVSeasonEntity
+import com.vara.mediatracker.data.model.CollectionItemEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.common.ChipTone
@@ -141,6 +142,7 @@ fun DetailScreen(
 
     var mediaItem by remember { mutableStateOf<MediaItemEntity?>(null) }
     var statusPickerOpen by remember { mutableStateOf(false) }
+    var collectionPickerOpen by remember { mutableStateOf(false) }
     val showIdKey = MediaIds.tvShowKey(mediaId)
     val episodes by db.mediaDao().getEpisodesForShow(showIdKey)
         .collectAsState(initial = emptyList())
@@ -541,6 +543,7 @@ fun DetailScreen(
             title = item.title,
             subtitle = if (isTV && episodes.isNotEmpty()) "Season $selectedSeason • ${episodes.size} Episodes" else null,
             onBack = onBack,
+            onAddToCollection = { collectionPickerOpen = true },
             onCopyTitle = {
                 clipboard.setText(AnnotatedString(item.title))
                 AppToast.show("Title copied")
@@ -980,7 +983,36 @@ fun DetailScreen(
                     AppToast.show("Marked as ${state.label}")
                 }
             },
+            onRemove = {
+                statusPickerOpen = false
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                scope.launch {
+                    db.mediaDao().softDelete(item.id, isoNow())
+                    syncManager.pushMediaDeletes(listOf(item))
+                    AppToast.show("Removed \"${item.title}\"")
+                }
+                // Close the sheet first, then leave the detail — dismissing in the same frame
+                // as the content change is the jitter the rest of the app avoids.
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ onBack() }, 250)
+            },
             onDismiss = { statusPickerOpen = false }
+        )
+    }
+
+    if (collectionPickerOpen) {
+        DetailCollectionPickerSheet(
+            container = container,
+            onPick = { collectionId ->
+                collectionPickerOpen = false
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                scope.launch {
+                    val rows = listOf(CollectionItemEntity(collectionId, item.id, false, isoNow()))
+                    container.database.collectionDao().upsertCollectionItems(rows)
+                    container.syncManager().pushCollectionItems(rows)
+                    AppToast.show("Added to collection")
+                }
+            },
+            onDismiss = { collectionPickerOpen = false }
         )
     }
 
@@ -995,6 +1027,7 @@ private fun DetailTopBar(
     title: String,
     subtitle: String?,
     onBack: () -> Unit,
+    onAddToCollection: () -> Unit,
     onCopyTitle: () -> Unit
 ) {
     Row(
@@ -1017,6 +1050,14 @@ private fun DetailTopBar(
                 Text(subtitle.uppercase(Locale.US), style = AppTextStyles.MonoLabel, color = MaterialTheme.colorScheme.primary, maxLines = 1)
             }
         }
+
+        // Add to collection lives here now that the Library has no multi-select.
+        Surface(onClick = onAddToCollection, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(40.dp)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Bookmarks, contentDescription = "Add to collection", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
+            }
+        }
+        Spacer(modifier = Modifier.width(8.dp))
 
         Surface(onClick = onCopyTitle, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(40.dp)) {
             Box(contentAlignment = Alignment.Center) {
@@ -1500,6 +1541,7 @@ private fun StatusPickerSheet(
     states: List<TrackingState>,
     current: TrackingState,
     onSelect: (TrackingState) -> Unit,
+    onRemove: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -1571,6 +1613,95 @@ private fun StatusPickerSheet(
                             }
                             if (isSelected) {
                                 Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Destructive: tombstones the title. It is a soft-delete, so it propagates to
+            // the other device and can be restored from the cloud.
+            Surface(
+                onClick = onRemove,
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.error.copy(alpha = 0.18f), modifier = Modifier.size(36.dp)) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Remove from library",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = "Hides this title everywhere and syncs to your other devices",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Bottom sheet listing collections so the open title can be added to one. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DetailCollectionPickerSheet(
+    container: AppContainer,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val dao = remember(container) { container.database.collectionDao() }
+    val collections by dao.observeCollections().collectAsState(initial = emptyList())
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp)
+        ) {
+            Text("ADD TO COLLECTION", style = AppTextStyles.MonoLabel, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(10.dp))
+            if (collections.isEmpty()) {
+                Text(
+                    "No collections yet — create one in the Hub → Collections.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    collections.forEach { collection ->
+                        Surface(
+                            onClick = { onPick(collection.id) },
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    collection.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
                             }
                         }
                     }

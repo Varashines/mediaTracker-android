@@ -37,10 +37,11 @@ import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** The Hub's two tabs. */
+/** The Hub's three tabs. */
 private enum class HubTab(val label: String) {
     SMART("Smart"),
-    DISCOVER("Discover")
+    DISCOVER("Discover"),
+    COLLECTIONS("Collections")
 }
 
 /**
@@ -224,7 +225,13 @@ fun SmartHubScreen(
             selectedItem = hubTab,
             onItemSelected = { hubTab = it },
             labelProvider = { it.label },
-            iconProvider = { if (it == HubTab.SMART) Icons.Default.AutoAwesome else Icons.Default.Explore },
+            iconProvider = {
+                when (it) {
+                    HubTab.SMART -> Icons.Default.AutoAwesome
+                    HubTab.DISCOVER -> Icons.Default.Explore
+                    HubTab.COLLECTIONS -> Icons.Default.Bookmarks
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 2.dp)
@@ -275,6 +282,12 @@ fun SmartHubScreen(
                         showCountdown = isPremiere
                     )
                 }
+            )
+
+            HubTab.COLLECTIONS -> CollectionsContent(
+                container = container,
+                items = items,
+                onOpenCollection = { title, filtered -> openSection(title = title, filtered = filtered) }
             )
         }
     }

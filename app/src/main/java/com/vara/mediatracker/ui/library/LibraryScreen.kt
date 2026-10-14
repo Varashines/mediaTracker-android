@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.vara.mediatracker.ui.common.AppToast
-import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
@@ -74,39 +73,6 @@ fun LibraryScreen(
     var isSearchingOnline by remember { mutableStateOf(false) }
     var onlineResults by remember { mutableStateOf<List<TMDBSearchItem>>(emptyList()) }
 
-    // Multi-select: long-press a card to enter, then bulk status changes.
-    var selectionMode by remember { mutableStateOf(false) }
-    var selectedIds by remember { mutableStateOf(setOf<String>()) }
-    val haptics = rememberHaptics()
-
-    fun toggleSelect(id: String) {
-        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
-        if (selectedIds.isEmpty()) selectionMode = false
-    }
-
-    fun bulkSetState(next: String) {
-        haptics.toggle()
-        val targets = items.filter { it.id in selectedIds }
-        if (targets.isEmpty()) {
-            selectionMode = false
-            selectedIds = emptySet()
-            return
-        }
-        val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-        val updated = targets.map { it.copy(state = next, lastStateChangeDate = now) }
-
-        // Optimistic: drop the selection bar and confirm immediately, then persist in a
-        // single UPDATE and push in one POST — the old version ran a Room write plus an
-        // HTTP call per selected item, so 20 titles took several seconds to clear.
-        selectionMode = false
-        selectedIds = emptySet()
-        AppToast.show("Updated ${updated.size} title${if (updated.size == 1) "" else "s"}")
-
-        scope.launch {
-            container.mediaDao.updateStateForIds(updated.map { it.id }, next, now)
-            container.syncManager().pushMediaBatch(updated)
-        }
-    }
 
     // The library join is produced once, off the UI thread, by the activity-scoped
     // ViewModel (see LibraryViewModel). The watch streak + stats moved to the Hub.
@@ -154,19 +120,6 @@ fun LibraryScreen(
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
     ) {
-        if (selectionMode) {
-            LibrarySelectionBar(
-                count = selectedIds.size,
-                onMarkWatched = { bulkSetState("Completed") },
-                onSetWatching = { bulkSetState("Active") },
-                onSetDropped = { bulkSetState("Dropped") },
-                onCancel = {
-                    selectionMode = false
-                    selectedIds = emptySet()
-                }
-            )
-        }
-
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
             modifier = Modifier.fillMaxSize(),
@@ -547,16 +500,7 @@ fun LibraryScreen(
                             item = item,
                             statusLabel = core.badges[item.id]?.badge?.label,
                             progressLabel = progressLabel,
-                            selectionMode = selectionMode,
-                            selected = item.id in selectedIds,
-                            onClick = {
-                                if (selectionMode) toggleSelect(item.id) else onSelectMedia(item.id)
-                            },
-                            onLongClick = {
-                                haptics.toggle()
-                                if (!selectionMode) selectionMode = true
-                                if (item.id !in selectedIds) selectedIds = selectedIds + item.id
-                            }
+                            onClick = { onSelectMedia(item.id) }
                         )
                     }
                 }
@@ -596,76 +540,17 @@ fun LibraryScreen(
 }
 }
 
-/** Multi-select action bar shown above the grid. */
-@Composable
-private fun LibrarySelectionBar(
-    count: Int,
-    onMarkWatched: () -> Unit,
-    onSetWatching: () -> Unit,
-    onSetDropped: () -> Unit,
-    onCancel: () -> Unit
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 2.dp,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = "$count selected",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            SelectionAction(Icons.Default.Check, "Watched", onMarkWatched)
-            SelectionAction(Icons.Default.PlayArrow, "Watching", onSetWatching)
-            SelectionAction(Icons.Default.Close, "Dropped", onSetDropped)
-            IconButton(onClick = onCancel) {
-                Icon(Icons.Default.Clear, contentDescription = "Cancel selection", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-@Composable
-private fun SelectionAction(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(15.dp))
-            Spacer(Modifier.width(4.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-        }
-    }
-}
 
 @Composable
 fun LibraryPosterCard(
     item: MediaItemEntity,
     statusLabel: String?,
     progressLabel: String,
-    onClick: () -> Unit,
-    selectionMode: Boolean = false,
-    selected: Boolean = false,
-    onLongClick: (() -> Unit)? = null
+    onClick: () -> Unit
 ) {
     // Poster-only M3E tile: full-bleed art with small overlays, no captions.
     FlatCard(
         onClick = onClick,
-        onLongClick = onLongClick,
         shape = ExpressiveShapes.AsymPoster,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
         modifier = Modifier.fillMaxWidth()
@@ -728,8 +613,8 @@ fun LibraryPosterCard(
                 }
             }
 
-            // State chip (top-start), hidden while selecting.
-            if (!selectionMode && statusLabel != null) {
+            // State chip (top-start).
+            if (statusLabel != null) {
                 StatusChip(
                     label = statusLabel,
                     tone = ChipTone.Accent,
@@ -758,26 +643,6 @@ fun LibraryPosterCard(
                 }
             }
 
-            if (selectionMode) {
-                if (selected) {
-                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
-                }
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (selected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.55f),
-                    border = if (selected) null else BorderStroke(2.dp, Color.White),
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(8.dp)
-                        .size(24.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (selected) {
-                            Icon(Icons.Default.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-            }
         }
     }
 }

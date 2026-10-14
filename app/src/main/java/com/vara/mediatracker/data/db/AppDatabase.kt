@@ -1,6 +1,9 @@
 package com.vara.mediatracker.data.db
 
 import androidx.room.*
+import com.vara.mediatracker.data.model.CollectionConverters
+import com.vara.mediatracker.data.model.CollectionEntity
+import com.vara.mediatracker.data.model.CollectionItemEntity
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.FacetLogoEntity
 import com.vara.mediatracker.data.model.MediaBadgeEntity
@@ -34,6 +37,16 @@ interface MediaDao {
     /** Bulk state change for Library multi-select: one statement instead of N. */
     @Query("UPDATE media_items SET state = :state, lastStateChangeDate = :now WHERE id IN (:ids)")
     suspend fun updateStateForIds(ids: List<String>, state: String, now: String)
+
+    /**
+     * Soft-deletes a title. Rows are kept (tombstoned) so the delete syncs across devices
+     * and can be undone; every read already filters `isSoftDeleted = 0`.
+     */
+    @Query("UPDATE media_items SET isSoftDeleted = 1, lastStateChangeDate = :now, lastInteractionDate = :now WHERE id = :id")
+    suspend fun softDelete(id: String, now: String)
+
+    @Query("UPDATE media_items SET isSoftDeleted = 1, lastStateChangeDate = :now, lastInteractionDate = :now WHERE id IN (:ids)")
+    suspend fun softDeleteForIds(ids: List<String>, now: String)
 
     @Query("UPDATE media_items SET taste = :taste WHERE id = :id")
     suspend fun updateTaste(id: String, taste: String)
@@ -176,20 +189,55 @@ interface BadgeDao {
     suspend fun badgeCount(): Int
 }
 
+/** Collections + membership. Mirrors macOS's `MediaCollection` model. */
+@Dao
+interface CollectionDao {
+    @Query("SELECT * FROM collections WHERE isDeleted = 0 ORDER BY isPinned DESC, name COLLATE NOCASE ASC")
+    fun observeCollections(): Flow<List<CollectionEntity>>
+
+    @Query("SELECT * FROM collections")
+    suspend fun getAllCollections(): List<CollectionEntity>
+
+    @Query("SELECT * FROM collections WHERE id = :id LIMIT 1")
+    suspend fun getCollection(id: String): CollectionEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCollections(collections: List<CollectionEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCollection(collection: CollectionEntity)
+
+    @Query("SELECT * FROM collection_items")
+    suspend fun getAllCollectionItems(): List<CollectionItemEntity>
+
+    @Query("SELECT * FROM collection_items WHERE collectionId = :collectionId AND isDeleted = 0")
+    fun observeItems(collectionId: String): Flow<List<CollectionItemEntity>>
+
+    @Query("SELECT * FROM collection_items WHERE isDeleted = 0")
+    fun observeAllItems(): Flow<List<CollectionItemEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCollectionItems(items: List<CollectionItemEntity>)
+}
+
 @Database(
     entities = [
         MediaItemEntity::class,
         EpisodeEntity::class,
         MediaBadgeEntity::class,
         TVSeasonEntity::class,
-        FacetLogoEntity::class
+        FacetLogoEntity::class,
+        CollectionEntity::class,
+        CollectionItemEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
+@TypeConverters(CollectionConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun mediaDao(): MediaDao
     abstract fun badgeDao(): BadgeDao
     abstract fun seasonDao(): SeasonDao
     abstract fun facetLogoDao(): FacetLogoDao
+    abstract fun collectionDao(): CollectionDao
 }

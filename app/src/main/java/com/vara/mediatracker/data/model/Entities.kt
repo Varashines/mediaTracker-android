@@ -3,6 +3,7 @@ package com.vara.mediatracker.data.model
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.TypeConverter
 
 @Entity(
     tableName = "media_items",
@@ -159,3 +160,53 @@ data class FacetLogoEntity(
     val name: String,
     val logoPath: String
 )
+
+/**
+ * A user-created (or smart) collection, mirroring macOS's `MediaCollection`.
+ *
+ * [id] is the macOS UUID string, so a collection created on either device keeps the same
+ * identity when it syncs. Smart collections carry [smartRules] (macOS's `SmartRuleSet`
+ * JSON) and have no stored members — their contents are computed per device.
+ */
+@Entity(
+    tableName = "collections",
+    indices = [Index(value = ["name"])]
+)
+data class CollectionEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val systemImage: String = "folder",
+    val notes: String? = null,
+    val isPinned: Boolean = false,
+    val isSmart: Boolean = false,
+    val smartRules: String? = null,
+    val completedItemIds: List<String> = emptyList(),
+    val isDeleted: Boolean = false,
+    val updatedAt: String? = null
+)
+
+/**
+ * Collection membership (the join table). [isDeleted] is a tombstone so removing a title
+ * from a collection propagates instead of being re-added by the next pull.
+ */
+@Entity(
+    tableName = "collection_items",
+    primaryKeys = ["collectionId", "mediaId"],
+    indices = [Index(value = ["collectionId"]), Index(value = ["mediaId"])]
+)
+data class CollectionItemEntity(
+    val collectionId: String,
+    val mediaId: String,
+    val isDeleted: Boolean = false,
+    val updatedAt: String? = null
+)
+
+/** Room has no array column; media ids never contain newlines, so join/split is lossless. */
+class CollectionConverters {
+    @TypeConverter
+    fun fromStringList(value: List<String>?): String = (value ?: emptyList()).joinToString("\n")
+
+    @TypeConverter
+    fun toStringList(value: String?): List<String> =
+        value?.takeIf { it.isNotEmpty() }?.split("\n") ?: emptyList()
+}
