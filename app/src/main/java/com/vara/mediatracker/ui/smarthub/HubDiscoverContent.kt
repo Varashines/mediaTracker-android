@@ -85,8 +85,17 @@ fun HubDiscoverContent(
             .entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
     }
     val badgeLabels = remember(badgeRows) { badgeRows.associate { it.mediaId to it.badgeLabel } }
-    val genres = remember(items) { LibraryQuery.facetValues(items, LibraryFacet.GENRE) }
-    val languages = remember(items) { LibraryQuery.facetValues(items, LibraryFacet.LANGUAGE) }
+    // Counted once, up front. The previous version discarded the counts from facetValues
+    // and re-split every item's genres/languages per visible tile, on the UI thread,
+    // un-remembered — so scrolling the Hub re-did the whole O(items x genres) scan.
+    val genreCounts = remember(items) { LibraryQuery.facetCounts(items, LibraryFacet.GENRE) }
+    val languageCounts = remember(items) { LibraryQuery.facetCounts(items, LibraryFacet.LANGUAGE) }
+    val genreTiles = remember(genreCounts) {
+        genreCounts.take(24).map { DiscoveryTile(it.first, it.second) }
+    }
+    val languageTiles = remember(languageCounts) {
+        languageCounts.take(12).map { DiscoveryTile(LibraryQuery.languageLabel(it.first), it.second, code = it.first) }
+    }
 
     val stats by produceState(initialValue = WatchStats(), allEpisodes, items) {
         value = withContext(Dispatchers.Default) { computeWatchStats(allEpisodes, items) }
@@ -112,26 +121,26 @@ fun HubDiscoverContent(
             }
         }
 
-        if (genres.isNotEmpty()) {
+        if (genreTiles.isNotEmpty()) {
             item(key = "genres") {
                 FacetSection(
                     title = "Genres",
                     icon = Icons.Default.Movie,
-                    subtitle = "${genres.size} represented",
-                    nodes = genres.take(24).map { DiscoveryTile(it, countGenres(items, it)) }
+                    subtitle = "${genreCounts.size} represented",
+                    nodes = genreTiles
                 ) { node ->
                     onSelectNode(node.name, items.filter { matchesGenre(it, node.name) })
                 }
             }
         }
 
-        if (languages.isNotEmpty()) {
+        if (languageTiles.isNotEmpty()) {
             item(key = "languages") {
                 FacetSection(
                     title = "Languages",
                     icon = Icons.Default.Language,
-                    subtitle = "${languages.size} represented",
-                    nodes = languages.take(12).map { DiscoveryTile(LibraryQuery.languageLabel(it), countLanguages(items, it), code = it) }
+                    subtitle = "${languageCounts.size} represented",
+                    nodes = languageTiles
                 ) { node ->
                     onSelectNode(node.name, items.filter { it.language.equals(node.code, ignoreCase = true) })
                 }
@@ -145,12 +154,6 @@ data class DiscoveryTile(val name: String, val count: Int, val code: String? = n
 
 private fun matchesGenre(item: MediaItemEntity, genre: String): Boolean =
     item.genres?.split(',')?.any { it.trim().equals(genre, ignoreCase = true) } == true
-
-private fun countGenres(items: List<MediaItemEntity>, genre: String): Int =
-    items.count { matchesGenre(it, genre) }
-
-private fun countLanguages(items: List<MediaItemEntity>, code: String): Int =
-    items.count { it.language.equals(code, ignoreCase = true) }
 
 private fun computeWatchStats(episodes: List<EpisodeEntity>, items: List<MediaItemEntity>): WatchStats {
     val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)

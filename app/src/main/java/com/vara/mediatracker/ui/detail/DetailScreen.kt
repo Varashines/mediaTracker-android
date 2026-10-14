@@ -66,6 +66,7 @@ import com.vara.mediatracker.ui.common.SectionHeader
 import com.vara.mediatracker.ui.common.StatusChip
 import com.vara.mediatracker.ui.common.parseAirInstant
 import com.vara.mediatracker.ui.common.rememberCountdownText
+import com.vara.mediatracker.ui.common.rememberTodayDateString
 import com.vara.mediatracker.ui.common.springClickable
 import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
@@ -79,6 +80,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.text.SimpleDateFormat
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.*
 
 /** A tracking state: raw value, label, icon, picker description, and accent tint. */
@@ -382,6 +385,8 @@ fun DetailScreen(
     }
 
     val isTV = item.type.contains("TV", ignoreCase = true)
+    // Hoisted so each EpisodeCard doesn't call LocalDate.now() on every recomposition.
+    val todayDate = rememberTodayDateString()
     val syncManager = remember { container.syncManager() }
 
     val vote = tmdbDetails?.vote_average ?: prefs.getCachedVoteAverage(item.id)?.toDouble()
@@ -809,6 +814,7 @@ fun DetailScreen(
                                 episode = ep,
                                 serviceHint = AirTimeResolver.serviceHint(item.network, item.studios, item.genres),
                                 timezone = item.timezone,
+                                today = todayDate,
                                 onToggleWatched = { markWatched(ep, it) }
                             )
                         }
@@ -1073,10 +1079,14 @@ fun EpisodeCard(
     episode: EpisodeEntity,
     onToggleWatched: (Boolean) -> Unit,
     serviceHint: String = "",
-    timezone: String? = null
+    timezone: String? = null,
+    today: String = java.time.LocalDate.now().toString()
 ) {
-    val airLabel = episodeAirLabel(episode, serviceHint, timezone)
-    val today = java.time.LocalDate.now().toString()
+    // Resolving the air instant walks the streaming-service rules; do it once per episode,
+    // not on every recomposition.
+    val airLabel = remember(episode.airDate, episode.airTime, episode.airstamp, serviceHint, timezone) {
+        episodeAirLabel(episode, serviceHint, timezone)
+    }
     val aired = !episode.airDate.isNullOrBlank() && episode.airDate!!.take(10) <= today
 
     Surface(
@@ -1161,6 +1171,9 @@ fun EpisodeCard(
 }
 
 /** Episode airing in the device's local zone, with the year. */
+private val EPISODE_AIR_FORMAT =
+    DateTimeFormatter.ofPattern("MMM d, yyyy, h:mm a", Locale.getDefault())
+
 private fun episodeAirLabel(
     episode: EpisodeEntity,
     serviceHint: String,
@@ -1169,7 +1182,7 @@ private fun episodeAirLabel(
     val date = episode.airDate?.take(10) ?: return null
     val instant = AirTimeResolver.resolveAirInstant(date, episode.airTime, episode.airstamp, timezone, serviceHint)
         ?: return date
-    return SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.getDefault()).format(instant)
+    return EPISODE_AIR_FORMAT.format(instant.toInstant().atZone(ZoneId.systemDefault()))
 }
 
 /** One reaction in the taste popover. */

@@ -89,16 +89,20 @@ object LibraryQuery {
             .map { it.key to it.value }
     }
 
-    /** Distinct values for a facet, most common first, for the filter sheet's chips. */
-    fun facetValues(items: List<MediaItemEntity>, facet: LibraryFacet): List<String> {
+    /** Distinct values for a facet with their counts, most common first. */
+    fun facetCounts(items: List<MediaItemEntity>, facet: LibraryFacet): List<Pair<String, Int>> {
         val values = when (facet) {
             LibraryFacet.GENRE -> items.flatMap { csv(it.genres) }
             LibraryFacet.LANGUAGE -> items.mapNotNull { it.language?.takeIf { it.isNotBlank() } }
         }
         return values.groupingBy { it }.eachCount().entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key.lowercase(Locale.US) })
-            .map { it.key }
+            .map { it.key to it.value }
     }
+
+    /** Distinct values for a facet, most common first, for the filter sheet's chips. */
+    fun facetValues(items: List<MediaItemEntity>, facet: LibraryFacet): List<String> =
+        facetCounts(items, facet).map { it.first }
 
     fun languageLabel(code: String): String =
         runCatching { Locale.forLanguageTag(code).displayLanguage.ifBlank { code.uppercase(Locale.US) } }
