@@ -60,6 +60,7 @@ data class HomeData(
     val comingSoonItems: List<MediaItemEntity> = emptyList(),
     val recentlyAddedItems: List<MediaItemEntity> = emptyList(),
     val lovedItems: List<MediaItemEntity> = emptyList(),
+    val spotlightItems: List<MediaItemEntity> = emptyList(),
     val spotlightItem: MediaItemEntity? = null
 )
 
@@ -165,10 +166,11 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
                 (it.taste.equals("Loved", ignoreCase = true) || it.taste.equals("Love", ignoreCase = true))
         }
 
-        val spotlightItem = resumeItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
-            ?: comingSoonItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
-            ?: lovedItems.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
-            ?: items.firstOrNull { it.backdropUrl != null || it.posterUrl != null }
+        val spotlightItems = (resumeItems + comingSoonItems + lovedItems + items)
+            .filter { it.backdropUrl != null || it.posterUrl != null }
+            .distinctBy { it.id }
+            .take(5)
+        val spotlightItem = spotlightItems.firstOrNull()
 
         return HomeData(
             showProgressMap = showProgressMap,
@@ -176,6 +178,7 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
             comingSoonItems = comingSoonItems,
             recentlyAddedItems = recentlyAddedItems,
             lovedItems = lovedItems,
+            spotlightItems = spotlightItems,
             spotlightItem = spotlightItem
         )
     }

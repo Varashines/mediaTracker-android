@@ -10,6 +10,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.ui.common.SnapRail
 import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.common.FlatCard
@@ -77,6 +80,7 @@ fun HomeScreen(
     onOpenSearch: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
+    val haptics = rememberHaptics()
     val sem = LocalSemanticColors.current
     // Everything below is derived once, off the UI thread, by the activity-scoped
     // ViewModel — grouping ~9k episodes, per-show sorts, eligibility scans and air-instant
@@ -94,6 +98,7 @@ fun HomeScreen(
     val recentlyAddedItems = home.recentlyAddedItems
     val lovedItems = home.lovedItems
     val spotlightItem = home.spotlightItem
+    val spotlightItems = home.spotlightItems
 
     var activeSectionListTitle by remember { mutableStateOf<String?>(null) }
     var activeSectionListItems by remember { mutableStateOf<List<MediaItemEntity>>(emptyList()) }
@@ -239,224 +244,62 @@ fun HomeScreen(
             contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
-            // Asymmetrical Hero Card matching HTML prototype
-            if (spotlightItem != null) {
+            // Spotlight carousel — swipeable hero with page dots.
+            if (spotlightItems.isNotEmpty()) {
                 item {
+                    val pagerState = rememberPagerState(pageCount = { spotlightItems.size })
                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                        ExpressiveCard(
-                            onClick = { onSelectMedia(spotlightItem.id) },
-                            shape = ExpressiveShapes.AsymHero,
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            tonalElevation = 4.dp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(270.dp)
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                val heroCover = spotlightItem.backdropUrl ?: spotlightItem.posterUrl
-                                if (heroCover != null) {
-                                    AsyncImage(
-                                        model = heroCover,
-                                        contentDescription = spotlightItem.title,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                                // Dark cinematic gradient scrim
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(
-                                            Brush.verticalGradient(
-                                                colors = listOf(
-                                                    Color.Black.copy(alpha = 0.20f),
-                                                    Color.Black.copy(alpha = 0.60f),
-                                                    Color.Black.copy(alpha = 0.95f)
-                                                )
-                                            )
-                                        )
-                                )
-
-                                // Floating Dynamic Spotlight Pill Badge
-                                val heroBadge = smartBadgesMap[spotlightItem.id]?.badge?.label ?: spotlightItem.state.uppercase()
-                                Row(
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.primary,
-                                        shape = RoundedCornerShape(20.dp),
-                                        shadowElevation = 4.dp
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(7.dp)
-                                                    .clip(CircleShape)
-                                                    .background(MaterialTheme.colorScheme.onPrimary)
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = heroBadge,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = MaterialTheme.colorScheme.onPrimary,
-                                                letterSpacing = 0.5.sp
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // Media Info Box + Action Split
-                                Column(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomStart)
-                                        .padding(16.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        val realHeroNet = networkMap[spotlightItem.id]
-                                        val heroNetwork = if (!realHeroNet.isNullOrBlank()) {
-                                            NetworkResolver.resolveByName(realHeroNet, isTV = spotlightItem.type.contains("TV", ignoreCase = true))
-                                        } else {
-                                            NetworkResolver.resolve(spotlightItem)
-                                        }
-                                        val heroProgress = showProgressMap[spotlightItem.id]
-                                        val epTag = if (spotlightItem.type.contains("TV", ignoreCase = true)) {
-                                            heroProgress?.nextEpisode?.let { " • S${it.seasonNumber} E${it.episodeNumber}" } ?: " • S1 E1"
-                                        } else ""
-
-                                        Surface(
-                                            color = Color.White.copy(alpha = 0.15f),
-                                            shape = RoundedCornerShape(6.dp)
-                                        ) {
-                                            Text(
-                                                text = if (spotlightItem.type.contains("TV", ignoreCase = true)) "${heroNetwork.shortName}$epTag" else "FEATURE FILM",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                        if (!spotlightItem.taste.isNullOrBlank() && spotlightItem.taste != "None") {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Star,
-                                                    contentDescription = null,
-                                                    tint = sem.gold,
-                                                    modifier = Modifier.size(13.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(3.dp))
-                                                Text(
-                                                    text = spotlightItem.taste.uppercase(),
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = sem.gold
-                                                )
+                        HorizontalPager(
+                            state = pagerState,
+                            pageSpacing = 12.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { page ->
+                            val sp = spotlightItems[page]
+                            HomeSpotlightCard(
+                                item = sp,
+                                smartBadgesMap = smartBadgesMap,
+                                networkMap = networkMap,
+                                showProgressMap = showProgressMap,
+                                onOpen = { onSelectMedia(sp.id) },
+                                onMarkNext = {
+                                    haptics.toggle()
+                                    scope.launch {
+                                        val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                        val dao = container.mediaDao
+                                        val sync = container.syncManager()
+                                        if (sp.type.contains("TV", ignoreCase = true)) {
+                                            val nextEp = showProgressMap[sp.id]?.nextEpisode
+                                            if (nextEp != null) {
+                                                dao.setEpisodeWatched(nextEp.uniqueId, true, now)
+                                                sync.pushEpisodeWatch(MediaIds.tmdbIdOf(nextEp.showId).toString(), nextEp.seasonNumber, nextEp.episodeNumber, true)
                                             }
+                                        } else {
+                                            dao.updateState(sp.id, "Completed", now)
+                                            sync.pushMediaUpdate(sp.id, sp.type, "Completed", sp.taste)
                                         }
                                     }
-
-                                    Spacer(modifier = Modifier.height(4.dp))
-
-                                    Text(
-                                        text = spotlightItem.title,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                }
+                            )
+                        }
+                        if (spotlightItems.size > 1) {
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.CenterHorizontally)
+                                    .padding(top = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                repeat(spotlightItems.size) { i ->
+                                    val active = i == pagerState.currentPage
+                                    Box(
+                                        modifier = Modifier
+                                            .size(if (active) 8.dp else 6.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (active) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                            )
                                     )
-
-                                    if (!spotlightItem.overview.isNullOrBlank()) {
-                                        Spacer(modifier = Modifier.height(3.dp))
-                                        Text(
-                                            text = spotlightItem.overview,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color.White.copy(alpha = 0.8f),
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.height(10.dp))
-
-                                    // Action buttons inside hero
-                                    val heroIsTV = spotlightItem.type.contains("TV", ignoreCase = true)
-                                    val heroWishlisted = spotlightItem.state.equals("Wishlist", ignoreCase = true)
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Button(
-                                            onClick = {
-                                                scope.launch {
-                                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                                    val dao = container.mediaDao
-                                                    val sync = container.syncManager()
-                                                    if (heroIsTV) {
-                                                        val nextEp = showProgressMap[spotlightItem.id]?.nextEpisode
-                                                        if (nextEp != null) {
-                                                            dao.setEpisodeWatched(nextEp.uniqueId, true, now)
-                                                            val showTmdbId = MediaIds.tmdbIdOf(nextEp.showId).toString()
-                                                            sync.pushEpisodeWatch(showTmdbId, nextEp.seasonNumber, nextEp.episodeNumber, true)
-                                                        }
-                                                    } else {
-                                                        dao.updateState(spotlightItem.id, "Completed", now)
-                                                        sync.pushMediaUpdate(spotlightItem.id, spotlightItem.type, "Completed", spotlightItem.taste)
-                                                    }
-                                                }
-                                            },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.primary,
-                                                contentColor = MaterialTheme.colorScheme.onPrimary
-                                            ),
-                                            shape = RoundedCornerShape(14.dp),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.PlayArrow,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = if (heroIsTV) "Watch Next" else "Mark Watched",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-
-                                        IconButton(
-                                            onClick = {
-                                                scope.launch {
-                                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                                    val next = if (heroWishlisted) "Active" else "Wishlist"
-                                                    container.mediaDao.updateState(spotlightItem.id, next, now)
-                                                    container.syncManager().pushMediaUpdate(spotlightItem.id, spotlightItem.type, next, spotlightItem.taste)
-                                                }
-                                            },
-                                            modifier = Modifier
-                                                .size(42.dp)
-                                                .clip(RoundedCornerShape(14.dp))
-                                                .background(Color.White.copy(alpha = 0.20f))
-                                        ) {
-                                            Icon(
-                                                imageVector = if (heroWishlisted) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                                contentDescription = if (heroWishlisted) "Remove from Watchlist" else "Add to Watchlist",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -664,6 +507,116 @@ fun SectionHeader(
     }
 }
 
+/** Spotlight hero card used inside the Home carousel. */
+@Composable
+fun HomeSpotlightCard(
+    item: MediaItemEntity,
+    smartBadgesMap: Map<String, BadgeResult>,
+    networkMap: Map<String, String>,
+    showProgressMap: Map<String, TVShowProgress>,
+    onOpen: () -> Unit,
+    onMarkNext: () -> Unit
+) {
+    val sem = LocalSemanticColors.current
+    val isTV = item.type.contains("TV", ignoreCase = true)
+    ExpressiveCard(
+        onClick = onOpen,
+        shape = ExpressiveShapes.AsymHero,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 4.dp,
+        modifier = Modifier.fillMaxWidth().height(270.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            val heroCover = item.backdropUrl ?: item.posterUrl
+            if (heroCover != null) {
+                AsyncImage(
+                    model = heroCover,
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.20f),
+                                Color.Black.copy(alpha = 0.60f),
+                                Color.Black.copy(alpha = 0.95f)
+                            )
+                        )
+                    )
+            )
+
+            val heroBadge = smartBadgesMap[item.id]?.badge?.label ?: item.state.uppercase()
+            Row(
+                modifier = Modifier.align(Alignment.TopStart).padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(color = MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(20.dp), shadowElevation = 4.dp) {
+                    Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onPrimary))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(heroBadge, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onPrimary, letterSpacing = 0.5.sp)
+                    }
+                }
+            }
+
+            Column(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val realHeroNet = networkMap[item.id]
+                    val heroNetwork = if (!realHeroNet.isNullOrBlank()) {
+                        NetworkResolver.resolveByName(realHeroNet, isTV = isTV)
+                    } else {
+                        NetworkResolver.resolve(item)
+                    }
+                    val epTag = if (isTV) {
+                        showProgressMap[item.id]?.nextEpisode?.let { " • S${it.seasonNumber} E${it.episodeNumber}" } ?: " • S1 E1"
+                    } else ""
+                    Surface(color = Color.White.copy(alpha = 0.15f), shape = RoundedCornerShape(6.dp)) {
+                        Text(
+                            text = if (isTV) "${heroNetwork.shortName}$epTag" else "FEATURE FILM",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                    if (!item.taste.isNullOrBlank() && item.taste != "None") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Star, contentDescription = null, tint = sem.gold, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(item.taste.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = sem.gold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(item.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+                if (!item.overview.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(item.overview, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = onMarkNext,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (isTV) "Watch Next" else "Mark Watched", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
 /**
  * Live countdown label. Recomposes on every tick of the app-wide clock published
  * through LocalNowMillis, so "in 12m" actually counts down.
@@ -700,7 +653,7 @@ fun HomePosterCard(
 
     ExpressiveCard(
         onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
+        shape = ExpressiveShapes.AsymPoster,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f),
         tonalElevation = 2.dp,
         modifier = Modifier

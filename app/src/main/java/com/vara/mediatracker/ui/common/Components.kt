@@ -1,5 +1,6 @@
 package com.vara.mediatracker.ui.common
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -394,6 +395,8 @@ fun ExpressiveNavigationBar(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptics = rememberHaptics()
+    val motion = LocalMotion.current
     Surface(
         shape = RoundedCornerShape(32.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.95f),
@@ -418,27 +421,36 @@ fun ExpressiveNavigationBar(
                         .clip(RoundedCornerShape(20.dp))
                         .springClickable(
                             pressedScale = 0.90f,
-                            onClick = { onSelect(index) }
+                            onClick = {
+                                haptics.tap()
+                                onSelect(index)
+                            }
                         )
                         .padding(vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    val pillColor by animateColorAsState(
+                        targetValue = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        animationSpec = tween(motion.FAST),
+                        label = "navPill"
+                    )
+                    val iconColor by animateColorAsState(
+                        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        animationSpec = tween(motion.FAST),
+                        label = "navIcon"
+                    )
                     Box(
                         modifier = Modifier
                             .width(44.dp)
                             .height(26.dp)
                             .clip(RoundedCornerShape(13.dp))
-                            .background(
-                                if (selected) MaterialTheme.colorScheme.primary
-                                else Color.Transparent
-                            ),
+                            .background(pillColor),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = destination.icon,
                             contentDescription = destination.label,
-                            tint = if (selected) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = iconColor,
                             modifier = Modifier.size(18.dp)
                         )
                     }

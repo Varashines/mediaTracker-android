@@ -508,7 +508,7 @@ fun CalendarReleaseCard(
 
     ExpressiveCard(
         onClick = onClick,
-        shape = ExpressiveShapes.Hero,
+        shape = ExpressiveShapes.AsymCard,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         tonalElevation = 2.dp,

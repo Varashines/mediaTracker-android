@@ -156,7 +156,7 @@ private fun SmartReleaseRow(item: MediaItemEntity, onClick: () -> Unit) {
     val isTv = item.type.contains("TV", ignoreCase = true)
     ExpressiveCard(
         onClick = onClick,
-        shape = ExpressiveShapes.Card,
+        shape = ExpressiveShapes.AsymCard,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
         pressedScale = 0.97f,

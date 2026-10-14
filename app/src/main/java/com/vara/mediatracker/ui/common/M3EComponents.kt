@@ -1,8 +1,14 @@
 package com.vara.mediatracker.ui.common
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.material3.ripple
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,21 +20,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
+import com.vara.mediatracker.ui.theme.LocalMotion
 import java.util.Locale
 
 /**
@@ -127,7 +139,8 @@ fun StatusChip(
     }
 }
 
-/** Thin expressive progress bar with an optional mono fraction label. */
+/** Expressive wavy progress bar with an optional mono fraction label. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ProgressLine(
     fraction: Float,
@@ -139,21 +152,12 @@ fun ProgressLine(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction.coerceIn(0f, 1f))
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(MaterialTheme.colorScheme.primary)
-            )
-        }
+        LinearWavyProgressIndicator(
+            progress = { fraction.coerceIn(0f, 1f) },
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+        )
         if (label != null) {
             Text(
                 text = label,
@@ -191,17 +195,42 @@ fun NetworkBadgeTile(
  * Flat M3E card: `surfaceContainerHigh` with a hairline outline, no elevation. The
  * prototype's cards read as tinted planes rather than floating shadows.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FlatCard(
     modifier: Modifier = Modifier,
     shape: Shape = ExpressiveShapes.Card,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     val border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
     if (onClick != null) {
-        Surface(onClick = onClick, shape = shape, color = containerColor, border = border, modifier = modifier) {
+        val interaction = remember { MutableInteractionSource() }
+        val pressed by interaction.collectIsPressedAsState()
+        val motion = LocalMotion.current
+        val scale by animateFloatAsState(
+            targetValue = if (pressed) 0.97f else 1f,
+            animationSpec = motion.snappy,
+            label = "flatCardScale"
+        )
+        Surface(
+            shape = shape,
+            color = containerColor,
+            border = border,
+            modifier = modifier
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .combinedClickable(
+                    interactionSource = interaction,
+                    indication = ripple(),
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                )
+        ) {
             content()
         }
     } else {
