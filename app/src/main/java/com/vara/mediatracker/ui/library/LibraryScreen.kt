@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -159,11 +160,11 @@ fun LibraryScreen(
         }
 
         LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
+            columns = GridCells.Fixed(3),
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 14.dp, top = 6.dp, end = 14.dp, bottom = 140.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(start = 12.dp, top = 6.dp, end = 12.dp, bottom = 140.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // 1. Top Header: "COLLECTION" / "Media Library" + count pill
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
@@ -653,107 +654,122 @@ fun LibraryPosterCard(
     selected: Boolean = false,
     onLongClick: (() -> Unit)? = null
 ) {
-    // 2-column M3E card: poster + status chip + title + progress line.
+    // Poster-only M3E tile: full-bleed art with small overlays, no captions.
     FlatCard(
         onClick = onClick,
         onLongClick = onLongClick,
-        shape = ExpressiveShapes.AsymCard,
+        shape = ExpressiveShapes.AsymPoster,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+        ) {
+            // Cover: poster, falling back to the backdrop when no poster exists.
+            val cover = item.posterUrl ?: item.backdropUrl
+            if (cover != null) {
+                AsyncImage(
+                    model = cover,
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Movie,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+
+            // Bottom scrim so the title pill stays legible over any artwork.
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f / 3f)
-                    .clip(ExpressiveShapes.AsymPoster)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-            ) {
-                if (item.posterUrl != null) {
-                    AsyncImage(
-                        model = item.posterUrl,
-                        contentDescription = item.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Movie,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(28.dp)
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.62f))
                         )
-                    }
-                }
+                    )
+            )
 
-                if (statusLabel != null) {
-                    StatusChip(
-                        label = statusLabel,
-                        tone = ChipTone.Accent,
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(8.dp)
+            // Title pill — only when there's no poster and we're showing the backdrop.
+            if (item.posterUrl == null) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color.Black.copy(alpha = 0.55f),
+                    contentColor = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .padding(6.dp)
+                ) {
+                    Text(
+                        text = item.title,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
+            }
 
-                if (item.taste.equals("Loved", true) || item.taste.equals("Love", true)) {
-                    Surface(
-                        color = Color(0xFFFF2D55),
-                        shape = RoundedCornerShape(10.dp),
+            // State chip (top-start), hidden while selecting.
+            if (!selectionMode && statusLabel != null) {
+                StatusChip(
+                    label = statusLabel,
+                    tone = ChipTone.Accent,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                )
+            }
+
+            if (item.taste.equals("Loved", true) || item.taste.equals("Love", true)) {
+                Surface(
+                    color = Color(0xFFFF2D55),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = null,
+                        tint = Color.White,
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier
-                                .padding(4.dp)
-                                .size(12.dp)
-                        )
-                    }
+                            .padding(4.dp)
+                            .size(12.dp)
+                    )
                 }
+            }
 
-                if (selectionMode) {
-                    if (selected) {
-                        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (selected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.55f),
-                        border = if (selected) null else BorderStroke(2.dp, Color.White),
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(8.dp)
-                            .size(24.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            if (selected) {
-                                Icon(Icons.Default.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
-                            }
+            if (selectionMode) {
+                if (selected) {
+                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+                }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (selected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.55f),
+                    border = if (selected) null else BorderStroke(2.dp, Color.White),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .size(24.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (selected) {
+                            Icon(Icons.Default.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
             }
-
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = progressLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
 }

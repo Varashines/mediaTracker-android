@@ -271,6 +271,20 @@ object SyncScheduler {
         }
     }
 
+    /**
+     * Recompute smart badges when the app opens (throttled). Badges go stale purely with
+     * the passage of time — a PREMIERE/SOON window closing — so opening the app should
+     * refresh them instead of waiting up to 15 minutes for the periodic run. Runs
+     * regardless of the background-sync toggle, since it is local and cheap.
+     */
+    fun refreshBadgesOnForeground(context: Context, throttleMs: Long = FOREGROUND_THROTTLE_MS) {
+        val now = System.currentTimeMillis()
+        val last = prefs(context).getLong(KEY_LAST_FOREGROUND_BADGE, 0L)
+        if (now - last < throttleMs) return
+        prefs(context).edit().putLong(KEY_LAST_FOREGROUND_BADGE, now).apply()
+        refreshBadgesNow(context)
+    }
+
     const val TAG_SYNC = "mediatracker-sync"
     const val TAG_BADGE = "mediatracker-badge"
     const val TAG_ENRICH = "mediatracker-enrichment"
@@ -288,6 +302,7 @@ object SyncScheduler {
     private const val KEY_LAST_FOREGROUND_SYNC = "last_foreground_sync"
     private const val KEY_LAST_FOREGROUND_ENRICH = "last_foreground_enrich"
     private const val KEY_LAST_FOREGROUND_METADATA = "last_foreground_metadata"
+    private const val KEY_LAST_FOREGROUND_BADGE = "last_foreground_badge"
     private const val KEY_LAST_SYNC = "last_sync"
     private const val PREFS_NAME = "media_tracker_sync_prefs"
     private const val FOREGROUND_THROTTLE_MS = 5 * 60 * 1000L

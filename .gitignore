@@ -11,3 +11,5 @@ app/build/
 .cxx
 *.apk
 *.aab
+keystore.properties
+keystore/

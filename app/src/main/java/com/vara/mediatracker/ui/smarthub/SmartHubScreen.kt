@@ -24,6 +24,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.badge.SmartBadge
 import com.vara.mediatracker.data.model.MediaIds
+import com.vara.mediatracker.data.badge.BadgeEngine
+import com.vara.mediatracker.util.AirTimeResolver
+import java.util.Date
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.ExpressiveCard
@@ -57,6 +60,8 @@ fun SmartHubScreen(
     var activeTitle by remember { mutableStateOf<String?>(null) }
     var activeItems by remember { mutableStateOf<List<MediaItemEntity>>(emptyList()) }
     var activeGroupByWeek by remember { mutableStateOf(false) }
+    var activeSortAscending by remember { mutableStateOf(false) }
+    var activeShowCountdown by remember { mutableStateOf(false) }
 
     // The library join is produced once, off the UI thread, by the activity-scoped
     // ViewModel (see LibraryViewModel). This screen used to collect the whole ~9k-row
@@ -75,9 +80,22 @@ fun SmartHubScreen(
         items, smartBadgesMap, episodesByShow, todayDate
     ) {
         value = withContext(Dispatchers.Default) {
+            val now = Date()
             SmartCategory.values().associateWith { category ->
                 items.filter { item ->
                     val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+                    // Resolved premiere/next-airing instant (TV: next unwatched episode; movie: release date).
+                    val resolved = key?.let { k ->
+                        episodesByShow[k]
+                            ?.filter { !it.isWatched }
+                            ?.minWithOrNull(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                            ?.let { ep ->
+                                AirTimeResolver.resolveAirInstant(
+                                    ep.airDate?.take(10), ep.airTime, ep.airstamp,
+                                    item.timezone, AirTimeResolver.serviceHint(item.network, item.studios, item.genres)
+                                )?.time
+                            }
+                    } ?: item.releaseDate?.let { BadgeEngine.parseDate(it)?.time }
                     SmartCategoryMatcher.matches(
                         category = category,
                         item = item,
@@ -85,17 +103,48 @@ fun SmartHubScreen(
                         runtimeMinutes = container.preferences.getCachedRuntime(item.id),
                         episodeRuntimeMinutes = key?.let { k ->
                             episodesByShow[k]?.firstOrNull { (it.runtime ?: 0) > 0 }?.runtime
-                        }
+                        },
+                        resolvedInstant = resolved,
+                        now = now
                     )
                 }
             }
         }
     }
 
-    fun openSection(title: String, filtered: List<MediaItemEntity>, groupByWeek: Boolean = false) {
+    // mediaId -> resolved instant of the next unwatched episode, so Premiere Radar can
+    // count down to a season premiere even when the item's own nextAiringInstant is empty.
+    val nextAirInstants = remember(items, core.episodesByShow) {
+        items.asSequence()
+            .filter { it.type.contains("TV", ignoreCase = true) }
+            .associate { item ->
+                val next = core.episodesByShow[MediaIds.tvShowKey(item.id)]
+                    ?.filter { !it.isWatched }
+                    ?.minWithOrNull(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                item.id to (next?.let { ep ->
+                    AirTimeResolver.resolveAirInstant(
+                        dateString = ep.airDate?.take(10),
+                        time = ep.airTime,
+                        airstamp = ep.airstamp,
+                        timezone = item.timezone,
+                        serviceName = AirTimeResolver.serviceHint(item.network, item.studios, item.genres)
+                    )?.time
+                } ?: 0L)
+            }
+    }
+
+    fun openSection(
+        title: String,
+        filtered: List<MediaItemEntity>,
+        groupByWeek: Boolean = false,
+        sortAscending: Boolean = false,
+        showCountdown: Boolean = false
+    ) {
         activeTitle = title
         activeItems = filtered
         activeGroupByWeek = groupByWeek
+        activeSortAscending = sortAscending
+        activeShowCountdown = showCountdown
     }
 
     val title = activeTitle
@@ -105,7 +154,10 @@ fun SmartHubScreen(
             items = activeItems,
             onSelectMedia = onSelectMedia,
             onBack = { activeTitle = null; activeItems = emptyList() },
-            groupByWeek = activeGroupByWeek
+            groupByWeek = activeGroupByWeek,
+            sortAscending = activeSortAscending,
+            showCountdown = activeShowCountdown,
+            nextAirInstants = nextAirInstants
         )
         return
     }
@@ -198,7 +250,10 @@ fun SmartHubScreen(
                                 title = category.title,
                                 filtered = members,
                                 // Released This Week is bucketed by weekday, like macOS.
-                                groupByWeek = category == SmartCategory.ON_THIS_WEEK
+                                groupByWeek = category == SmartCategory.ON_THIS_WEEK,
+                                // Premiere Radar counts down to the next airing, soonest first.
+                                sortAscending = category == SmartCategory.SMART_UPCOMING,
+                                showCountdown = category == SmartCategory.SMART_UPCOMING
                             )
                         }
                     )
@@ -209,7 +264,17 @@ fun SmartHubScreen(
                 items = items,
                 allEpisodes = core.allEpisodes,
                 badgeRows = core.badgeRows,
-                onSelectNode = { title, filtered -> openSection(title, filtered) }
+                onSelectNode = { title, filtered ->
+                    // The Premiere node sorts like the Smart hub's Premiere Radar:
+                    // soonest airing/release first, with a countdown.
+                    val isPremiere = title.equals("PREMIERE", ignoreCase = true)
+                    openSection(
+                        title = title,
+                        filtered = filtered,
+                        sortAscending = isPremiere,
+                        showCountdown = isPremiere
+                    )
+                }
             )
         }
     }

@@ -44,7 +44,22 @@ data class TMDBCastMember(
 @Serializable
 data class TMDBCreditsResponse(
     val id: Int? = null,
-    val cast: List<TMDBCastMember> = emptyList()
+    val cast: List<TMDBCastMember> = emptyList(),
+    val crew: List<TMDBCrewMember> = emptyList()
+)
+
+@Serializable
+data class TMDBCrewMember(
+    val id: Int? = null,
+    val name: String? = null,
+    val job: String? = null,
+    val department: String? = null
+)
+
+@Serializable
+data class TMDBProductionCountry(
+    val iso_3166_1: String? = null,
+    val name: String? = null
 )
 
 @Serializable
@@ -106,7 +121,11 @@ data class TMDBDetailsResponse(
     /** TMDB status, e.g. "Ended", "Returning Series", "Released". */
     val status: String? = null,
     /** TV creators. */
-    val created_by: List<TMDBPerson>? = null
+    val created_by: List<TMDBPerson>? = null,
+    /** Production countries. */
+    val production_countries: List<TMDBProductionCountry>? = null,
+    /** TV origin country codes. */
+    val origin_country: List<String>? = null
 )
 
 @Serializable
@@ -337,6 +356,25 @@ class TMDBClient(
             applyAuth()
             parameter("query", query)
             parameter("include_adult", false)
+        }.body()
+    }
+
+    /** Trending across movies + TV (window: "day" or "week"). */
+    suspend fun getTrending(window: String = "week"): Result<TMDBSearchResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/trending/all/$window") {
+            applyAuth()
+        }.body()
+    }
+
+    suspend fun getMovieRecommendations(id: Int): Result<TMDBSearchResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/movie/$id/recommendations") {
+            applyAuth()
+        }.body()
+    }
+
+    suspend fun getTVRecommendations(id: Int): Result<TMDBSearchResponse> = runCatching {
+        client.get("https://api.themoviedb.org/3/tv/$id/recommendations") {
+            applyAuth()
         }.body()
     }
 

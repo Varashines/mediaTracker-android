@@ -51,6 +51,7 @@ import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBDetailsResponse
+import com.vara.mediatracker.data.api.TMDBSearchItem
 import com.vara.mediatracker.data.api.TmdbResponseCache
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
@@ -59,6 +60,7 @@ import com.vara.mediatracker.data.model.TVSeasonEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.common.ChipTone
+import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
 import com.vara.mediatracker.ui.common.ProgressLine
 import com.vara.mediatracker.ui.common.SectionHeader
 import com.vara.mediatracker.ui.common.StatusChip
@@ -102,6 +104,13 @@ private fun matchedState(state: String): TrackingState =
 
 private fun isoNow(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
 
+/** Detail view tabs. TV defaults to Episodes; movies default to Info. */
+private enum class DetailTab(val label: String) {
+    Episodes("Episodes"),
+    Info("Info"),
+    Related("Related")
+}
+
 /**
  * Tracking-first detail screen: a compact hero (poster, genre, rating, release pill),
  * status + taste pills, a metadata strip, the episode checklist with quick mark-watched,
@@ -112,7 +121,8 @@ private fun isoNow(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Loca
 fun DetailScreen(
     mediaId: String,
     container: AppContainer,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenMedia: (String) -> Unit = {}
 ) {
     val db = container.database
     val prefs = container.preferences
@@ -146,6 +156,8 @@ fun DetailScreen(
     var tmdbDetails by remember { mutableStateOf<TMDBDetailsResponse?>(null) }
     var contentRating by remember { mutableStateOf<String?>(null) }
     var castMembers by remember { mutableStateOf<List<com.vara.mediatracker.data.api.TMDBCastMember>>(emptyList()) }
+    var directorName by remember { mutableStateOf<String?>(null) }
+    var relatedItems by remember { mutableStateOf<List<com.vara.mediatracker.data.api.TMDBSearchItem>>(emptyList()) }
     var selectedActor by remember { mutableStateOf<com.vara.mediatracker.data.api.TMDBCastMember?>(null) }
     var titleLogoUrl by remember { mutableStateOf<String?>(null) }
     var loadFailed by remember { mutableStateOf(false) }
@@ -248,6 +260,18 @@ fun DetailScreen(
                             ?: (if (isMovie) tmdbClient.getMovieCredits(tmdbId) else tmdbClient.getTVCredits(tmdbId))
                                 .getOrNull()?.also { TmdbResponseCache.put(creditsKey, it) }
                         castMembers = credits?.cast?.take(15) ?: emptyList()
+                        directorName = credits?.crew?.firstOrNull { it.job == "Director" }?.name
+
+                        // Related (TMDB recommendations), top 6 with artwork.
+                        val recKey = "recommendations:${loaded.id}"
+                        relatedItems = TmdbResponseCache.get<List<com.vara.mediatracker.data.api.TMDBSearchItem>>(recKey) ?: run {
+                            val fetched = (if (isMovie) tmdbClient.getMovieRecommendations(tmdbId) else tmdbClient.getTVRecommendations(tmdbId))
+                                .getOrNull()?.results
+                                ?.filter { it.poster_path != null }
+                                ?.take(6)
+                                .orEmpty()
+                            fetched.also { TmdbResponseCache.put(recKey, it) }
+                        }
 
                         if (!isMovie) {
                             isLoadingEpisodes = true
@@ -384,6 +408,36 @@ fun DetailScreen(
         else -> MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
     }
 
+    var selectedTab by remember(mediaId, isTV) {
+        mutableStateOf(if (isTV) DetailTab.Episodes else DetailTab.Info)
+    }
+
+    // Info-tab facts.
+    val statusFact = tmdbDetails?.status?.takeIf { it.isNotBlank() }
+    val countryFact = remember(tmdbDetails) {
+        tmdbDetails?.production_countries?.mapNotNull { it.name }?.filter { it.isNotBlank() }?.joinToString(", ")?.takeIf { it.isNotBlank() }
+            ?: tmdbDetails?.origin_country?.joinToString(", ")?.takeIf { it.isNotBlank() }
+    }
+    val languageFact = remember(tmdbDetails) {
+        tmdbDetails?.original_language?.takeIf { it.isNotBlank() }?.let { code ->
+            runCatching { Locale(code).displayLanguage }.getOrNull()?.takeIf { it.isNotBlank() } ?: code.uppercase(Locale.US)
+        }
+    }
+    val releaseFact = remember(tmdbDetails, item.releaseDate, isTV) {
+        val raw = if (isTV) tmdbDetails?.first_air_date ?: item.releaseDate else tmdbDetails?.release_date ?: item.releaseDate
+        if (raw.isNullOrBlank()) null else runCatching {
+            val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(raw.take(10))
+            SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(parsed!!)
+        }.getOrNull() ?: raw.take(4)
+    }
+    val productionFact = remember(tmdbDetails) {
+        (tmdbDetails?.production_companies?.mapNotNull { it.name }.orEmpty() + tmdbDetails?.networks?.mapNotNull { it.name }.orEmpty())
+            .distinct().take(4).joinToString(", ").takeIf { it.isNotBlank() }
+    }
+    val creatorsFact = remember(tmdbDetails) {
+        tmdbDetails?.created_by?.mapNotNull { it.name }?.filter { it.isNotBlank() }?.take(3)?.joinToString(", ")?.takeIf { it.isNotBlank() }
+    }
+
     val nextUpInstant = remember(nextUpEpisode, item.network, item.studios, item.genres, item.timezone) {
         nextUpEpisode?.let {
             parseAirInstant(it.airDate, it.airTime, it.airstamp, item.timezone, AirTimeResolver.serviceHint(item.network, item.studios, item.genres))
@@ -405,6 +459,37 @@ fun DetailScreen(
             db.mediaDao().updateTaste(item.id, next)
             mediaItem = item.copy(taste = next)
             syncManager.pushMediaUpdate(item.id, item.type, item.state, next)
+        }
+    }
+
+    /** Open a related title if it's already tracked, otherwise add it from TMDB first. */
+    fun openOrAddRelated(res: TMDBSearchItem) {
+        val isMovie = res.media_type == "movie"
+        val relId = (if (isMovie) "movie_" else "tv_") + res.id
+        val relTitle = res.title ?: res.name ?: "Untitled"
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        scope.launch {
+            val existing = runCatching { db.mediaDao().getMediaById(relId) }.getOrNull()
+            if (existing == null) {
+                val now = isoNow()
+                val newItem = MediaItemEntity(
+                    id = relId,
+                    title = relTitle,
+                    overview = res.overview ?: "",
+                    posterUrl = TMDBClient.buildPosterUrl(res.poster_path),
+                    backdropUrl = TMDBClient.buildPosterUrl(res.backdrop_path),
+                    releaseDate = res.release_date ?: res.first_air_date,
+                    type = if (isMovie) "Movie" else "TV Show",
+                    state = "Wishlist",
+                    lastInteractionDate = now,
+                    lastStateChangeDate = now,
+                    updatedAt = now
+                )
+                db.mediaDao().upsertMedia(newItem)
+                syncManager.pushMediaUpdate(relId, newItem.type, "Wishlist", "None")
+                AppToast.show("Added \"$relTitle\"")
+            }
+            onOpenMedia(relId)
         }
     }
 
@@ -430,8 +515,12 @@ fun DetailScreen(
             ) {
                 // Hero: poster, genre + rating + release pill, wordmark logo.
                 item {
-                    val backdropUrl = remember(item.backdropUrl, tmdbDetails?.backdrop_path) {
-                        TMDBClient.buildBackdropUrl(tmdbDetails?.backdrop_path) ?: item.backdropUrl
+                    // Backdrop, falling back to the poster when no backdrop art exists.
+                    val backdropUrl = remember(item.backdropUrl, item.posterUrl, tmdbDetails?.backdrop_path, tmdbDetails?.poster_path) {
+                        TMDBClient.buildBackdropUrl(tmdbDetails?.backdrop_path)
+                            ?: item.backdropUrl
+                            ?: TMDBClient.buildPosterUrl(tmdbDetails?.poster_path)
+                            ?: item.posterUrl
                     }
                     val genres = tmdbDetails?.genres?.map { it.name }
                         ?: prefs.getCachedGenres(item.id)?.split(",")?.map { it.trim() }
@@ -521,69 +610,74 @@ fun DetailScreen(
                     }
                 }
 
-                // Tracking card: status trigger + taste reaction button.
+                // Tracking chips: status + taste, compact and left-aligned.
                 item {
-                    Surface(
-                        shape = ExpressiveShapes.AsymCard,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            onClick = { statusPickerOpen = true },
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
                         ) {
-                            Row(
-                                modifier = Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { statusPickerOpen = true },
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(38.dp)) {
+                            Row(modifier = Modifier.padding(start = 8.dp, end = 10.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp)) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Icon(currentMatchedState.icon, contentDescription = null, modifier = Modifier.size(19.dp))
+                                        Icon(currentMatchedState.icon, contentDescription = null, modifier = Modifier.size(14.dp))
                                     }
                                 }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("TRACKING STATUS", style = AppTextStyles.MonoLabel, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f))
-                                    Text(currentMatchedState.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                }
-                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Change status", tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f), modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(currentMatchedState.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Change status", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
+                        }
 
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            Box {
-                                Surface(
-                                    onClick = { tasteMenuOpen = true },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
-                                    modifier = Modifier.size(40.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(tasteIcon, contentDescription = "Taste", tint = tasteTint, modifier = Modifier.size(20.dp))
-                                    }
+                        Box {
+                            Surface(
+                                onClick = { tasteMenuOpen = true },
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                            ) {
+                                Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(tasteIcon, contentDescription = "Taste", tint = tasteTint, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = when {
+                                            isLoved -> "Loved"
+                                            isLiked -> "Liked"
+                                            isDisliked -> "Disliked"
+                                            else -> "Rate"
+                                        },
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
-                                if (tasteMenuOpen) {
-                                    Popup(
-                                        alignment = Alignment.TopEnd,
-                                        offset = IntOffset(0, with(LocalDensity.current) { 46.dp.roundToPx() }),
-                                        onDismissRequest = { tasteMenuOpen = false },
-                                        properties = PopupProperties(focusable = true)
-                                    ) {
-                                        Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 10.dp) {
-                                            Row(modifier = Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                                ReactionButton(Icons.Default.Favorite, isLoved, sem.loved) {
-                                                    tasteMenuOpen = false
-                                                    setTaste(if (isLoved) "None" else "Loved")
-                                                }
-                                                ReactionButton(Icons.Default.ThumbUp, isLiked, sem.liked) {
-                                                    tasteMenuOpen = false
-                                                    setTaste(if (isLiked) "None" else "Liked")
-                                                }
-                                                ReactionButton(Icons.Default.ThumbDown, isDisliked, sem.disliked) {
-                                                    tasteMenuOpen = false
-                                                    setTaste(if (isDisliked) "None" else "Disliked")
-                                                }
+                            }
+                            if (tasteMenuOpen) {
+                                Popup(
+                                    alignment = Alignment.TopEnd,
+                                    offset = IntOffset(0, with(LocalDensity.current) { 46.dp.roundToPx() }),
+                                    onDismissRequest = { tasteMenuOpen = false },
+                                    properties = PopupProperties(focusable = true)
+                                ) {
+                                    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 10.dp) {
+                                        Row(modifier = Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            ReactionButton(Icons.Default.Favorite, "Loved", isLoved, sem.loved) {
+                                                tasteMenuOpen = false
+                                                setTaste(if (isLoved) "None" else "Loved")
+                                            }
+                                            ReactionButton(Icons.Default.ThumbUp, "Liked", isLiked, sem.liked) {
+                                                tasteMenuOpen = false
+                                                setTaste(if (isLiked) "None" else "Liked")
+                                            }
+                                            ReactionButton(Icons.Default.ThumbDown, "Disliked", isDisliked, sem.disliked) {
+                                                tasteMenuOpen = false
+                                                setTaste(if (isDisliked) "None" else "Disliked")
                                             }
                                         }
                                     }
@@ -593,11 +687,46 @@ fun DetailScreen(
                     }
                 }
 
-                if (isTV) {
+                // Movie: primary watch toggle (always visible, outside the tabs).
+                if (!isTV) {
                     item {
-                        SectionHeader(title = "Episodes", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                        val completed = item.state.equals("Completed", ignoreCase = true)
+                        Button(
+                            onClick = {
+                                val next = if (completed) "Active" else "Completed"
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                scope.launch {
+                                    db.mediaDao().updateState(item.id, next, isoNow())
+                                    mediaItem = item.copy(state = next)
+                                    syncManager.pushMediaUpdate(item.id, item.type, next, item.taste)
+                                    AppToast.show(if (completed) "Marked as watching" else "Marked as watched")
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(52.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Icon(if (completed) Icons.Default.Refresh else Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (completed) "Mark Unwatched" else "Mark Watched", fontWeight = FontWeight.Bold)
+                        }
                     }
+                }
 
+                // Tabs: Episodes / Info / Related.
+                item {
+                    val tabs = if (isTV) listOf(DetailTab.Episodes, DetailTab.Info, DetailTab.Related)
+                               else listOf(DetailTab.Info, DetailTab.Related)
+                    ExpressiveSegmentedControl(
+                        items = tabs,
+                        selectedItem = selectedTab,
+                        onItemSelected = { selectedTab = it },
+                        labelProvider = { it.label },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+
+                // ----- Episodes (TV only) -----
+                if (isTV && selectedTab == DetailTab.Episodes) {
                     if (seasonsList.size > 1) {
                         item {
                             androidx.compose.foundation.lazy.LazyRow(
@@ -618,7 +747,6 @@ fun DetailScreen(
                         }
                     }
 
-                    // Season progress — only while the selected season is unfinished.
                     if (currentSeasonEpisodes.isNotEmpty()) {
                         val seasonWatched = currentSeasonEpisodes.count { it.isWatched }
                         val seasonTotal = currentSeasonEpisodes.size
@@ -656,85 +784,118 @@ fun DetailScreen(
                             )
                         }
                     }
-                } else {
-                    item {
-                        val completed = item.state.equals("Completed", ignoreCase = true)
-                        Button(
-                            onClick = {
-                                val next = if (completed) "Active" else "Completed"
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                scope.launch {
-                                    db.mediaDao().updateState(item.id, next, isoNow())
-                                    mediaItem = item.copy(state = next)
-                                    syncManager.pushMediaUpdate(item.id, item.type, next, item.taste)
-                                    AppToast.show(if (completed) "Marked as watching" else "Marked as watched")
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(52.dp),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Icon(if (completed) Icons.Default.Refresh else Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (completed) "Mark Unwatched" else "Mark Watched", fontWeight = FontWeight.Bold)
-                        }
-                    }
                 }
 
-                // Synopsis, clamped.
-                if (item.overview.isNotBlank()) {
-                    item {
-                        var expanded by remember(item.id) { mutableStateOf(false) }
-                        var hasOverflow by remember(item.id) { mutableStateOf(false) }
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                            SectionHeader(title = "Synopsis")
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = item.overview,
-                                style = MaterialTheme.typography.bodyMedium,
-                                lineHeight = 21.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = if (expanded) Int.MAX_VALUE else 3,
-                                overflow = TextOverflow.Ellipsis,
-                                onTextLayout = { if (!expanded) hasOverflow = it.hasVisualOverflow }
-                            )
-                            if (hasOverflow || expanded) {
-                                Spacer(modifier = Modifier.height(4.dp))
+                // ----- Info -----
+                if (selectedTab == DetailTab.Info) {
+                    // Synopsis (top).
+                    if (item.overview.isNotBlank()) {
+                        item {
+                            var expanded by remember(item.id) { mutableStateOf(false) }
+                            var hasOverflow by remember(item.id) { mutableStateOf(false) }
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                SectionHeader(title = "Synopsis")
+                                Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = if (expanded) "See less" else "See more",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { expanded = !expanded }.padding(horizontal = 4.dp, vertical = 4.dp)
+                                    text = item.overview,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    lineHeight = 21.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = if (expanded) Int.MAX_VALUE else 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                    onTextLayout = { if (!expanded) hasOverflow = it.hasVisualOverflow }
                                 )
+                                if (hasOverflow || expanded) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = if (expanded) "See less" else "See more",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { expanded = !expanded }.padding(horizontal = 4.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Genres + key-value facts.
+                    val infoGenres = tmdbDetails?.genres?.map { it.name }
+                        ?: prefs.getCachedGenres(item.id)?.split(",")?.map { it.trim() }
+                        ?: emptyList()
+                    item {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                            if (infoGenres.isNotEmpty()) FactRow("Genres", infoGenres.joinToString(", "))
+                            releaseFact?.let { FactRow(if (isTV) "First aired" else "Released", it) }
+                            FactRow("Runtime", timeLabel)
+                            statusFact?.let { FactRow("Status", it) }
+                            countryFact?.let { FactRow("Country", it) }
+                            languageFact?.let { FactRow("Language", it) }
+                            if (isTV) {
+                                creatorsFact?.let { FactRow("Created by", it) }
+                            } else {
+                                directorName?.takeIf { it.isNotBlank() }?.let { FactRow("Directed by", it) }
+                            }
+                            productionFact?.let { FactRow("Production", it) }
+                        }
+                    }
+
+                    if (castMembers.isNotEmpty()) {
+                        item {
+                            Column(modifier = Modifier.padding(top = 8.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    SectionHeader(title = "Cast & Characters", modifier = Modifier.weight(1f))
+                                    Text("Tap for bio", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                androidx.compose.foundation.lazy.LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    items(castMembers, key = { it.id }) { actor ->
+                                        CastMemberCard(actor = actor, onClick = { selectedActor = actor })
+                                    }
+                                }
+                            }
+                        }
+                    } else if (detailsLoading) {
+                        item {
+                            Column(modifier = Modifier.padding(top = 8.dp)) {
+                                SectionHeader(title = "Cast & Characters", modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                CastSkeletonRow()
                             }
                         }
                     }
                 }
 
-                // Cast.
-                if (castMembers.isNotEmpty()) {
+                // ----- Related -----
+                if (selectedTab == DetailTab.Related) {
                     item {
-                        Column(modifier = Modifier.padding(top = 16.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                SectionHeader(title = "Cast & Characters", modifier = Modifier.weight(1f))
-                                Text("Tap for bio", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            androidx.compose.foundation.lazy.LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                items(castMembers, key = { it.id }) { actor ->
-                                    CastMemberCard(actor = actor, onClick = { selectedActor = actor })
+                        if (relatedItems.isEmpty()) {
+                            Text(
+                                text = if (detailsLoading) "Loading recommendations…" else "No related titles.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        } else {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                relatedItems.chunked(3).forEach { rowItems ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        rowItems.forEach { rel ->
+                                            RelatedPoster(
+                                                item = rel,
+                                                onClick = { openOrAddRelated(rel) },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                        repeat(3 - rowItems.size) { Spacer(modifier = Modifier.weight(1f)) }
+                                    }
                                 }
                             }
-                        }
-                    }
-                } else if (detailsLoading) {
-                    item {
-                        Column(modifier = Modifier.padding(top = 16.dp)) {
-                            SectionHeader(title = "Cast & Characters", modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-                            Spacer(modifier = Modifier.height(8.dp))
-                            CastSkeletonRow()
                         }
                     }
                 }
@@ -970,7 +1131,7 @@ private fun episodeAirLabel(
 
 /** One reaction in the taste popover. */
 @Composable
-private fun ReactionButton(icon: ImageVector, selected: Boolean, accent: Color, onClick: () -> Unit) {
+private fun ReactionButton(icon: ImageVector, label: String, selected: Boolean, accent: Color, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = CircleShape,
@@ -980,7 +1141,7 @@ private fun ReactionButton(icon: ImageVector, selected: Boolean, accent: Color, 
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = icon,
-                contentDescription = null,
+                contentDescription = label,
                 tint = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(22.dp)
             )
@@ -1034,6 +1195,57 @@ private fun SeasonPill(
                     color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                 )
+            }
+        }
+    }
+}
+
+/** A label/value fact row for the Info tab. */
+@Composable
+private fun FactRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = label.uppercase(Locale.US),
+            style = AppTextStyles.MonoLabel,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(96.dp)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+/** Related title poster (same 2:3 size as the library grid). */
+@Composable
+private fun RelatedPoster(
+    item: com.vara.mediatracker.data.api.TMDBSearchItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        shape = ExpressiveShapes.AsymPoster,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = modifier.aspectRatio(2f / 3f)
+    ) {
+        val poster = TMDBClient.buildPosterUrl(item.poster_path)
+        if (poster != null) {
+            AsyncImage(
+                model = poster,
+                contentDescription = item.title ?: item.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
             }
         }
     }

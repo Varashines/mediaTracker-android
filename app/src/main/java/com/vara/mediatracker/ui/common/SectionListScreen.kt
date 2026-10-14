@@ -261,12 +261,9 @@ fun SectionListScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        LinearProgressIndicator(
+                                        LinearWavyProgressIndicator(
                                             progress = { ratio },
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(5.dp)
-                                                .clip(RoundedCornerShape(3.dp)),
+                                            modifier = Modifier.weight(1f),
                                             color = MaterialTheme.colorScheme.primary,
                                             trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                                         )

@@ -61,12 +61,16 @@ object SmartCategoryMatcher {
     /** Badge labels that mean "this just happened", matching macOS `radarBadges`. */
     private val RADAR_BADGES = setOf("NEW", "BINGE DROP", "PREMIERE", "FINALE")
 
+    /** Window after a premiere in which it still counts as "upcoming" for Premiere Radar. */
+    private const val THREE_DAYS_MS = 3 * 86_400_000L
+
     fun matches(
         category: SmartCategory,
         item: MediaItemEntity,
         badgeLabel: String?,
         runtimeMinutes: Int? = null,
         episodeRuntimeMinutes: Int? = null,
+        resolvedInstant: Long? = null,
         now: Date = Date()
     ): Boolean {
         if (item.isSoftDeleted) return false
@@ -82,7 +86,10 @@ object SmartCategoryMatcher {
 
             SmartCategory.CATCH_UP -> badgeLabel == "BEHIND"
 
-            SmartCategory.SMART_UPCOMING -> badgeLabel == "PREMIERE"
+            // Upcoming premieres only: a stale PREMIERE badge on a long-released title
+            // (whose premiere instant is well in the past) must not appear here.
+            SmartCategory.SMART_UPCOMING ->
+                badgeLabel == "PREMIERE" && resolvedInstant != null && resolvedInstant >= now.time - THREE_DAYS_MS
 
             // Radar badges, but only once the title has already aired.
             SmartCategory.RELEASE_RADAR ->

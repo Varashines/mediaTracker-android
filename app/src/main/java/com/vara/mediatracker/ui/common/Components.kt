@@ -55,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -285,6 +286,15 @@ data class NavDestination(
     val label: String,
     val icon: ImageVector
 )
+
+/**
+ * True while a full-screen overlay (detail / search) sits above the tab tree.
+ *
+ * In-screen `BackHandler`s (e.g. a collection list) must yield to the overlay's handler,
+ * otherwise — because they register *after* the overlay's — they steal the back gesture
+ * and pop the screen underneath while the overlay stays open.
+ */
+val LocalOverlayOpen = compositionLocalOf { false }
 /**
  * Stroked rounded rectangle, written out by corner so the path stays a single
  * closed contour the way the launcher icon draws it.

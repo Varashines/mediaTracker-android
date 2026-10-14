@@ -41,9 +41,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -91,8 +94,61 @@ fun SearchScreen(
     var remoteResults by remember { mutableStateOf<List<TMDBSearchItem>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
     var searchedTerm by remember { mutableStateOf("") }
+    var trending by remember { mutableStateOf<List<TMDBSearchItem>>(emptyList()) }
+
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    // Focus the field and raise the keyboard as soon as search opens.
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboard?.show()
+    }
+
+    // Trending (TMDB, this week) shown before the user types.
+    LaunchedEffect(container.preferences.tmdbApiKey) {
+        if (container.preferences.tmdbApiKey.isNotBlank()) {
+            trending = withContext(Dispatchers.IO) {
+                container.tmdbClient().getTrending().getOrNull()?.results
+                    ?.filter { it.media_type == "movie" || it.media_type == "tv" }
+                    ?.take(18)
+                    .orEmpty()
+            }
+        }
+    }
 
     val inLibraryIds = remember(items) { items.mapTo(HashSet()) { it.id } }
+
+    // Open if already in the library, otherwise add from TMDB then open.
+    val openOrAdd: (TMDBSearchItem) -> Unit = { res ->
+        val isMovie = res.media_type == "movie"
+        val mediaId = (if (isMovie) "movie_" else "tv_") + res.id
+        val title = res.title ?: res.name ?: "Untitled"
+        if (mediaId in inLibraryIds) {
+            onSelectMedia(mediaId)
+        } else {
+            scope.launch {
+                val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                val newItem = MediaItemEntity(
+                    id = mediaId,
+                    title = title,
+                    overview = res.overview ?: "",
+                    posterUrl = TMDBClient.buildPosterUrl(res.poster_path),
+                    backdropUrl = TMDBClient.buildPosterUrl(res.backdrop_path),
+                    releaseDate = res.release_date ?: res.first_air_date,
+                    type = if (isMovie) "Movie" else "TV Show",
+                    state = "Wishlist",
+                    lastInteractionDate = now,
+                    lastStateChangeDate = now,
+                    updatedAt = now
+                )
+                container.mediaDao.upsertMedia(newItem)
+                container.syncManager().pushMediaUpdate(mediaId, newItem.type, "Wishlist", "None")
+                AppToast.show("Added \"$title\"")
+                onSelectMedia(mediaId)
+            }
+        }
+    }
 
     val localMatches = remember(items, query) {
         if (query.isBlank()) emptyList()
@@ -177,10 +233,38 @@ fun SearchScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .focusRequester(focusRequester)
             )
         }
 
         when {
+            query.isBlank() && trending.isNotEmpty() -> LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 140.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+                    Text(
+                        text = "Trending this week",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                }
+                items(trending, key = { "trend_${it.media_type}_${it.id}" }) { res ->
+                    val isMovie = res.media_type == "movie"
+                    val mediaId = (if (isMovie) "movie_" else "tv_") + res.id
+                    SearchResultCard(
+                        posterUrl = TMDBClient.buildPosterUrl(res.poster_path),
+                        title = res.title ?: res.name ?: "Untitled",
+                        typeLabel = if (isMovie) "FILM" else "TV",
+                        inLibrary = mediaId in inLibraryIds,
+                        onClick = { openOrAdd(res) }
+                    )
+                }
+            }
+
             query.isBlank() -> EmptyState(
                 icon = Icons.Default.Search,
                 title = "Find something new",
@@ -237,34 +321,7 @@ fun SearchScreen(
                             title = title,
                             typeLabel = if (isMovie) "FILM" else "TV",
                             inLibrary = mediaId in inLibraryIds,
-                            onClick = {
-                                if (mediaId in inLibraryIds) {
-                                    onSelectMedia(mediaId)
-                                } else {
-                                    scope.launch {
-                                        val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                        val newItem = MediaItemEntity(
-                                            id = mediaId,
-                                            title = title,
-                                            overview = res.overview ?: "",
-                                            posterUrl = TMDBClient.buildPosterUrl(res.poster_path),
-                                            backdropUrl = TMDBClient.buildPosterUrl(res.backdrop_path),
-                                            releaseDate = res.release_date ?: res.first_air_date,
-                                            type = if (isMovie) "Movie" else "TV Show",
-                                            state = "Wishlist",
-                                            lastInteractionDate = now,
-                                            lastStateChangeDate = now,
-                                            updatedAt = now
-                                        )
-                                        container.mediaDao.upsertMedia(newItem)
-                                        container.syncManager().pushMediaUpdate(
-                                            mediaId, newItem.type, "Wishlist", "None"
-                                        )
-                                        AppToast.show("Added \"$title\"")
-                                        onSelectMedia(mediaId)
-                                    }
-                                }
-                            }
+                            onClick = { openOrAdd(res) }
                         )
                     }
                 }

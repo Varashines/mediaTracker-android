@@ -1,28 +1,26 @@
 package com.vara.mediatracker.ui.smarthub
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,26 +30,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.common.EmptyState
-import com.vara.mediatracker.ui.common.ExpressiveCard
-import com.vara.mediatracker.ui.theme.ExpressiveShapes
-import java.text.SimpleDateFormat
+import com.vara.mediatracker.ui.common.LocalOverlayOpen
+import com.vara.mediatracker.ui.common.rememberCountdownText
+import com.vara.mediatracker.ui.library.LibraryPosterCard
+import com.vara.mediatracker.util.AirTimeResolver
+import java.util.Date
 import java.util.Locale
 
 /**
- * List for a Smart Hub collection.
+ * 3-column poster grid for a Smart Hub collection — the same poster tiles as the Library.
  *
- * Deliberately minimal: just the title and its release date. The generic section list
- * showed next-episode progress, which is meaningless for these curated views. When
- * [groupByWeek] is set (Released This Week) the titles are bucketed by weekday, matching
- * macOS; otherwise they are listed newest-release first.
+ * When [groupByWeek] is set (Released This Week) titles are bucketed by weekday, matching
+ * macOS. [sortAscending] lists soonest-next-airing first (Premiere Radar); otherwise
+ * newest-release first. [showCountdown] overlays a countdown chip on each poster.
  */
 @Composable
 fun SmartCollectionListScreen(
@@ -59,9 +56,13 @@ fun SmartCollectionListScreen(
     items: List<MediaItemEntity>,
     onSelectMedia: (String) -> Unit,
     onBack: () -> Unit,
-    groupByWeek: Boolean = false
+    groupByWeek: Boolean = false,
+    sortAscending: Boolean = false,
+    showCountdown: Boolean = false,
+    nextAirInstants: Map<String, Long> = emptyMap()
 ) {
-    BackHandler(onBack = onBack)
+    // Yield the back gesture to the detail/search overlay when one is open.
+    BackHandler(enabled = !LocalOverlayOpen.current, onBack = onBack)
 
     Column(
         modifier = Modifier
@@ -116,18 +117,25 @@ fun SmartCollectionListScreen(
             val groups = remember(items, groupByWeek) {
                 if (groupByWeek) groupOnThisWeek(items) else emptyList()
             }
-            val flat = remember(items, groupByWeek) {
-                if (groupByWeek) emptyList() else items.sortedWith(compareByDescending { it.releaseDate ?: "" })
+            val flat = remember(items, groupByWeek, sortAscending) {
+                when {
+                    groupByWeek -> emptyList()
+                    // Soonest resolved airing/release first (Premiere Radar).
+                    sortAscending -> items.sortedBy { resolvedInstant(it, nextAirInstants) ?: Long.MAX_VALUE }
+                    else -> items.sortedWith(compareByDescending { it.releaseDate ?: "" })
+                }
             }
 
-            LazyColumn(
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 140.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                contentPadding = PaddingValues(start = 12.dp, top = 6.dp, end = 12.dp, bottom = 140.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (groupByWeek) {
                     groups.forEach { group ->
-                        item(key = "day_${group.label}") {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "day_${group.label}") {
                             Text(
                                 text = group.label.uppercase(Locale.getDefault()),
                                 fontSize = 11.sp,
@@ -138,96 +146,49 @@ fun SmartCollectionListScreen(
                             )
                         }
                         items(group.items, key = { it.id }) { item ->
-                            SmartReleaseRow(item = item, onClick = { onSelectMedia(item.id) })
+                            LibraryPosterCard(
+                                item = item,
+                                statusLabel = null,
+                                progressLabel = "",
+                                onClick = { onSelectMedia(item.id) }
+                            )
                         }
                     }
                 } else {
                     items(flat, key = { it.id }) { item ->
-                        SmartReleaseRow(item = item, onClick = { onSelectMedia(item.id) })
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SmartReleaseRow(item: MediaItemEntity, onClick: () -> Unit) {
-    val isTv = item.type.contains("TV", ignoreCase = true)
-    ExpressiveCard(
-        onClick = onClick,
-        shape = ExpressiveShapes.AsymCard,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
-        pressedScale = 0.97f,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(46.dp)
-                    .height(64.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-            ) {
-                val cover = item.posterUrl ?: item.backdropUrl
-                if (cover != null) {
-                    AsyncImage(
-                        model = cover,
-                        contentDescription = item.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            imageVector = if (isTv) Icons.Default.Tv else Icons.Default.Movie,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(20.dp)
+                        val countdown = if (showCountdown) {
+                            val instant = remember(item.id, item.nextAiringInstant, item.releaseDate, nextAirInstants[item.id]) {
+                                resolvedInstant(item, nextAirInstants)?.let { Date(it) }
+                            }
+                            rememberCountdownText(instant)
+                        } else null
+                        LibraryPosterCard(
+                            item = item,
+                            statusLabel = countdown,
+                            progressLabel = "",
+                            onClick = { onSelectMedia(item.id) }
                         )
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = formatReleaseDate(item.releaseDate),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Icon(
-                imageVector = if (isTv) Icons.Default.Tv else Icons.Default.Movie,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                modifier = Modifier.size(16.dp)
-            )
         }
     }
 }
 
-private fun formatReleaseDate(releaseDate: String?): String {
-    if (releaseDate.isNullOrBlank() || releaseDate.length < 10) return "Release date unknown"
-    val parsed = runCatching {
-        SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(releaseDate.take(10))
-    }.getOrNull() ?: return releaseDate
-    return SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(parsed)
-}
+/** The item's next-episode instant (from the Hub) if known, else its own airing/release. */
+private fun resolvedInstant(item: MediaItemEntity, nextAirInstants: Map<String, Long>): Long? =
+    nextAirInstants[item.id]?.takeIf { it > 0 } ?: itemAirInstant(item)
+
+/** Resolved next-airing (TVMaze) or release instant for an item, in epoch millis. */
+private fun itemAirInstant(item: MediaItemEntity): Long? =
+    item.nextAiringInstant?.takeIf { it.isNotBlank() }?.let { iso ->
+        AirTimeResolver.resolveAirInstant(
+            dateString = iso.take(10),
+            airstamp = iso,
+            timezone = item.timezone,
+            serviceName = AirTimeResolver.serviceHint(item.network, item.studios, item.genres)
+        )
+    }?.time
+        ?: item.releaseDate?.let { release ->
+            AirTimeResolver.resolveAirInstant(release, serviceName = AirTimeResolver.serviceHint(item.network, item.studios, item.genres))
+        }?.time

@@ -52,10 +52,12 @@ object BadgeComputer {
             badgeFor(item, byShow, declaredByShow, now, computedAt)
         }
 
+        // Full rebuild. Upsert-only (with an orphan prune) never removed a badge that
+        // merely *stopped* qualifying — e.g. a movie past its 3-day PREMIERE window, or
+        // a show past its SOON window — so stale badges stuck around indefinitely and
+        // leaked into Premiere Radar / the Discover badge counts.
+        badgeDao.deleteAllBadges()
         badgeDao.upsertBadges(badges)
-        // Titles that stopped qualifying, or vanished from the library, must not keep
-        // a stale row — otherwise the UI would keep rendering last week's badge.
-        badgeDao.pruneOrphanedBadges()
 
         return badgeDao.badgeCount()
     }

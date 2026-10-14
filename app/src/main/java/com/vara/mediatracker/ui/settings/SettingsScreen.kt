@@ -42,6 +42,8 @@ import androidx.core.content.ContextCompat
 import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import com.vara.mediatracker.ui.common.AppToast
+import com.vara.mediatracker.ui.common.rememberHaptics
+import com.vara.mediatracker.ui.common.springClickable
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.Dispatchers
@@ -88,6 +90,7 @@ fun SettingsScreen(
     val prefs = container.preferences
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val haptics = rememberHaptics()
     val sem = LocalSemanticColors.current
     var currentPresetIndex by remember { mutableIntStateOf(prefs.themePreset) }
     var currentThemeMode by remember { mutableIntStateOf(prefs.themeMode) }
@@ -265,7 +268,7 @@ fun SettingsScreen(
         ) {
             // 1. Minimal Quick Sync Action Card
             Surface(
-                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.AsymCard,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                 tonalElevation = 1.dp,
@@ -358,7 +361,7 @@ fun SettingsScreen(
 
             // 2. Minimal Collapsible Cloud Sync Credentials
             Surface(
-                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.AsymCard,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                 tonalElevation = 1.dp,
@@ -368,7 +371,7 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { isConfigExpanded = !isConfigExpanded },
+                            .springClickable { isConfigExpanded = !isConfigExpanded },
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -479,7 +482,7 @@ fun SettingsScreen(
 
             // 3. Minimal Collapsible TMDB API Metadata
             Surface(
-                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.AsymCard,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                 tonalElevation = 1.dp,
@@ -489,7 +492,7 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { isTmdbExpanded = !isTmdbExpanded },
+                            .springClickable { isTmdbExpanded = !isTmdbExpanded },
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -563,7 +566,7 @@ fun SettingsScreen(
 
             // 3b. Discovery Region — which country's streaming providers to show.
             Surface(
-                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.AsymCard,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                 tonalElevation = 1.dp,
@@ -664,7 +667,7 @@ fun SettingsScreen(
 
             // 4. Background Sync & Periodic Workers (Clean Toggle Card)
             Surface(
-                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.AsymCard,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                 tonalElevation = 1.dp,
@@ -732,7 +735,7 @@ fun SettingsScreen(
             // 5. Appearance & Theme Palette Selector (Same 6 presets as Mac App)
             val activePreset = com.vara.mediatracker.ui.theme.ThemePresets.getPreset(currentPresetIndex)
             Surface(
-                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.Card,
+                shape = com.vara.mediatracker.ui.theme.ExpressiveShapes.AsymCard,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
                 tonalElevation = 1.dp,
@@ -794,6 +797,7 @@ fun SettingsScreen(
                                     val isSelected = currentThemeMode == mode
                                     Surface(
                                         onClick = {
+                                            haptics.tap()
                                             currentThemeMode = mode
                                             prefs.themeMode = mode
                                             onThemeModeChanged(mode)
@@ -879,6 +883,7 @@ fun SettingsScreen(
                             val isSelected = currentPresetIndex == index
                             Surface(
                                 onClick = {
+                                    haptics.tap()
                                     currentPresetIndex = index
                                     onThemePresetChanged(index)
                                 },

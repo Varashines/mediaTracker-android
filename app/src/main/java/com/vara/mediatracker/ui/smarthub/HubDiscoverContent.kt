@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material3.Icon
@@ -27,8 +29,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -264,8 +268,12 @@ private fun FacetSection(
     icon: ImageVector,
     subtitle: String,
     nodes: List<DiscoveryTile>,
+    collapsedCount: Int = 6,
     onNodeClick: (DiscoveryTile) -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+    val shown = if (expanded) nodes else nodes.take(collapsedCount)
+
     Column(modifier = Modifier.padding(horizontal = AppSpacing.gutter)) {
         SectionHeader(title = title)
         Text(
@@ -277,7 +285,7 @@ private fun FacetSection(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        nodes.chunked(2).forEach { rowNodes ->
+        shown.chunked(2).forEach { rowNodes ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -288,6 +296,37 @@ private fun FacetSection(
                     FacetTile(node = node, onClick = { onNodeClick(node) }, modifier = Modifier.weight(1f))
                 }
                 if (rowNodes.size == 1) Spacer(modifier = Modifier.weight(1f))
+            }
+        }
+
+        if (nodes.size > collapsedCount) {
+            Surface(
+                onClick = { expanded = !expanded },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (expanded) "Show less" else "Show more (${nodes.size - collapsedCount})",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
         }
     }

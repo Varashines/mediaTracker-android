@@ -62,6 +62,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 import com.vara.mediatracker.data.api.TMDBClient
+import com.vara.mediatracker.data.api.TmdbResponseCache
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.ui.common.TVShowProgress
 import com.vara.mediatracker.ui.theme.SemanticColors
@@ -114,6 +115,9 @@ fun HomeScreen(
         }
     }
 
+    // Title-treatment logo cache for the hero cards: mediaId -> logo URL.
+    val logoMap = remember { mutableStateMapOf<String, String>() }
+
     // Force network refresh trigger state
     var forceNetworkRefreshCount by remember { mutableIntStateOf(0) }
 
@@ -149,6 +153,32 @@ fun HomeScreen(
                         container.preferences.setCachedNetwork(item.id, net)
                     }
                 }
+            }
+        }
+    }
+
+    // Fetch the wordmark logo for the spotlight hero cards (title name is the fallback).
+    val spotlightIds = remember(spotlightItems) { spotlightItems.map { it.id } }
+    LaunchedEffect(spotlightIds, container.preferences.tmdbApiKey) {
+        val apiKey = container.preferences.tmdbApiKey
+        if (!apiKey.isNullOrBlank()) {
+            val tmdbClient = TMDBClient(apiKey)
+            for (item in spotlightItems) {
+                if (logoMap.containsKey(item.id)) continue
+                val tmdbId = MediaIds.tmdbIdOf(item.id)
+                if (tmdbId <= 0) continue
+                val isMovie = item.type.contains("Movie", ignoreCase = true)
+                val logoKey = "titlelogo:${item.id}"
+                val path = TmdbResponseCache.get<String>(logoKey) ?: run {
+                    val imagesRes = if (isMovie) tmdbClient.getMovieImages(tmdbId) else tmdbClient.getTVImages(tmdbId)
+                    val logos = imagesRes.getOrNull()?.logos ?: emptyList()
+                    val best = logos
+                        .filter { it.iso_639_1 == null || it.iso_639_1 == "en" }
+                        .maxByOrNull { it.vote_average ?: 0.0 }
+                        ?: logos.maxByOrNull { it.vote_average ?: 0.0 }
+                    best?.file_path?.also { TmdbResponseCache.put(logoKey, it) }
+                }
+                path?.let { p -> TMDBClient.buildLogoUrl(p)?.let { logoMap[item.id] = it } }
             }
         }
     }
@@ -258,8 +288,8 @@ fun HomeScreen(
                             HomeSpotlightCard(
                                 item = sp,
                                 smartBadgesMap = smartBadgesMap,
-                                networkMap = networkMap,
                                 showProgressMap = showProgressMap,
+                                logoUrl = logoMap[sp.id],
                                 onOpen = { onSelectMedia(sp.id) },
                                 onMarkNext = {
                                     haptics.toggle()
@@ -512,8 +542,8 @@ fun SectionHeader(
 fun HomeSpotlightCard(
     item: MediaItemEntity,
     smartBadgesMap: Map<String, BadgeResult>,
-    networkMap: Map<String, String>,
     showProgressMap: Map<String, TVShowProgress>,
+    logoUrl: String?,
     onOpen: () -> Unit,
     onMarkNext: () -> Unit
 ) {
@@ -565,36 +595,25 @@ fun HomeSpotlightCard(
             }
 
             Column(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val realHeroNet = networkMap[item.id]
-                    val heroNetwork = if (!realHeroNet.isNullOrBlank()) {
-                        NetworkResolver.resolveByName(realHeroNet, isTV = isTV)
-                    } else {
-                        NetworkResolver.resolve(item)
+                if (!item.taste.isNullOrBlank() && item.taste != "None") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Star, contentDescription = null, tint = sem.gold, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(item.taste.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = sem.gold)
                     }
-                    val epTag = if (isTV) {
-                        showProgressMap[item.id]?.nextEpisode?.let { " • S${it.seasonNumber} E${it.episodeNumber}" } ?: " • S1 E1"
-                    } else ""
-                    Surface(color = Color.White.copy(alpha = 0.15f), shape = RoundedCornerShape(6.dp)) {
-                        Text(
-                            text = if (isTV) "${heroNetwork.shortName}$epTag" else "FEATURE FILM",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                    if (!item.taste.isNullOrBlank() && item.taste != "None") {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Star, contentDescription = null, tint = sem.gold, modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(item.taste.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = sem.gold)
-                        }
-                    }
+                    Spacer(modifier = Modifier.height(6.dp))
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(item.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (logoUrl != null) {
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.height(44.dp).widthIn(max = 240.dp)
+                    )
+                } else {
+                    Text(item.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
 
                 if (!item.overview.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(3.dp))

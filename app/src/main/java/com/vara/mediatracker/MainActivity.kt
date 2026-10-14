@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import com.vara.mediatracker.ui.common.AppDestinations
 import com.vara.mediatracker.ui.common.AppToastHost
+import com.vara.mediatracker.ui.common.LocalOverlayOpen
 import com.vara.mediatracker.ui.common.ExpressiveNavigationBar
 import com.vara.mediatracker.ui.theme.AppMotion as motion
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -69,6 +70,8 @@ class MainActivity : ComponentActivity() {
         SyncScheduler.syncOnForeground(this)
         // TVMaze air-time backfill, so the Radar/Coming Soon show real times promptly.
         SyncScheduler.enrichOnForeground(this)
+        // Badges expire on a timer, so refresh them when the app opens.
+        SyncScheduler.refreshBadgesOnForeground(this)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -139,6 +142,7 @@ fun MainAppScreen(
         else -> Overlay.None
     }
 
+    CompositionLocalProvider(LocalOverlayOpen provides (overlay != Overlay.None)) {
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             bottomBar = {
@@ -256,7 +260,8 @@ fun MainAppScreen(
                     DetailScreen(
                         mediaId = ov.id,
                         container = container,
-                        onBack = { activeDetailMediaId = null }
+                        onBack = { activeDetailMediaId = null },
+                        onOpenMedia = { activeDetailMediaId = it }
                     )
                 }
             }
@@ -279,5 +284,6 @@ fun MainAppScreen(
                 .statusBarsPadding()
                 .padding(top = 8.dp)
         )
+    }
     }
 }

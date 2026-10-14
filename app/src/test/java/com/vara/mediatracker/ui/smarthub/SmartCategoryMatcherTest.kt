@@ -41,8 +41,9 @@ class SmartCategoryMatcherTest {
         badge: String? = null,
         runtime: Int? = null,
         epRuntime: Int? = null,
+        resolved: Long? = null,
         now: Date = at("2026-08-20")
-    ) = SmartCategoryMatcher.matches(category, item, badge, runtime, epRuntime, now)
+    ) = SmartCategoryMatcher.matches(category, item, badge, runtime, epRuntime, resolvedInstant = resolved, now = now)
 
     // ---------- badge-driven categories ----------
 
@@ -76,8 +77,12 @@ class SmartCategoryMatcherTest {
 
     @Test
     fun `premiere radar matches the premiere badge`() {
-        assertTrue(matches(SmartCategory.SMART_UPCOMING, item(), badge = "PREMIERE"))
-        assertFalse(matches(SmartCategory.SMART_UPCOMING, item(), badge = "NEW"))
+        val soon = at("2026-08-20").time + 3L * 86_400_000L
+        assertTrue(matches(SmartCategory.SMART_UPCOMING, item(), badge = "PREMIERE", resolved = soon))
+        assertFalse(matches(SmartCategory.SMART_UPCOMING, item(), badge = "NEW", resolved = soon))
+        // A stale PREMIERE badge on a long-released title must not match.
+        val past = at("2026-08-20").time - 30L * 86_400_000L
+        assertFalse(matches(SmartCategory.SMART_UPCOMING, item(), badge = "PREMIERE", resolved = past))
     }
 
     @Test
