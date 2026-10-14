@@ -146,16 +146,8 @@ class CloudSyncManager(
             return Result.failure(IllegalStateException("Sync credentials not configured"))
         }
 
-        // 1. Pull Media Items
-        val mediaResponse: HttpResponse = client.get("$supabaseUrl/rest/v1/user_media") {
-            parameter("user_id", "eq.$syncKey")
-            parameter("select", "*")
-            header("apikey", anonKey)
-            header("Authorization", "Bearer $anonKey")
-            header("x-sync-key", syncKey)
-        }
-
-        val remoteMediaList: List<RemoteMedia> = mediaResponse.body()
+        // 1. Pull Media Items (paginated — see fetchRemoteMedia).
+        val remoteMediaList: List<RemoteMedia> = fetchRemoteMedia()
         val tmdbClient = if (tmdbApiKey.isNotBlank()) TMDBClient(tmdbApiKey, client) else null
 
         // Fetch existing database cache to preserve already-fetched titles & posters
@@ -462,14 +454,27 @@ class CloudSyncManager(
         } ?: id
 
     private suspend fun fetchRemoteMedia(): List<RemoteMedia> {
-        val response: HttpResponse = client.get("$supabaseUrl/rest/v1/user_media") {
-            parameter("user_id", "eq.$syncKey")
-            parameter("select", "*")
-            header("apikey", anonKey)
-            header("Authorization", "Bearer $anonKey")
-            header("x-sync-key", syncKey)
+        // Paginated like fetchRemoteEpisodes: PostgREST caps an unpaginated response at
+        // 1000 rows, so a library past that would silently truncate on pull.
+        val out = mutableListOf<RemoteMedia>()
+        var offset = 0
+        val pageSize = 1000
+        while (true) {
+            val response: HttpResponse = client.get("$supabaseUrl/rest/v1/user_media") {
+                parameter("user_id", "eq.$syncKey")
+                parameter("select", "*")
+                header("apikey", anonKey)
+                header("Authorization", "Bearer $anonKey")
+                header("x-sync-key", syncKey)
+                header("Range", "$offset-${offset + pageSize - 1}")
+            }
+            val page: List<RemoteMedia> = response.body()
+            if (page.isEmpty()) break
+            out.addAll(page)
+            offset += page.size
+            if (page.size < pageSize) break
         }
-        return response.body()
+        return out
     }
 
     private suspend fun fetchRemoteEpisodes(): List<RemoteEpisode> {
@@ -494,7 +499,8 @@ class CloudSyncManager(
         return out
     }
 
-    private suspend fun pushMediaBatch(items: List<MediaItemEntity>) {
+    /** Upserts many media rows in a single POST — used by Library multi-select. */
+    suspend fun pushMediaBatch(items: List<MediaItemEntity>) {
         if (items.isEmpty()) return
         val now = isoFormat.format(Date())
         val payload = items.map { item ->

@@ -114,11 +114,12 @@ fun HomeScreen(
 
     val todayDateStr = rememberTodayDateString()
 
-    // Network name cache: mediaId -> realNetworkName (initialized from persistent prefs cache)
+    // Network name cache: mediaId -> realNetworkName. Seeded from the persisted Room
+    // `network` field first (enrichment writes it), then the prefs cache.
     val networkMap = remember {
         mutableStateMapOf<String, String>().apply {
             items.forEach { item ->
-                container.preferences.getCachedNetwork(item.id)?.let { put(item.id, it) }
+                (item.network ?: container.preferences.getCachedNetwork(item.id))?.let { put(item.id, it) }
             }
         }
     }
@@ -141,14 +142,17 @@ fun HomeScreen(
     LaunchedEffect(enrichIds, container.preferences.tmdbApiKey, forceNetworkRefreshCount) {
         val apiKey = container.preferences.tmdbApiKey
         if (!apiKey.isNullOrBlank()) {
-            val tmdbClient = TMDBClient(apiKey)
+            // Shared client: `TMDBClient(apiKey)` builds a fresh OkHttp pool per mount.
+            val tmdbClient = container.tmdbClient()
             for (item in itemsToEnrich) {
                 val tmdbId = MediaIds.tmdbIdOf(item.id)
                 if (tmdbId <= 0) continue
                 val isMovie = item.type.contains("Movie", ignoreCase = true)
 
-                // Fetch details for network if not already cached or on force refresh
-                if (!networkMap.containsKey(item.id) || forceNetworkRefreshCount > 0) {
+                // Skip titles whose network is already known (Room `network` or the cache);
+                // only a force refresh re-fetches.
+                val knownNetwork = !item.network.isNullOrBlank() || networkMap.containsKey(item.id)
+                if (!knownNetwork || forceNetworkRefreshCount > 0) {
                     val detailsRes = if (isMovie) tmdbClient.getMovieDetails(tmdbId) else tmdbClient.getTVDetails(tmdbId)
                     val details = detailsRes.getOrNull()
                     val net = if (isMovie) {
@@ -170,7 +174,7 @@ fun HomeScreen(
     LaunchedEffect(spotlightIds, container.preferences.tmdbApiKey) {
         val apiKey = container.preferences.tmdbApiKey
         if (!apiKey.isNullOrBlank()) {
-            val tmdbClient = TMDBClient(apiKey)
+            val tmdbClient = container.tmdbClient()
             for (item in spotlightItems) {
                 if (logoMap.containsKey(item.id)) continue
                 val tmdbId = MediaIds.tmdbIdOf(item.id)

@@ -109,9 +109,24 @@ class EpisodeEnrichmentWorker(
         val newEpisodes = ArrayList<EpisodeEntity>()
         val seasonRows = ArrayList<TVSeasonEntity>()
 
+        // Fetch the seasons concurrently (bounded): sequentially a 10-season show costs
+        // ~2.5s of round-trips, which the enrichment budget cannot afford.
+        val seasonNumbers = details.seasons.orEmpty().map { it.season_number }.filter { it >= 1 }
+        val episodesBySeason = coroutineScope {
+            val gate = Semaphore(5)
+            seasonNumbers.map { seasonNumber ->
+                async {
+                    gate.withPermit {
+                        tmdb.getSeasonDetails(tmdbId, seasonNumber).getOrNull()?.episodes.orEmpty()
+                    }
+                }
+            }.awaitAll()
+        }
+        val episodesBySeasonNumber = seasonNumbers.zip(episodesBySeason).toMap()
+
         for (season in details.seasons.orEmpty()) {
             if (season.season_number < 1) continue
-            val eps = tmdb.getSeasonDetails(tmdbId, season.season_number).getOrNull()?.episodes.orEmpty()
+            val eps = episodesBySeasonNumber[season.season_number].orEmpty()
 
             seasonRows += TVSeasonEntity(
                 showId = showId,

@@ -31,6 +31,10 @@ interface MediaDao {
     @Query("UPDATE media_items SET state = :state, lastStateChangeDate = :now WHERE id = :id")
     suspend fun updateState(id: String, state: String, now: String)
 
+    /** Bulk state change for Library multi-select: one statement instead of N. */
+    @Query("UPDATE media_items SET state = :state, lastStateChangeDate = :now WHERE id IN (:ids)")
+    suspend fun updateStateForIds(ids: List<String>, state: String, now: String)
+
     @Query("UPDATE media_items SET taste = :taste WHERE id = :id")
     suspend fun updateTaste(id: String, taste: String)
 

@@ -86,18 +86,25 @@ fun LibraryScreen(
 
     fun bulkSetState(next: String) {
         haptics.toggle()
-        val targets = selectedIds.toList()
-        val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-        scope.launch {
-            val sync = container.syncManager()
-            targets.forEach { id ->
-                val it = items.firstOrNull { i -> i.id == id } ?: return@forEach
-                container.mediaDao.updateState(id, next, now)
-                sync.pushMediaUpdate(id, it.type, next, it.taste)
-            }
+        val targets = items.filter { it.id in selectedIds }
+        if (targets.isEmpty()) {
             selectionMode = false
             selectedIds = emptySet()
-            AppToast.show("Updated ${targets.size} title${if (targets.size == 1) "" else "s"}")
+            return
+        }
+        val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+        val updated = targets.map { it.copy(state = next, lastStateChangeDate = now) }
+
+        // Optimistic: drop the selection bar and confirm immediately, then persist in a
+        // single UPDATE and push in one POST — the old version ran a Room write plus an
+        // HTTP call per selected item, so 20 titles took several seconds to clear.
+        selectionMode = false
+        selectedIds = emptySet()
+        AppToast.show("Updated ${updated.size} title${if (updated.size == 1) "" else "s"}")
+
+        scope.launch {
+            container.mediaDao.updateStateForIds(updated.map { it.id }, next, now)
+            container.syncManager().pushMediaBatch(updated)
         }
     }
 
