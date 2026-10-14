@@ -358,7 +358,7 @@ fun LibraryScreen(
                                         title = title,
                                         overview = res.overview ?: "",
                                         posterUrl = TMDBClient.buildPosterUrl(res.poster_path),
-                                        backdropUrl = TMDBClient.buildPosterUrl(res.backdrop_path),
+                                        backdropUrl = TMDBClient.buildBackdropUrl(res.backdrop_path),
                                         releaseDate = res.release_date ?: res.first_air_date,
                                         type = if (isMovie) "Movie" else "TV Show",
                                         state = "Wishlist",

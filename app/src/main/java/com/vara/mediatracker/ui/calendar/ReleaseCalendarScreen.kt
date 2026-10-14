@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -268,7 +269,7 @@ fun ReleaseCalendarScreen(
                             )
                         }
                         Text(
-                            text = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(selectedYearMonth.time),
+                            text = SimpleDateFormat("MMMM yyyy", LocalConfiguration.current.locales[0]).format(selectedYearMonth.time),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.onSurface,

@@ -19,9 +19,15 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - uses: android-actions/setup-android@v3
+        with:
+          # The action defaults to `tools platform-tools`, but Google removed the legacy
+          # `tools` package from the SDK repo — sdkmanager then exits 1 and the whole job
+          # aborts before Gradle ever runs. Request only platform-tools; AGP auto-installs
+          # the compileSdk platform (this action accepts the SDK licenses).
+          packages: 'platform-tools'
 
       - name: Cache Gradle
         uses: actions/cache@v4

@@ -39,7 +39,20 @@ object AirTimeResolver {
         val releaseTime: String, // "HH:mm"
         val timeZoneId: String,
         val dayOffset: Int
-    )
+    ) {
+        /**
+         * Word-boundary matchers, precompiled once.
+         *
+         * A raw `contains` matched any word merely *containing* a pattern — "maximum"
+         * contains "max", "pineapple" contains "apple" — so titles like "Maximum Overdrive"
+         * or "Pineapple Express" were handed HBO Max's / Apple TV+'s drop time. `\b` anchors
+         * each pattern to a whole word while still matching multi-word hints such as
+         * "apple tv+" or "marvel studios".
+         */
+        val regexes: List<Regex> = patterns.map { pattern ->
+            Regex("\\b${Regex.escape(pattern.lowercase(Locale.US))}\\b")
+        }
+    }
 
     /**
      * Mirrors macOS `StreamingServiceRule.defaults` one-for-one. Keep the two in sync:
@@ -69,12 +82,12 @@ object AirTimeResolver {
         StreamingServiceRule(listOf("hbo"), "21:00", "America/New_York", 0)
     )
 
-    /** The first rule whose pattern appears in [serviceName], or null when none match. */
+    /** The first rule whose pattern appears in [serviceName] as a whole word, or null. */
     fun ruleFor(serviceName: String?): StreamingServiceRule? {
         if (serviceName.isNullOrBlank()) return null
         val query = serviceName.lowercase(Locale.US)
         return defaultStreamingRules.firstOrNull { rule ->
-            rule.patterns.any { query.contains(it) }
+            rule.regexes.any { it.containsMatchIn(query) }
         }
     }
 

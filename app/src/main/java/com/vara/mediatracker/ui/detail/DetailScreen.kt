@@ -477,7 +477,7 @@ fun DetailScreen(
                     title = relTitle,
                     overview = res.overview ?: "",
                     posterUrl = TMDBClient.buildPosterUrl(res.poster_path),
-                    backdropUrl = TMDBClient.buildPosterUrl(res.backdrop_path),
+                    backdropUrl = TMDBClient.buildBackdropUrl(res.backdrop_path),
                     releaseDate = res.release_date ?: res.first_air_date,
                     type = if (isMovie) "Movie" else "TV Show",
                     state = "Wishlist",
@@ -912,9 +912,13 @@ fun DetailScreen(
 
             // Floating Up Next action (wide).
             if (isTV && nextUpEpisode != null) {
+                // An unaired next episode must never be markable in one tap — the pill turns
+                // informational (clock, "AIRING SOON") and its click is disabled.
+                val nextUpAired = nextUpInstant == null || nextUpInstant.time <= System.currentTimeMillis()
                 FloatingUpNext(
                     episode = nextUpEpisode,
                     countdown = nextUpCountdown,
+                    aired = nextUpAired,
                     onClick = { markWatched(nextUpEpisode, true) },
                     modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(16.dp)
                 )
@@ -987,11 +991,13 @@ private fun DetailTopBar(
 private fun FloatingUpNext(
     episode: EpisodeEntity,
     countdown: String?,
+    aired: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
         onClick = onClick,
+        enabled = aired,
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
@@ -1004,17 +1010,25 @@ private fun FloatingUpNext(
         ) {
             Surface(
                 shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                color = if (aired) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = if (aired) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(32.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Icon(
+                        imageVector = if (aired) Icons.Default.Check else Icons.Default.Schedule,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp)
+                    )
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column {
-                Text("UP NEXT", style = AppTextStyles.MonoLabel, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    if (aired) "UP NEXT" else "AIRING SOON",
+                    style = AppTextStyles.MonoLabel,
+                    color = MaterialTheme.colorScheme.primary
+                )
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = "S${episode.seasonNumber}E${episode.episodeNumber} · ${episode.name.ifBlank { "Episode ${episode.episodeNumber}" }}",

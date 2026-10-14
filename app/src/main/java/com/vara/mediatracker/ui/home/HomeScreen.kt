@@ -306,19 +306,24 @@ fun HomeScreen(
                                 onOpen = { onSelectMedia(sp.id) },
                                 onMarkNext = {
                                     haptics.toggle()
-                                    scope.launch {
-                                        val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                        val dao = container.mediaDao
-                                        val sync = container.syncManager()
-                                        if (sp.type.contains("TV", ignoreCase = true)) {
-                                            val nextEp = showProgressMap[sp.id]?.nextEpisode
-                                            if (nextEp != null) {
-                                                dao.setEpisodeWatched(nextEp.uniqueId, true, now)
-                                                sync.pushEpisodeWatch(MediaIds.tmdbIdOf(nextEp.showId).toString(), nextEp.seasonNumber, nextEp.episodeNumber, true)
-                                            }
-                                        } else {
-                                            dao.updateState(sp.id, "Completed", now)
-                                            sync.pushMediaUpdate(sp.id, sp.type, "Completed", sp.taste)
+                                    if (sp.type.contains("TV", ignoreCase = true)) {
+                                        // Routes to the detail when there is no next episode yet,
+                                        // and shows a toast when it does mark one. The old inline
+                                        // version silently did nothing (and never toasted) when
+                                        // `nextEpisode` was null.
+                                        markEpisodeWatched(
+                                            showProgressMap[sp.id]?.nextEpisode,
+                                            sp,
+                                            scope,
+                                            container,
+                                            onSelectMedia
+                                        )
+                                    } else {
+                                        scope.launch {
+                                            val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                            container.mediaDao.updateState(sp.id, "Completed", now)
+                                            container.syncManager().pushMediaUpdate(sp.id, sp.type, "Completed", sp.taste)
+                                            AppToast.show("Marked \"${sp.title}\" completed")
                                         }
                                     }
                                 }
@@ -865,6 +870,11 @@ private fun HomeUpNextRow(
 
             Spacer(modifier = Modifier.width(14.dp))
 
+            // Days-left from the resolved drop instant (rules); movies use their release
+            // date, TV the next unwatched episode. Hoisted out of the Column so the quick
+            // action below can tell "ready" from "not aired yet".
+            val daysLeftLabel = HomeEligibility.daysLeftLabel(item, nextEp, networkMap) ?: "READY"
+
             Column(modifier = Modifier.weight(1f)) {
                 val realNet = networkMap[item.id]
                 val netInfo = if (!realNet.isNullOrBlank()) {
@@ -872,10 +882,6 @@ private fun HomeUpNextRow(
                 } else {
                     NetworkResolver.resolve(item)
                 }
-
-                // Days-left from the resolved drop instant (rules); movies use their
-                // release date, TV the next unwatched episode.
-                val daysLeftLabel = HomeEligibility.daysLeftLabel(item, nextEp, networkMap) ?: "READY"
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -926,17 +932,21 @@ private fun HomeUpNextRow(
 
             Spacer(modifier = Modifier.width(10.dp))
 
+            // Only a *ready* (aired) next episode can be checked off. For something still in
+            // the future the button becomes a clock that opens the detail instead of marking
+            // an unaired episode watched.
+            val isReady = daysLeftLabel == "READY"
             Surface(
-                onClick = { onQuickCheck(nextEp) },
+                onClick = { onQuickCheck(if (isReady) nextEp else null) },
                 shape = ExpressiveShapes.SquircleSm,
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                 modifier = Modifier.size(40.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Mark next episode watched",
-                        tint = MaterialTheme.colorScheme.primary,
+                        imageVector = if (isReady) Icons.Default.Check else Icons.Default.Schedule,
+                        contentDescription = if (isReady) "Mark next episode watched" else "Not aired yet — open for details",
+                        tint = if (isReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                 }

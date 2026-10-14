@@ -69,6 +69,17 @@ class ReleaseNotifier(
     }
 
     private fun postSummary(entries: List<Pair<String, MediaCandidate>>) {
+        // Explicit inline guard (not just hasPermission()) so lint's MissingPermission
+        // data-flow sees it: notify() throws without POST_NOTIFICATIONS on API 33+.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
         val titles = entries.take(MAX_TITLES_IN_SUMMARY).map { it.second.title }
         val extra = entries.size - titles.size
 

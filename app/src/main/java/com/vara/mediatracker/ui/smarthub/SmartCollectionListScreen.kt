@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -136,7 +137,7 @@ fun SmartCollectionListScreen(
                     groups.forEach { group ->
                         item(span = { GridItemSpan(maxLineSpan) }, key = "day_${group.label}") {
                             Text(
-                                text = group.label.uppercase(Locale.getDefault()),
+                                text = group.label.uppercase(LocalConfiguration.current.locales[0]),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
                                 color = MaterialTheme.colorScheme.primary,

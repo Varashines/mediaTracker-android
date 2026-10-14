@@ -25,6 +25,9 @@ object NetworkResolver {
     private val BBC = NetworkInfo("BBC", "BBC", Color(0xFF18181B), Color(0xFFFAFAFA))
     private val FX = NetworkInfo("FX", "FX", Color(0xFF3F3F46), Color(0xFFF4F4F5))
 
+    /** Matches a standalone "max" so "Cinemax"/"Miramax"/"IMAX" don't resolve to HBO Max. */
+    private val HBO_MAX = Regex("\\bmax\\b")
+
     /**
      * Resolves styling for a given network name or falls back to standard theme tokens.
      */
@@ -40,7 +43,7 @@ object NetworkResolver {
         val lower = networkName.lowercase().trim()
         return when {
             lower.contains("apple") -> APPLE
-            lower.contains("hbo") || lower.contains("max") -> HBO
+            lower.contains("hbo") || HBO_MAX.containsMatchIn(lower) -> HBO
             lower.contains("netflix") -> NETFLIX
             lower.contains("disney") || lower.contains("marvel") || lower.contains("lucasfilm") -> DISNEY
             lower.contains("prime") || lower.contains("amazon") -> AMAZON
@@ -74,6 +77,14 @@ object NetworkResolver {
      * Uses title keywords, overview keywords, and item type heuristics.
      */
     fun resolve(item: MediaItemEntity): NetworkInfo {
+        // Prefer the network persisted by enrichment (TVMaze `network` / TMDB) over guessing
+        // from the title and overview. Those heuristics false-match ordinary words — "boys"
+        // -> Prime, "bear" -> FX, "crown" -> Netflix, "wire" -> HBO — so they are only a
+        // fallback for titles whose network we don't know yet.
+        if (!item.network.isNullOrBlank()) {
+            return resolveByName(item.network, isTV = item.type.contains("TV", ignoreCase = true))
+        }
+
         val title = item.title.lowercase()
         val overview = item.overview.lowercase()
         val combined = "$title $overview"

@@ -4,7 +4,9 @@ import androidx.compose.ui.graphics.Color
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.util.AirTimeResolver
-import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.*
 
 enum class SmartBadge(
@@ -58,16 +60,27 @@ object BadgeEngine {
     private const val BINGE_ENGAGEMENT_COUNT = 3
     private const val BINGE_PROGRESS_RATIO = 0.20
 
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    /**
+     * `yyyy-MM-dd` parsed in the device's current zone.
+     *
+     * [DateTimeFormatter] is immutable and thread-safe, unlike the shared `SimpleDateFormat`
+     * this replaced. That instance was used concurrently from `LibraryViewModel`
+     * (Dispatchers.Default) and the enrichment/sync workers (Dispatchers.IO) and mutated its
+     * `timeZone` on every call, so two overlapping parses corrupted each other's internal
+     * Calendar — throwing (and being swallowed into `null`), which is why badges randomly
+     * disappeared.
+     */
+    private val dateFormatter: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US)
 
     fun parseDate(dateStr: String?): Date? {
-        if (dateStr.isNullOrBlank()) return null
+        if (dateStr.isNullOrBlank() || dateStr.length < 10) return null
         return try {
-            // SimpleDateFormat captures the default zone at construction, so a timezone
-            // change mid-session would otherwise be ignored. Re-reading it per parse is a
-            // field write, far cheaper than rebuilding the formatter for every episode.
-            dateFormat.timeZone = TimeZone.getDefault()
-            dateFormat.parse(dateStr.take(10))
+            Date.from(
+                LocalDate.parse(dateStr.take(10), dateFormatter)
+                    .atStartOfDay(ZoneId.systemDefault())
+                    .toInstant()
+            )
         } catch (_: Exception) {
             null
         }

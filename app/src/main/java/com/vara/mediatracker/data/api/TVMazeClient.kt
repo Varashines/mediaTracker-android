@@ -151,7 +151,8 @@ class TVMazeClient(private val client: HttpClient) {
         this[key] as? JsonObject
 
     private fun encodeQuery(value: String): String =
-        java.net.URLEncoder.encode(value, Charsets.UTF_8)
+        // String overload (API 1); the Charset overload is API 33 and would need desugaring.
+        java.net.URLEncoder.encode(value, "UTF-8")
 
     /** Dice coefficient over alphanumeric characters. */
     private fun titleSimilarity(a: String, b: String): Double {

@@ -1,21 +1,14 @@
 package com.vara.mediatracker.ui.common
 
 import org.junit.Assert.assertEquals
-import org.junit.Ignore
 import org.junit.Test
 import java.util.Calendar
 import java.util.TimeZone
 
 /**
- * Specification for the streaming-rule matching fix — **not yet implemented**.
- *
- * [DateUtilsTest] asserts today's substring behaviour so the bug stays visible. These
- * tests state the intended behaviour and are ignored until rule matching switches from
- * `query.contains(pattern)` to word-boundary matching (plus network metadata from TMDB
- * instead of scraping the title/overview string).
- *
- * When fixing, delete the two `substring matching currently misroutes...` cases from
- * [DateUtilsTest] and drop the @Ignore annotations here.
+ * Rule matching is anchored to whole words: a title merely *containing* a network name
+ * ("Maximum Overdrive", "Pineapple Express") must fall back to the default 8 PM ET rule,
+ * while a genuine mention ("HBO Max", "Apple TV+") still selects its rule.
  */
 class StreamingRuleWordBoundaryTest {
 
@@ -25,7 +18,6 @@ class StreamingRuleWordBoundaryTest {
     private fun dayIn(date: java.util.Date, tz: String): Int =
         Calendar.getInstance(TimeZone.getTimeZone(tz)).apply { time = date }.get(Calendar.DAY_OF_MONTH)
 
-    @Ignore("Rule matching is still a raw substring test; 'maximum' contains 'max'.")
     @Test
     fun `words merely containing a network name use the default rule`() {
         val result = parseTargetAirDateTime("2026-05-01", "Maximum Overdrive")!!
@@ -33,7 +25,6 @@ class StreamingRuleWordBoundaryTest {
         assertEquals(1, dayIn(result, "America/New_York")) // no day shift
     }
 
-    @Ignore("Rule matching is still a raw substring test; 'pineapple' contains 'apple'.")
     @Test
     fun `words merely containing apple use the default rule`() {
         val result = parseTargetAirDateTime("2026-05-01", "Pineapple Express")!!
@@ -41,7 +32,6 @@ class StreamingRuleWordBoundaryTest {
         assertEquals(1, dayIn(result, "America/New_York"))
     }
 
-    @Ignore("Same root cause: 'maximum' contains 'max'.")
     @Test
     fun `genuine network mentions still resolve`() {
         assertEquals(

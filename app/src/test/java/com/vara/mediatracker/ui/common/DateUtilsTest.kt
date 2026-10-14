@@ -137,29 +137,4 @@ class DateUtilsTest {
             time = parseTargetAirDateTime("2026-01-15", "APPLE TV+")!!
         }.get(Calendar.DAY_OF_MONTH))
     }
-
-    // ---------- known misclassification (not yet fixed) ----------
-    //
-    // Rule matching is a raw substring test, so unrelated words containing a network
-    // name are misrouted. These tests assert the CURRENT behaviour so the bug stays
-    // visible; see StreamingRuleWordBoundaryTest for the intended behaviour.
-
-    @Test
-    fun `substring matching currently misroutes titles containing network names`() {
-        // "maximum" contains "max" -> matches the HBO/Max rule (9pm ET, same day)
-        // instead of the 8pm ET default.
-        val misrouted = parseTargetAirDateTime("2026-05-01", "Maximum Overdrive")!!
-        val expected = parseTargetAirDateTime("2026-05-01", "No Network Match")!!
-        assertEquals(21, Calendar.getInstance(TimeZone.getTimeZone("America/New_York")).apply { time = misrouted }.get(Calendar.HOUR_OF_DAY))
-        assertEquals(20, Calendar.getInstance(TimeZone.getTimeZone("America/New_York")).apply { time = expected }.get(Calendar.HOUR_OF_DAY))
-    }
-
-    @Test
-    fun `substring matching currently misroutes titles containing apple`() {
-        // "pineapple" contains "apple" -> matches the Apple TV rule, which also
-        // shifts the date back one day.
-        val misrouted = parseTargetAirDateTime("2026-05-01", "Pineapple Express")!!
-        val cal = Calendar.getInstance(TimeZone.getTimeZone("America/New_York")).apply { time = misrouted }
-        assertEquals(30, cal.get(Calendar.DAY_OF_MONTH)) // 30th, the eve of May 1st
-    }
 }

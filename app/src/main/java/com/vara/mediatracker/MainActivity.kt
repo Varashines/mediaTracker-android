@@ -201,6 +201,10 @@ fun MainAppScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    // Consume (rather than apply) the Scaffold's insets: the tab content
+                    // already handles its own bottom padding for the floating nav bar, and
+                    // consuming keeps children from double-applying the system insets.
+                    .consumeWindowInsets(paddingValues)
             ) {
                 // Direction-aware slide so moving between tabs feels spatial rather than a
                 // crossfade, which made the whole screen feel like it was reloading.
