@@ -559,7 +559,15 @@ class CloudSyncManager(
         }
 
         // Membership: for each (collection, media) either side knows about, newest wins.
-        val liveLocalCollections = localById.values.filter { !it.isDeleted }.map { it.id }.toSet()
+        //
+        // "Live" means live *here or in the cloud*: the collection rows are only written to
+        // Room after this reconcile returns, so on the first sync none of the imported
+        // collections are local yet. Requiring a local collection meant their membership was
+        // never pulled — the collections arrived with no titles.
+        val liveCollectionIDs = (
+            localById.values.filter { !it.isDeleted }.map { it.id } +
+                remoteCollections.filter { !it.is_deleted }.map { it.collection_id }
+            ).toSet()
         val localByKey = localItems.associateBy { "${it.collectionId}|${it.mediaId}" }
         val remoteByKey = remoteItems.associateBy { "${it.collection_id}|${it.media_id}" }
         val outgoingItems = mutableListOf<CollectionItemEntity>()
@@ -570,16 +578,16 @@ class CloudSyncManager(
             val remote = remoteByKey[key]
             when {
                 local == null && remote != null -> {
-                    // Pull a new member only into a collection we actually hold, and never
-                    // pull a tombstone for a membership we never had.
-                    if (!remote.is_deleted && liveLocalCollections.contains(remote.collection_id)) {
+                    // Pull a new member into any collection that is live on either side, and
+                    // never pull a tombstone for a membership we never had.
+                    if (!remote.is_deleted && liveCollectionIDs.contains(remote.collection_id)) {
                         incomingItems.add(
                             CollectionItemEntity(remote.collection_id, remote.media_id, false, remote.updated_at)
                         )
                     }
                 }
                 local != null && remote == null -> {
-                    if (liveLocalCollections.contains(local.collectionId)) outgoingItems.add(local)
+                    if (liveCollectionIDs.contains(local.collectionId)) outgoingItems.add(local)
                 }
                 local != null && remote != null && local.isDeleted != remote.is_deleted -> {
                     val localTime = parseInstant(local.updatedAt)
