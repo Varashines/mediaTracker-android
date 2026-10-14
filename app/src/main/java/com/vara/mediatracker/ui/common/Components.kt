@@ -258,11 +258,18 @@ fun <T> ExpressiveToggleGroup(
         horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        items.forEach { item ->
+        items.forEachIndexed { index, item ->
+            // Pill-cap ends: the first and last buttons must use the leading/trailing shapes,
+            // otherwise every button (including the outer edges) gets the flat middle shape.
+            val shapes = when (index) {
+                0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                items.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+            }
             ToggleButton(
                 checked = item == selectedItem,
                 onCheckedChange = { onItemSelected(item) },
-                shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
+                shapes = shapes,
                 modifier = Modifier.semantics { role = Role.RadioButton }
             ) {
                 val icon = iconProvider?.invoke(item)

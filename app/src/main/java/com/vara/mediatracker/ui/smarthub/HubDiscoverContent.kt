@@ -239,18 +239,20 @@ private fun WatchStatsCard(stats: WatchStats) {
             )
             Spacer(modifier = Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
-                StatCell(stats.streakDays, "day streak")
-                StatCell(stats.watchedThisMonth, "this month")
-                StatCell(stats.activeShows, "active")
-                StatCell(stats.completed, "completed")
+                StatCell(stats.streakDays, "day streak", Modifier.weight(1f))
+                StatCell(stats.watchedThisMonth, "this month", Modifier.weight(1f))
+                StatCell(stats.activeShows, "active", Modifier.weight(1f))
+                StatCell(stats.completed, "completed", Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun StatCell(value: Int, label: String) {
-    Column(modifier = Modifier.width(84.dp)) {
+private fun StatCell(value: Int, label: String, modifier: Modifier = Modifier) {
+    // `weight(1f)` from the caller instead of a hardcoded 84.dp: four fixed cells (336dp)
+    // plus padding overflowed a 360dp screen and clipped "completed".
+    Column(modifier = modifier) {
         Text(
             text = "$value",
             style = MaterialTheme.typography.headlineSmall,

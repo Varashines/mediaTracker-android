@@ -413,6 +413,20 @@ fun DetailScreen(
         if (!tmdbNetName.isNullOrBlank()) NetworkResolver.resolveByName(tmdbNetName, isTV = isTV) else NetworkResolver.resolve(item)
     }
     val displayNetwork = networkInfo.name.takeIf { it.isNotBlank() } ?: "NA"
+    // The "Network logo in detail" setting was stored but never read. Honour it here: use
+    // TMDB's network / studio logo when one exists, else fall back to the name.
+    val networkLogoUrl = remember(tmdbDetails, prefs.detailNetworkLogo) {
+        if (!prefs.detailNetworkLogo) {
+            null
+        } else {
+            val path = if (isTV) {
+                tmdbDetails?.networks?.firstOrNull()?.logo_path
+            } else {
+                tmdbDetails?.production_companies?.firstOrNull()?.logo_path
+            }
+            path?.takeIf { it.isNotBlank() }?.let { TMDBClient.buildLogoUrl(it) }
+        }
+    }
     val currentMatchedState = matchedState(item.state)
 
     // Taste (reaction) state for the tracking card.
@@ -640,7 +654,7 @@ fun DetailScreen(
                     ) {
                         HeroMetaPill(text = ratingLabel)
                         HeroMetaPill(text = timeLabel, icon = Icons.Default.Schedule)
-                        HeroMetaPill(text = displayNetwork)
+                        HeroMetaPill(text = displayNetwork, logoUrl = networkLogoUrl)
                     }
                 }
 
@@ -1207,7 +1221,12 @@ private fun ReactionButton(icon: ImageVector, label: String, selected: Boolean, 
 
 /** Small metadata pill shown over the hero image. */
 @Composable
-private fun HeroMetaPill(text: String, icon: ImageVector? = null, overImage: Boolean = false) {
+private fun HeroMetaPill(
+    text: String,
+    icon: ImageVector? = null,
+    overImage: Boolean = false,
+    logoUrl: String? = null
+) {
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = if (overImage) Color.Black.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -1217,11 +1236,22 @@ private fun HeroMetaPill(text: String, icon: ImageVector? = null, overImage: Boo
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (icon != null) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(12.dp))
-                Spacer(modifier = Modifier.width(4.dp))
+            if (logoUrl != null) {
+                // Network/studio wordmark instead of the name (see the "Network logo in
+                // detail" setting).
+                AsyncImage(
+                    model = logoUrl,
+                    contentDescription = text,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.height(14.dp).widthIn(max = 56.dp)
+                )
+            } else {
+                if (icon != null) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                Text(text, style = AppTextStyles.MonoLabel, maxLines = 1)
             }
-            Text(text, style = AppTextStyles.MonoLabel, maxLines = 1)
         }
     }
 }
