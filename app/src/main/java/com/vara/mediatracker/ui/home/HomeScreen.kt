@@ -1,6 +1,11 @@
 package com.vara.mediatracker.ui.home
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -50,11 +55,13 @@ import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.ui.common.parseAirInstant
 import com.vara.mediatracker.ui.common.parseTargetAirDateTime
 import com.vara.mediatracker.ui.common.rememberCountdownText
+import com.vara.mediatracker.ui.common.LocalNowMillis
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.ui.common.rememberTodayDateString
 import com.vara.mediatracker.ui.common.springClickable
+import com.vara.mediatracker.ui.theme.AppSpacing
 import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
@@ -271,8 +278,8 @@ fun HomeScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp),
-            verticalArrangement = Arrangement.spacedBy(22.dp)
+            contentPadding = PaddingValues(top = AppSpacing.lg, bottom = 140.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)
         ) {
             // Spotlight carousel — swipeable hero with page dots.
             if (spotlightItems.isNotEmpty()) {
@@ -571,11 +578,9 @@ fun HomeSpotlightCard(
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Black.copy(alpha = 0.20f),
-                                Color.Black.copy(alpha = 0.60f),
-                                Color.Black.copy(alpha = 0.95f)
-                            )
+                            0f to Color.Transparent,
+                            0.45f to Color.Black.copy(alpha = 0.28f),
+                            1f to Color.Black.copy(alpha = 0.88f)
                         )
                     )
             )
@@ -670,6 +675,12 @@ fun HomePosterCard(
 
     val countdownLabel = if (showCountdown) rememberCountdownText(targetAirDate) else null
 
+    // Airings inside the next 24h are the most time-sensitive thing on the screen, so
+    // they get an accent-glow chip (with a slow pulse) instead of the neutral black one.
+    val nowMillis = LocalNowMillis.current
+    val isImminent = targetAirDate != null &&
+        (targetAirDate.time - nowMillis) in 0..(24L * 60 * 60 * 1000)
+
     ExpressiveCard(
         onClick = onClick,
         shape = ExpressiveShapes.AsymPoster,
@@ -753,10 +764,27 @@ fun HomePosterCard(
 
             // Bottom Overlay: Countdown Timer Chip for Upcoming / CS items (matching macOS hourglass pill)
             if (!countdownLabel.isNullOrBlank()) {
+                val glowAlpha = if (isImminent) {
+                    val pulse = rememberInfiniteTransition(label = "countdownPulse")
+                    pulse.animateFloat(
+                        initialValue = 0.45f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 1100),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "countdownGlow"
+                    ).value
+                } else 0f
                 Surface(
-                    color = Color.Black.copy(alpha = 0.88f),
+                    color = if (isImminent) MaterialTheme.colorScheme.primary.copy(alpha = 0.92f) else Color.Black.copy(alpha = 0.88f),
                     shape = RoundedCornerShape(10.dp),
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color.White.copy(alpha = 0.25f)),
+                    border = androidx.compose.foundation.BorderStroke(
+                        0.5.dp,
+                        if (isImminent) MaterialTheme.colorScheme.onPrimary.copy(alpha = glowAlpha)
+                        else Color.White.copy(alpha = 0.25f)
+                    ),
+                    shadowElevation = if (isImminent) 8.dp else 0.dp,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 8.dp)
@@ -768,7 +796,7 @@ fun HomePosterCard(
                         Icon(
                             imageVector = Icons.Default.HourglassEmpty,
                             contentDescription = null,
-                            tint = sem.gold,
+                            tint = if (isImminent) MaterialTheme.colorScheme.onPrimary else sem.gold,
                             modifier = Modifier.size(10.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -776,7 +804,7 @@ fun HomePosterCard(
                             text = countdownLabel,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = if (isImminent) MaterialTheme.colorScheme.onPrimary else Color.White
                         )
                     }
                 }

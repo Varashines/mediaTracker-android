@@ -1,6 +1,10 @@
 package com.vara.mediatracker
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.vara.mediatracker.data.badge.BadgeComputer
 import com.vara.mediatracker.data.db.EpisodeKeyReconciler
 import com.vara.mediatracker.data.sync.ReleaseNotifier
@@ -11,11 +15,29 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-class MediaTrackerApp : Application() {
+class MediaTrackerApp : Application(), ImageLoaderFactory {
 
     val container: AppContainer by lazy { AppContainer(this) }
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * Tuned for a poster/backdrop grid: a 25% memory cache and a 100 MB disk cache so
+     * scrolling back over a rail re-uses decoded bitmaps instead of re-downloading.
+     * Crossfade is off — it made every rail look like it was reloading on tab switches.
+     */
+    override fun newImageLoader(): ImageLoader =
+        ImageLoader.Builder(this)
+            .crossfade(false)
+            .respectCacheHeaders(false)
+            .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(100L * 1024 * 1024)
+                    .build()
+            }
+            .build()
 
     override fun onCreate() {
         super.onCreate()

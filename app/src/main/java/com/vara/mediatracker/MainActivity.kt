@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.background
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import com.vara.mediatracker.ui.common.AppDestinations
 import com.vara.mediatracker.ui.common.AppToastHost
+import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.ui.common.LocalOverlayOpen
 import com.vara.mediatracker.ui.common.ExpressiveNavigationBar
 import com.vara.mediatracker.ui.theme.AppMotion as motion
@@ -131,7 +133,12 @@ fun MainAppScreen(
     onThemePresetChanged: (Int) -> Unit = {},
     onThemeModeChanged: (Int) -> Unit = {}
 ) {
-    val mediaItems by container.mediaDao.getAllActiveMedia().collectAsState(initial = emptyList())
+    // Shared, activity-scoped library state. Collecting it here (rather than a second
+    // `getAllActiveMedia()` subscription) means Room runs the hot query once per DB
+    // change instead of twice, and every screen reads the same off-main build.
+    val libraryVm: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(container))
+    val core by libraryVm.core.collectAsState()
+    val mediaItems = core.items
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var activeDetailMediaId by rememberSaveable { mutableStateOf<String?>(null) }
     var isSearchActive by rememberSaveable { mutableStateOf(false) }

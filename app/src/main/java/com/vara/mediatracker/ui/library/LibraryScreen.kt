@@ -45,6 +45,7 @@ import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.ui.common.ChipTone
 import com.vara.mediatracker.ui.common.FlatCard
 import com.vara.mediatracker.ui.common.StatusChip
+import com.vara.mediatracker.ui.theme.AppSpacing
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
@@ -224,7 +225,7 @@ fun LibraryScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 2.dp),
+                    .padding(vertical = AppSpacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -465,7 +466,7 @@ fun LibraryScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val statusFilters = listOf("All", "Watching", "Wishlist", "Completed", "Loved")
-                        items(statusFilters.size) { idx ->
+                        items(statusFilters.size, key = { statusFilters[it] }) { idx ->
                             val status = statusFilters[idx]
                             val isSelected = filters.state == status
                             val count = filterCounts[status] ?: 0

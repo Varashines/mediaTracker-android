@@ -599,14 +599,23 @@ fun DetailScreen(
                             } else {
                                 Text(item.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }
-
-                            // Small metadata pills, over the image.
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                HeroMetaPill(text = ratingLabel)
-                                HeroMetaPill(text = timeLabel, icon = Icons.Default.Schedule)
-                                HeroMetaPill(text = displayNetwork)
-                            }
                         }
+                    }
+                }
+
+                // Metadata rail: rating / runtime / network, lifted out of the hero so the
+                // artwork isn't fighting a text cluster in the bottom 80dp.
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HeroMetaPill(text = ratingLabel)
+                        HeroMetaPill(text = timeLabel, icon = Icons.Default.Schedule)
+                        HeroMetaPill(text = displayNetwork)
                     }
                 }
 
@@ -733,7 +742,7 @@ fun DetailScreen(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                items(seasonsList) { sNum ->
+                                items(seasonsList, key = { it }) { sNum ->
                                     val sEps = episodes.filter { it.seasonNumber == sNum }
                                     SeasonPill(
                                         seasonNumber = sNum,
@@ -1151,8 +1160,12 @@ private fun ReactionButton(icon: ImageVector, label: String, selected: Boolean, 
 
 /** Small metadata pill shown over the hero image. */
 @Composable
-private fun HeroMetaPill(text: String, icon: ImageVector? = null) {
-    Surface(shape = RoundedCornerShape(8.dp), color = Color.Black.copy(alpha = 0.45f), contentColor = Color.White) {
+private fun HeroMetaPill(text: String, icon: ImageVector? = null, overImage: Boolean = false) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = if (overImage) Color.Black.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (overImage) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+    ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically

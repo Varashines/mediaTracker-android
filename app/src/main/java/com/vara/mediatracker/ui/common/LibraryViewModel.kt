@@ -93,7 +93,11 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
             LibraryCore(
                 items = raw.items,
                 allEpisodes = raw.episodes,
-                episodesByShow = raw.episodes.groupBy { it.showId },
+                // Sorted once here so every consumer (Home rails, Hub, Calendar, Detail)
+                // gets season/episode order without re-sorting each show's list itself.
+                episodesByShow = raw.episodes
+                    .sortedWith(compareBy({ it.showId }, { it.seasonNumber }, { it.episodeNumber }))
+                    .groupBy { it.showId },
                 badges = raw.badgeRows.associate { row ->
                     row.mediaId to BadgeResult(
                         SmartBadge.fromLabel(row.badgeLabel) ?: SmartBadge.NEW,
@@ -119,8 +123,8 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
 
         val showProgressMap = items.filter { it.type.contains("TV", ignoreCase = true) }.associate { item ->
             val showKey = MediaIds.tvShowKey(item.id)
-            val showEps = (episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList())
-                .sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+            // `episodesByShow` is already ordered by (showId, season, episode) in `core`.
+            val showEps = episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList()
             val total = showEps.size
             val watched = showEps.count { it.isWatched }
             val nextEp = showEps.firstOrNull { !it.isWatched }
@@ -144,18 +148,19 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
         )
 
         val resumeIds = resumeItems.map { it.id }.toSet()
-        val comingSoonItems = items.filter { item ->
-            if (item.isSoftDeleted || resumeIds.contains(item.id)) return@filter false
-            val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-            val instant = HomeEligibility.nextAiringInstant(item, key?.let { episodesByShow[it] }.orEmpty())
-            HomeEligibility.isComingSoonAt(item, instant, now)
-        }
-            .sortedBy { item ->
+        // Resolve each candidate's next-airing instant once, then filter and sort on it.
+        // The previous version recomputed the instant a second time inside the sort.
+        val comingSoonItems = items.asSequence()
+            .filter { !it.isSoftDeleted && !resumeIds.contains(it.id) }
+            .mapNotNull { item ->
                 val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
-                HomeEligibility.nextAiringInstant(item, key?.let { episodesByShow[it] }.orEmpty())?.time
-                    ?: Long.MAX_VALUE
+                val instant = HomeEligibility.nextAiringInstant(item, key?.let { episodesByShow[it] }.orEmpty())
+                if (HomeEligibility.isComingSoonAt(item, instant, now)) instant to item else null
             }
+            .sortedBy { it.first?.time ?: Long.MAX_VALUE }
             .take(15)
+            .map { it.second }
+            .toList()
 
         val recentlyAddedItems = items.filter { !it.isSoftDeleted }
             .sortedByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
