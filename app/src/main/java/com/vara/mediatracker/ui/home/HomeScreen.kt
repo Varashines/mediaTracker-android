@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import com.vara.mediatracker.ui.common.OverlayAwareBackHandler
 import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.ui.common.SnapRail
 import com.vara.mediatracker.ui.common.AppToast
@@ -190,13 +191,18 @@ fun HomeScreen(
         }
     }
 
-    if (activeSectionListTitle != null) {
-        androidx.activity.compose.BackHandler {
-            activeSectionListTitle = null
-            activeSectionListItems = emptyList()
-        }
+    // Unconditional call, gated with `enabled`. Composing a BackHandler *inside* the `if`
+    // below changes composition order and lets it outrank the detail overlay's handler, so
+    // the system back would close the hidden list instead of the detail.
+    val sectionListTitle = activeSectionListTitle
+    OverlayAwareBackHandler(enabled = sectionListTitle != null) {
+        activeSectionListTitle = null
+        activeSectionListItems = emptyList()
+    }
+
+    if (sectionListTitle != null) {
         com.vara.mediatracker.ui.common.SectionListScreen(
-            title = activeSectionListTitle!!,
+            title = sectionListTitle,
             items = activeSectionListItems,
             showProgressMap = showProgressMap,
             smartBadgesMap = smartBadgesMap,

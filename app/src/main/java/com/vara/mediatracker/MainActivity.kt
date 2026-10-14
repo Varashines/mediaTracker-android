@@ -3,12 +3,13 @@ package com.vara.mediatracker
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.background
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -104,6 +105,39 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+}
+
+
+/**
+ * System-back handling for the detail/search overlay that is immune to registration order.
+ *
+ * `OnBackPressedDispatcher` invokes the *most recently added enabled* callback. A screen's
+ * `BackHandler` is added when that screen appears, so it always outranks an overlay handler
+ * that was added once at startup. Here the callback is (re)added whenever [overlay] changes,
+ * so while an overlay is open it is the newest callback in the deque — the first one asked
+ * to handle back — no matter what the tab tree has registered underneath.
+ *
+ * When [overlay] is `None` the callback is not registered at all, so the root back gesture
+ * falls through to the system (back-to-home).
+ */
+@Composable
+private fun OverlayBackHandler(overlay: Overlay, onBack: () -> Unit) {
+    val dispatcher = checkNotNull(LocalOnBackPressedDispatcherOwner.current) {
+        "No OnBackPressedDispatcherOwner was provided via LocalOnBackPressedDispatcherOwner"
+    }.onBackPressedDispatcher
+    val currentOnBack by rememberUpdatedState(onBack)
+    val callback = remember {
+        object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() = currentOnBack()
+        }
+    }
+    DisposableEffect(dispatcher, overlay) {
+        if (overlay != Overlay.None) {
+            callback.isEnabled = true
+            dispatcher.addCallback(callback)
+        }
+        onDispose { callback.remove() }
     }
 }
 
@@ -274,9 +308,16 @@ fun MainAppScreen(
             }
         }
 
-        // Registered after the tab content, so it wins back-priority while an overlay is
-        // open; the tab's own handlers (section lists) resume once it closes.
-        BackHandler(enabled = overlay != Overlay.None) {
+        // Handles system back for the detail/search overlay.
+        //
+        // A plain `BackHandler` here is added to the dispatcher once at startup, so any
+        // in-screen handler registered later (a section list, a collection list, …) sits
+        // *above* it and receives the back event first — which is how the detail used to
+        // get stuck while the list underneath closed invisibly. `OverlayBackHandler`
+        // re-registers on every overlay change, so while an overlay is open its callback is
+        // always the most recently added, hence the highest priority, regardless of what
+        // the tab tree has registered.
+        OverlayBackHandler(overlay) {
             when (overlay) {
                 is Overlay.Detail -> activeDetailMediaId = null
                 Overlay.Search -> isSearchActive = false

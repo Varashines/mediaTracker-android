@@ -1,6 +1,5 @@
 package com.vara.mediatracker.ui.smarthub
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.common.EmptyState
-import com.vara.mediatracker.ui.common.LocalOverlayOpen
+import com.vara.mediatracker.ui.common.OverlayAwareBackHandler
 import com.vara.mediatracker.ui.common.rememberCountdownText
 import com.vara.mediatracker.ui.library.LibraryPosterCard
 import com.vara.mediatracker.util.AirTimeResolver
@@ -61,8 +60,8 @@ fun SmartCollectionListScreen(
     showCountdown: Boolean = false,
     nextAirInstants: Map<String, Long> = emptyMap()
 ) {
-    // Yield the back gesture to the detail/search overlay when one is open.
-    BackHandler(enabled = !LocalOverlayOpen.current, onBack = onBack)
+    // Yields to the detail/search overlay while one is open (see OverlayAwareBackHandler).
+    OverlayAwareBackHandler(enabled = true, onBack = onBack)
 
     Column(
         modifier = Modifier
