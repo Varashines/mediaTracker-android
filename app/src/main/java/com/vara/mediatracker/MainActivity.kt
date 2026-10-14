@@ -1,5 +1,6 @@
 package com.vara.mediatracker
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -161,6 +162,7 @@ private fun Overlay.depth(): Int = when (this) {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun MainAppScreen(
     container: AppContainer,
@@ -198,13 +200,15 @@ fun MainAppScreen(
             },
             containerColor = MaterialTheme.colorScheme.background
         ) { paddingValues ->
+            // `paddingValues` is deliberately unused. The tab tree is edge-to-edge and each
+            // screen applies its own insets (statusBarsPadding) while the floating nav bar
+            // applies navigationBarsPadding. Applying it here would double up those insets,
+            // and *consuming* it (the obvious-looking fix for the lint warning) zeroes the
+            // status-bar inset for every descendant — which pulls the headers up under the
+            // system status bar. Hence the suppression rather than a "use".
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    // Consume (rather than apply) the Scaffold's insets: the tab content
-                    // already handles its own bottom padding for the floating nav bar, and
-                    // consuming keeps children from double-applying the system insets.
-                    .consumeWindowInsets(paddingValues)
             ) {
                 // Direction-aware slide so moving between tabs feels spatial rather than a
                 // crossfade, which made the whole screen feel like it was reloading.
