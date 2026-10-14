@@ -17,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -44,6 +46,7 @@ import com.vara.mediatracker.data.sync.CloudSyncManager
 import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.ui.common.springClickable
+import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.Dispatchers
@@ -79,7 +82,7 @@ private data class CredentialDraft(
     val tmdbApiKey: String = ""
 )
 
-@OptIn(kotlinx.coroutines.FlowPreview::class)
+@OptIn(kotlinx.coroutines.FlowPreview::class, ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     container: AppContainer,
@@ -1000,63 +1003,167 @@ fun SettingsScreen(
 
     // Pre-sync preview (macOS SyncImpact): show the incoming/outgoing diff, then apply.
     pendingImpact?.let { impact ->
-        AlertDialog(
-            onDismissRequest = { pendingImpact = null },
-            title = { Text("Cloud Sync Preview") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Review what will change between this device and the cloud.")
+        ModalBottomSheet(onDismissRequest = { pendingImpact = null }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 28.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text("CLOUD SYNC PREVIEW", style = AppTextStyles.MonoLabel, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Review what will change between this device and the cloud.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (!impact.hasChanges) {
                     Text(
-                        text = "↓ Incoming: ${impact.incomingTitles.size} titles · ${impact.incomingEpisodes} episodes",
-                        fontWeight = FontWeight.Bold
+                        "Everything is already in sync.",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = sem.success
                     )
-                    Text(
-                        text = "↑ Outgoing: ${impact.outgoingTitles.size} titles · ${impact.outgoingEpisodes} episodes",
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (impact.conflictTitles.isNotEmpty()) {
-                        Text(
-                            text = "${impact.conflictTitles.size} conflicts (newest wins)",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    val sample = (impact.incomingTitles + impact.outgoingTitles).distinct().take(6)
-                    if (sample.isNotEmpty()) {
-                        Text(
-                            text = sample.joinToString("\n"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 6
-                        )
-                    }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    pendingImpact = null
-                    isSyncing = true
-                    container.appScope.launch {
-                        val result = container.syncManager().sync()
-                        withContext(Dispatchers.Main) {
-                            isSyncing = false
-                            if (result.isSuccess) {
-                                SyncScheduler.recordSyncCompletion(context)
-                                lastSyncSummary = result.getOrNull()
-                                val now = System.currentTimeMillis()
-                                prefs.lastSyncTimestamp = now
-                                lastSyncTime = now
-                                val s = result.getOrNull()
-                                AppToast.show("Synced — ↑ ${s?.outgoing ?: 0} sent, ↓ ${s?.incoming ?: 0} received")
-                            } else {
-                                AppToast.show("Sync failed: ${result.exceptionOrNull()?.localizedMessage}")
+
+                ImpactSection(
+                    icon = Icons.Default.CloudDownload,
+                    title = "From cloud",
+                    accent = MaterialTheme.colorScheme.primary,
+                    summary = impactSummary(
+                        impact.incomingTitles.size,
+                        impact.incomingEpisodes,
+                        impact.incomingCollections.size,
+                        impact.incomingCollectionItems
+                    ),
+                    names = impact.incomingTitles + impact.incomingCollections
+                )
+
+                ImpactSection(
+                    icon = Icons.Default.CloudUpload,
+                    title = "To cloud",
+                    accent = sem.success,
+                    summary = impactSummary(
+                        impact.outgoingTitles.size,
+                        impact.outgoingEpisodes,
+                        impact.outgoingCollections.size,
+                        impact.outgoingCollectionItems
+                    ),
+                    names = impact.outgoingTitles + impact.outgoingCollections
+                )
+
+                if (impact.conflictTitles.isNotEmpty()) {
+                    ImpactSection(
+                        icon = Icons.Default.WarningAmber,
+                        title = "Conflicts",
+                        accent = sem.warning,
+                        summary = "${impact.conflictTitles.size} · newest edit wins",
+                        names = impact.conflictTitles
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { pendingImpact = null },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Cancel") }
+
+                    Button(
+                        onClick = {
+                            pendingImpact = null
+                            isSyncing = true
+                            container.appScope.launch {
+                                val result = container.syncManager().sync()
+                                withContext(Dispatchers.Main) {
+                                    isSyncing = false
+                                    if (result.isSuccess) {
+                                        SyncScheduler.recordSyncCompletion(context)
+                                        lastSyncSummary = result.getOrNull()
+                                        val now = System.currentTimeMillis()
+                                        prefs.lastSyncTimestamp = now
+                                        lastSyncTime = now
+                                        val s = result.getOrNull()
+                                        AppToast.show("Synced — ↑ ${s?.outgoing ?: 0} sent, ↓ ${s?.incoming ?: 0} received")
+                                    } else {
+                                        AppToast.show("Sync failed: ${result.exceptionOrNull()?.localizedMessage}")
+                                    }
+                                }
                             }
-                        }
-                    }
-                }) { Text("Sync Now") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingImpact = null }) { Text("Cancel") }
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Sync Now", fontWeight = FontWeight.Bold) }
+                }
             }
-        )
+        }
+    }
+}
+
+private fun impactSummary(titles: Int, episodes: Int, collections: Int, collectionItems: Int): String =
+    buildString {
+        append("$titles titles")
+        if (episodes > 0) append(" · $episodes episodes")
+        if (collections > 0) append(" · $collections collections")
+        if (collectionItems > 0) append(" · $collectionItems items")
+    }
+
+/** One group in the sync preview: a header with a count, then a short list of names. */
+@Composable
+private fun ImpactSection(
+    icon: ImageVector,
+    title: String,
+    accent: Color,
+    summary: String,
+    names: List<String>
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(summary, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (names.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                names.take(8).forEach { name ->
+                    Text(
+                        "• $name",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (names.size > 8) {
+                    Text(
+                        "+ ${names.size - 8} more",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
     }
 }

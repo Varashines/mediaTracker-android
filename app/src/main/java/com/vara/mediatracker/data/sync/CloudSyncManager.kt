@@ -375,10 +375,17 @@ class CloudSyncManager(
         val outgoingTitles: List<String>,
         val conflictTitles: List<String>,
         val incomingEpisodes: Int,
-        val outgoingEpisodes: Int
+        val outgoingEpisodes: Int,
+        val incomingCollections: List<String> = emptyList(),
+        val outgoingCollections: List<String> = emptyList(),
+        val incomingCollectionItems: Int = 0,
+        val outgoingCollectionItems: Int = 0
     ) {
-        val totalIncoming: Int get() = incomingTitles.size + incomingEpisodes
-        val totalOutgoing: Int get() = outgoingTitles.size + outgoingEpisodes
+        val totalIncoming: Int
+            get() = incomingTitles.size + incomingEpisodes + incomingCollections.size + incomingCollectionItems
+        val totalOutgoing: Int
+            get() = outgoingTitles.size + outgoingEpisodes + outgoingCollections.size + outgoingCollectionItems
+        val hasChanges: Boolean get() = totalIncoming + totalOutgoing > 0
     }
 
     private data class Reconcile(
@@ -404,7 +411,11 @@ class CloudSyncManager(
             outgoingTitles = r.outgoingMedia.map { it.title },
             conflictTitles = r.conflictTitles,
             incomingEpisodes = r.incomingEpisodes.size,
-            outgoingEpisodes = r.outgoingEpisodes.size
+            outgoingEpisodes = r.outgoingEpisodes.size,
+            incomingCollections = r.incomingCollections.map { it.name },
+            outgoingCollections = r.outgoingCollections.map { it.name },
+            incomingCollectionItems = r.incomingCollectionItems.size,
+            outgoingCollectionItems = r.outgoingCollectionItems.size
         )
     }
 
