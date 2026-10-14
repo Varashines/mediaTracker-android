@@ -192,7 +192,12 @@ interface BadgeDao {
 /** Collections + membership. Mirrors macOS's `MediaCollection` model. */
 @Dao
 interface CollectionDao {
-    @Query("SELECT * FROM collections WHERE isDeleted = 0 ORDER BY isPinned DESC, name COLLATE NOCASE ASC")
+    /**
+     * Manual collections only, for the UI. Smart collections carry rules rather than stored
+     * members and Android has no rule engine yet, so they'd render as empty "0 titles"
+     * collections. They still sync (see [getAllCollections]); only the UI hides them.
+     */
+    @Query("SELECT * FROM collections WHERE isDeleted = 0 AND isSmart = 0 ORDER BY isPinned DESC, name COLLATE NOCASE ASC")
     fun observeCollections(): Flow<List<CollectionEntity>>
 
     @Query("SELECT * FROM collections")
