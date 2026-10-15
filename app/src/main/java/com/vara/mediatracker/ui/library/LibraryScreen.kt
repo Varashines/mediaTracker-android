@@ -325,10 +325,11 @@ fun LibraryScreen(
                                         state = "Wishlist",
                                         lastInteractionDate = now,
                                         lastStateChangeDate = now,
+                                        dateAdded = now,
                                         updatedAt = now
                                     )
                                     container.mediaDao.upsertMedia(newItem)
-                                    syncManager.pushMediaUpdate(mediaId, newItem.type, "Wishlist", "None")
+                                    syncManager.pushMediaUpdate(mediaId, newItem.type, "Wishlist", "None", dateAdded = now)
                                     AppToast.show("Added '$title' to Wishlist")
                                     onSelectMedia(mediaId)
                                 }

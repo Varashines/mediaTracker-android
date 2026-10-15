@@ -45,6 +45,8 @@ data class RemoteMedia(
     val is_soft_deleted: Boolean = false,
     val last_interaction_date: String? = null,
     val last_state_change_date: String? = null,
+    /** When the title joined the library — the Mac's `dateAdded`. Never moves on a watch. */
+    val date_added: String? = null,
     val updated_at: String? = null
 )
 
@@ -397,7 +399,9 @@ class CloudSyncManager(
         type: String,
         state: String,
         taste: String,
-        isStateChange: Boolean = true
+        isStateChange: Boolean = true,
+        /** Set when this push also introduces the title, so its "added" time rides along. */
+        dateAdded: String? = null
     ) = runCatching {
         val now = isoNow()
         val payload = RemoteMedia(
@@ -408,6 +412,7 @@ class CloudSyncManager(
             taste = taste,
             last_interaction_date = now,
             last_state_change_date = if (isStateChange) now else null,
+            date_added = dateAdded,
             updated_at = now
         )
 
@@ -1001,6 +1006,7 @@ class CloudSyncManager(
                 is_soft_deleted = item.isSoftDeleted,
                 last_interaction_date = item.lastInteractionDate ?: now,
                 last_state_change_date = item.lastStateChangeDate ?: now,
+                date_added = item.dateAdded,
                 updated_at = now
             )
         }
@@ -1033,6 +1039,7 @@ class CloudSyncManager(
                 is_soft_deleted = true,
                 last_interaction_date = now,
                 last_state_change_date = now,
+                date_added = item.dateAdded,
                 updated_at = now
             )
         }
@@ -1095,6 +1102,9 @@ class CloudSyncManager(
             isSoftDeleted = remote.is_soft_deleted,
             lastInteractionDate = remote.last_interaction_date,
             lastStateChangeDate = remote.last_state_change_date,
+            // Keep what we already know; take the cloud's (the Mac's dateAdded) when we don't —
+            // that is how rows that predate the column get a real "added" time.
+            dateAdded = existing?.dateAdded ?: remote.date_added,
             updatedAt = remote.updated_at
         )
 

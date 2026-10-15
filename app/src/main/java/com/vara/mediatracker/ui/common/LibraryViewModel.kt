@@ -163,7 +163,10 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
             .toList()
 
         val recentlyAddedItems = items.filter { !it.isSoftDeleted }
-            .sortedByDescending { it.lastInteractionDate ?: it.updatedAt ?: it.id }
+            // Genuinely "added", not "recently touched": dateAdded doesn't move on a watch,
+            // a like or a sync. Rows predating the column fall back until a sync supplies the
+            // Mac's dateAdded (the same value the Mac's own Home orders by).
+            .sortedByDescending { it.dateAdded ?: it.lastInteractionDate ?: it.id }
             .take(15)
 
         val lovedItems = items.filter {

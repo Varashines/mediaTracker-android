@@ -551,10 +551,11 @@ fun DetailScreen(
                     state = "Wishlist",
                     lastInteractionDate = now,
                     lastStateChangeDate = now,
+                    dateAdded = now,
                     updatedAt = now
                 )
                 db.mediaDao().upsertMedia(newItem)
-                syncManager.pushMediaUpdate(relId, newItem.type, "Wishlist", "None")
+                syncManager.pushMediaUpdate(relId, newItem.type, "Wishlist", "None", dateAdded = now)
                 AppToast.show("Added \"$relTitle\"")
             }
             onOpenMedia(relId)

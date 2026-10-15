@@ -58,6 +58,12 @@ data class MediaItemEntity(
     val isSoftDeleted: Boolean = false,
     val lastInteractionDate: String? = null,
     val lastStateChangeDate: String? = null,
+    /**
+     * When the title joined the library. Distinct from `lastInteractionDate`: this must NOT
+     * move when the user watches, likes or edits it, or "Recently Added" reshuffles.
+     * macOS keeps the same value in `MediaItem.dateAdded`.
+     */
+    val dateAdded: String? = null,
     val updatedAt: String? = null
 )
 

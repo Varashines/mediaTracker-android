@@ -282,7 +282,7 @@ interface WatchHistoryDao {
         WatchCycleEntity::class,
         WatchEventEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 @TypeConverters(CollectionConverters::class)

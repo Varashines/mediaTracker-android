@@ -229,10 +229,23 @@ object Migrations {
         }
     }
 
+    /**
+     * v14 -> v15: a real `dateAdded`.
+     *
+     * "Recently Added" was ordered by `lastInteractionDate`, so watching or liking a title
+     * reordered it (and a metadata refresh rewrote `updatedAt`). Existing rows stay NULL and
+     * fall back to the old behaviour until a sync supplies the Mac's `dateAdded`.
+     */
+    val MIGRATION_14_15 = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `media_items` ADD COLUMN `dateAdded` TEXT")
+        }
+    }
+
     val ALL: Array<Migration> =
         arrayOf(
             MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
             MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
-            MIGRATION_12_13, MIGRATION_13_14
+            MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15
         )
 }

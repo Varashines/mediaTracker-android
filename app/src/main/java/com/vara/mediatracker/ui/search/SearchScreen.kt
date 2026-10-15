@@ -140,10 +140,11 @@ fun SearchScreen(
                     state = "Wishlist",
                     lastInteractionDate = now,
                     lastStateChangeDate = now,
+                    dateAdded = now,
                     updatedAt = now
                 )
                 container.mediaDao.upsertMedia(newItem)
-                container.syncManager().pushMediaUpdate(mediaId, newItem.type, "Wishlist", "None")
+                container.syncManager().pushMediaUpdate(mediaId, newItem.type, "Wishlist", "None", dateAdded = now)
                 AppToast.show("Added \"$title\" to Watchlist")
                 onSelectMedia(mediaId)
             }
