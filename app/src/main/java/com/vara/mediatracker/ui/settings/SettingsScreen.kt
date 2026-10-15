@@ -329,7 +329,7 @@ fun SettingsScreen(
                             // Preview the diff first (macOS SyncImpact), then confirm.
                             isSyncing = true
                             container.appScope.launch {
-                                val result = container.syncManager().computeImpact()
+                                val result = container.syncManager().computeImpact(since = prefs.syncWatermark)
                                 withContext(Dispatchers.Main) {
                                     isSyncing = false
                                     if (result.isSuccess) {
@@ -1079,12 +1079,13 @@ fun SettingsScreen(
                             pendingImpact = null
                             isSyncing = true
                             container.appScope.launch {
-                                val result = container.syncManager().sync()
+                                val result = container.syncManager().sync(since = prefs.syncWatermark)
                                 withContext(Dispatchers.Main) {
                                     isSyncing = false
                                     if (result.isSuccess) {
                                         SyncScheduler.recordSyncCompletion(context)
                                         lastSyncSummary = result.getOrNull()
+                                        result.getOrNull()?.watermark?.let { prefs.syncWatermark = it }
                                         val now = System.currentTimeMillis()
                                         prefs.lastSyncTimestamp = now
                                         lastSyncTime = now

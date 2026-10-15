@@ -427,7 +427,7 @@ class CloudSyncManager(
     }
 
     /** Incoming/outgoing counts for one two-way sync, for the UI indicator. */
-    data class SyncSummary(val outgoing: Int, val incoming: Int)
+    data class SyncSummary(val outgoing: Int, val incoming: Int, val watermark: String? = null)
 
     /** Pre-sync preview: what a sync would change, without applying anything. */
     data class SyncImpact(
@@ -461,15 +461,17 @@ class CloudSyncManager(
         val outgoingCycles: List<WatchCycleEntity> = emptyList(),
         val incomingCycles: List<WatchCycleEntity> = emptyList(),
         val outgoingWatchEvents: List<WatchEventEntity> = emptyList(),
-        val incomingWatchEvents: List<WatchEventEntity> = emptyList()
+        val incomingWatchEvents: List<WatchEventEntity> = emptyList(),
+        /** Newest server `updated_at` seen, to advance the incremental pull watermark. */
+        val watermark: String? = null
     )
 
     /** Computes what a sync would change, without writing anything (macOS SyncImpact). */
-    suspend fun computeImpact(): Result<SyncImpact> = runCatching {
+    suspend fun computeImpact(since: String? = null): Result<SyncImpact> = runCatching {
         if (supabaseUrl.isBlank() || anonKey.isBlank() || syncKey.isBlank()) {
             return Result.failure(IllegalStateException("Sync credentials not configured"))
         }
-        val r = reconcile()
+        val r = reconcile(since)
         SyncImpact(
             incomingTitles = r.incomingMedia.map { it.title },
             outgoingTitles = r.outgoingMedia.map { it.title },
@@ -489,11 +491,11 @@ class CloudSyncManager(
      *
      * @return how many rows were sent up and applied down.
      */
-    suspend fun sync(): Result<SyncSummary> = runCatching {
+    suspend fun sync(since: String? = null): Result<SyncSummary> = runCatching {
         if (supabaseUrl.isBlank() || anonKey.isBlank() || syncKey.isBlank()) {
             return Result.failure(IllegalStateException("Sync credentials not configured"))
         }
-        val r = reconcile()
+        val r = reconcile(since)
         if (r.incomingMedia.isNotEmpty()) mediaDao.upsertMedia(r.incomingMedia)
         if (r.incomingEpisodes.isNotEmpty()) mediaDao.upsertEpisodes(r.incomingEpisodes)
         if (r.incomingCollections.isNotEmpty()) db.collectionDao().upsertCollections(r.incomingCollections)
@@ -512,14 +514,15 @@ class CloudSyncManager(
                 r.outgoingCycles.size + r.outgoingWatchEvents.size,
             incoming = r.incomingMedia.size + r.incomingEpisodes.size +
                 r.incomingCollections.size + r.incomingCollectionItems.size +
-                r.incomingCycles.size + r.incomingWatchEvents.size
+                r.incomingCycles.size + r.incomingWatchEvents.size,
+            watermark = r.watermark
         )
     }
 
     /** Fetches the cloud and diffs it against the local library. Pure read. */
-    private suspend fun reconcile(): Reconcile {
-        val remoteMedia = fetchRemoteMedia()
-        val remoteEpisodes = fetchRemoteEpisodes()
+    private suspend fun reconcile(since: String? = null): Reconcile {
+        val remoteMedia = fetchRemoteMedia(since)
+        val remoteEpisodes = fetchRemoteEpisodes(since)
         val remoteMediaById = remoteMedia.associateBy { it.media_id }
         // Cloud rows carry legacy episode ids ("1412_5_10"); normalize to the canonical
         // "tv_1412_s5_e10" so they actually match the local rows.
@@ -587,8 +590,8 @@ class CloudSyncManager(
             }
         }
 
-        val collections = reconcileCollections()
-        val history = reconcileWatchHistory()
+        val collections = reconcileCollections(since)
+        val history = reconcileWatchHistory(since)
         return Reconcile(
             outgoingMedia, incomingMedia, outgoingEpisodes, incomingEpisodes, conflictTitles,
             outgoingCollections = collections.outgoingCollections,
@@ -598,13 +601,27 @@ class CloudSyncManager(
             outgoingCycles = history.outgoingCycles,
             incomingCycles = history.incomingCycles,
             outgoingWatchEvents = history.outgoingEvents,
-            incomingWatchEvents = history.incomingEvents
+            incomingWatchEvents = history.incomingEvents,
+            // Advance the watermark to the newest server stamp we have seen (minus a margin
+            // for reads racing an in-flight commit), so the next pull only asks for changes.
+            watermark = nextWatermark(since, remoteMedia.map { it.updated_at } + remoteEpisodes.map { it.updated_at })
         )
     }
 
-    private suspend fun reconcileWatchHistory(): WatchHistoryReconcile {
-        val remoteCycles = fetchRemoteWatchCycles()
-        val remoteEvents = fetchRemoteWatchEvents()
+    /**
+     * The watermark to store after this pull: the newest server `updated_at` observed, backed
+     * off slightly. Server time, not the device clock — a fast device clock would skip rows.
+     */
+    private fun nextWatermark(previous: String?, stamps: List<String?>): String? {
+        val newest = stamps.filterNotNull().filter { it.isNotBlank() }.maxOrNull() ?: return previous
+        return runCatching {
+            java.time.Instant.parse(newest).minusSeconds(5).toString()
+        }.getOrNull() ?: newest
+    }
+
+    private suspend fun reconcileWatchHistory(since: String? = null): WatchHistoryReconcile {
+        val remoteCycles = fetchRemoteWatchCycles(since)
+        val remoteEvents = fetchRemoteWatchEvents(since)
         val localCycles = db.watchHistoryDao().getAllCycles()
         val localEvents = db.watchHistoryDao().getAllEvents()
 
@@ -711,9 +728,9 @@ class CloudSyncManager(
         val incomingEvents: List<WatchEventEntity>
     )
 
-    private suspend fun fetchRemoteWatchCycles(): List<RemoteWatchCycle> = fetchAllPages("user_watch_cycles")
+    private suspend fun fetchRemoteWatchCycles(since: String? = null): List<RemoteWatchCycle> = fetchAllPages("user_watch_cycles", since)
 
-    private suspend fun fetchRemoteWatchEvents(): List<RemoteWatchEvent> = fetchAllPages("user_watch_events")
+    private suspend fun fetchRemoteWatchEvents(since: String? = null): List<RemoteWatchEvent> = fetchAllPages("user_watch_events", since)
 
     private suspend fun pushWatchCycles(cycles: List<WatchCycleEntity>) {
         if (cycles.isEmpty()) return
@@ -778,9 +795,9 @@ class CloudSyncManager(
         parseInstant(completedAt) ?: parseInstant(startedAt)
 
     /** Collections + membership diff. Newest-wins per row; membership uses tombstones. */
-    private suspend fun reconcileCollections(): CollectionReconcile {
-        val remoteCollections = fetchRemoteCollections()
-        val remoteItems = fetchRemoteCollectionItems()
+    private suspend fun reconcileCollections(since: String? = null): CollectionReconcile {
+        val remoteCollections = fetchRemoteCollections(since)
+        val remoteItems = fetchRemoteCollectionItems(since)
         val localCollections = db.collectionDao().getAllCollections()
         val localItems = db.collectionDao().getAllCollectionItems()
 
@@ -875,39 +892,26 @@ class CloudSyncManager(
             MediaIds.buildEpisodeUniqueId(it.showId, it.seasonNumber, it.episodeNumber)
         } ?: id
 
-    private suspend fun fetchRemoteMedia(): List<RemoteMedia> {
-        // Paginated like fetchRemoteEpisodes: PostgREST caps an unpaginated response at
-        // 1000 rows, so a library past that would silently truncate on pull.
-        val out = mutableListOf<RemoteMedia>()
-        var offset = 0
-        val pageSize = 1000
-        while (true) {
-            val response: HttpResponse = client.get("$supabaseUrl/rest/v1/user_media") {
-                parameter("user_id", "eq.$syncKey")
-                parameter("select", "*")
-                header("apikey", anonKey)
-                header("Authorization", "Bearer $anonKey")
-                header("x-sync-key", syncKey)
-                header("Range", "$offset-${offset + pageSize - 1}")
-            }
-            val page: List<RemoteMedia> = response.body()
-            if (page.isEmpty()) break
-            out.addAll(page)
-            offset += page.size
-            if (page.size < pageSize) break
-        }
-        return out
-    }
+    private suspend fun fetchRemoteMedia(since: String? = null): List<RemoteMedia> =
+        fetchAllPages("user_media", since)
 
-    private suspend fun fetchRemoteEpisodes(): List<RemoteEpisode> = fetchAllPages("user_episodes")
+    private suspend fun fetchRemoteEpisodes(since: String? = null): List<RemoteEpisode> = fetchAllPages("user_episodes", since)
 
-    private suspend fun fetchRemoteCollections(): List<RemoteCollection> = fetchAllPages("user_collections")
+    private suspend fun fetchRemoteCollections(since: String? = null): List<RemoteCollection> = fetchAllPages("user_collections", since)
 
-    private suspend fun fetchRemoteCollectionItems(): List<RemoteCollectionItem> =
-        fetchAllPages("user_collection_items")
+    private suspend fun fetchRemoteCollectionItems(since: String? = null): List<RemoteCollectionItem> =
+        fetchAllPages("user_collection_items", since)
 
     /** GETs every page of a PostgREST table — it caps an unpaginated response at 1000 rows. */
-    private suspend inline fun <reified T> fetchAllPages(endpoint: String): List<T> {
+    /**
+     * GETs every page of a PostgREST table — it caps an unpaginated response at 1000 rows.
+     *
+     * [since] is the incremental watermark: every table carries a server-set `updated_at`, so
+     * an unchanged table returns zero rows instead of the whole library. This matters more
+     * than it looks — a full pull is ~8 MB, and the background sync runs every 30 minutes
+     * (~11 GB/month against Supabase's 5 GB free egress quota).
+     */
+    private suspend inline fun <reified T> fetchAllPages(endpoint: String, since: String? = null): List<T> {
         val out = mutableListOf<T>()
         var offset = 0
         val pageSize = 1000
@@ -915,6 +919,7 @@ class CloudSyncManager(
             val response: HttpResponse = client.get("$supabaseUrl/rest/v1/$endpoint") {
                 parameter("user_id", "eq.$syncKey")
                 parameter("select", "*")
+                if (!since.isNullOrBlank()) parameter("updated_at", "gt.$since")
                 header("apikey", anonKey)
                 header("Authorization", "Bearer $anonKey")
                 header("x-sync-key", syncKey)

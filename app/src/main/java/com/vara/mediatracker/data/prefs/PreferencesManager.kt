@@ -27,6 +27,17 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putLong("last_sync_timestamp", value).apply()
 
     /**
+     * Incremental pull watermark: the newest server `updated_at` the last sync saw.
+     *
+     * Server time, not the device clock (a fast clock would skip rows). Every table filters on
+     * `updated_at > this`, so an unchanged library pulls nothing — a full pull is ~8 MB and the
+     * background sync runs every 30 minutes.
+     */
+    var syncWatermark: String?
+        get() = prefs.getString("sync_watermark", null)
+        set(value) = prefs.edit().putString("sync_watermark", value).apply()
+
+    /**
      * ISO-3166 region the Discovery providers were last enriched for. When the device
      * region changes, providers are cleared and re-fetched so they stay region-correct.
      */

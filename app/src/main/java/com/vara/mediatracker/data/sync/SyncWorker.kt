@@ -33,7 +33,11 @@ class SyncWorker(
             return Result.success(workDataOf(KEY_ITEMS to 0, KEY_SKIPPED to true))
         }
 
-        val outcome = container.syncManager().pullFromCloud()
+        // Reconcile, not a force-pull: `pullFromCloud` downloads everything and lets the cloud
+        // overwrite local rows (so an offline edit taken since the last push was clobbered),
+        // and it re-fetched the whole library every 30 minutes. `sync` diffs against the cloud
+        // and only asks for rows newer than the stored watermark — an idle pass pulls nothing.
+        val outcome = container.syncManager().sync(since = prefs.syncWatermark)
         val failure = outcome.exceptionOrNull()
         if (failure != null) {
             // Transient network/server problems deserve a retry with backoff. A 4xx from
@@ -43,7 +47,8 @@ class SyncWorker(
             return if (retryable) Result.retry() else Result.failure()
         }
 
-        val count = outcome.getOrNull() ?: 0
+        outcome.getOrNull()?.watermark?.let { prefs.syncWatermark = it }
+        val count = outcome.getOrNull()?.let { it.incoming + it.outgoing } ?: 0
         SyncScheduler.recordSyncCompletion(applicationContext)
 
         // Fresh data means stale badges; recompute inline so a notification can be
