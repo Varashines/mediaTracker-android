@@ -1,0 +1,8 @@
+{
+  "name": "MediaTracker",
+  "description": "Cross-device entertainment tracker for movies, TV series, anime, games, and books with TMDB integration, release calendar, and Supabase sync.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

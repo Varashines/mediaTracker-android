@@ -70,6 +70,15 @@ interface MediaDao {
     @Query("UPDATE tv_episodes SET isWatched = :watched, watchedDate = :watchedDate WHERE uniqueId = :uniqueId")
     suspend fun setEpisodeWatched(uniqueId: String, watched: Boolean, watchedDate: String?)
 
+    @Query("UPDATE tv_episodes SET isWatched = :watched, watchedDate = :watchedDate WHERE showId = :showId AND seasonNumber = :seasonNumber")
+    suspend fun setSeasonEpisodesWatched(showId: String, seasonNumber: Int, watched: Boolean, watchedDate: String?)
+
+    @Query("UPDATE tv_episodes SET isWatched = :watched, watchedDate = :watchedDate WHERE showId = :showId")
+    suspend fun setAllEpisodesWatched(showId: String, watched: Boolean, watchedDate: String?)
+
+    @Query("UPDATE media_items SET lastInteractionDate = :now WHERE id = :id")
+    suspend fun updateLastInteractionDate(id: String, now: String)
+
     /**
      * TV shows whose episode metadata is missing or incomplete.
      *

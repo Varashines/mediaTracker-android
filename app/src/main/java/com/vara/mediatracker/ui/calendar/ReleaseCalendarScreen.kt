@@ -50,6 +50,7 @@ import com.vara.mediatracker.ui.common.springClickable
 import com.vara.mediatracker.ui.home.SectionHeader
 import com.vara.mediatracker.ui.home.SmartBadgePill
 import com.vara.mediatracker.ui.theme.AppColors
+import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.util.AirTimeResolver
 import com.vara.mediatracker.util.NetworkResolver
@@ -287,10 +288,35 @@ fun ReleaseCalendarScreen(
                         }
                     }
 
-                    WeekMonthToggle(
-                        isWeek = isCompactWeek,
-                        onSelect = { week -> manualWeekMode = week }
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val isCurrentMonth = remember(selectedYearMonth) {
+                            val now = Calendar.getInstance()
+                            now.get(Calendar.YEAR) == selectedYearMonth.get(Calendar.YEAR) &&
+                                now.get(Calendar.MONTH) == selectedYearMonth.get(Calendar.MONTH)
+                        }
+                        if (!isCurrentMonth || selectedDateString != todayString) {
+                            Surface(
+                                onClick = {
+                                    selectedYearMonth = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1) }
+                                    selectedDateString = todayString
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = "TODAY",
+                                    style = AppTextStyles.MonoLabel,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        WeekMonthToggle(
+                            isWeek = isCompactWeek,
+                            onSelect = { week -> manualWeekMode = week }
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(10.dp))
@@ -357,7 +383,33 @@ fun ReleaseCalendarScreen(
                 }
             }
         }
-
+        // Filter Chips Row
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("All", "Movies", "TV Shows").forEach { filter ->
+                    val isSelected = selectedFilter == filter
+                    Surface(
+                        onClick = { selectedFilter = filter },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                    ) {
+                        Text(
+                            text = filter,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
 
         // 4. Release Cards
         if (displayedEvents.isEmpty()) {

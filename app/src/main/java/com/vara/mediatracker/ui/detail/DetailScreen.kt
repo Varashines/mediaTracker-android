@@ -30,6 +30,10 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
+import com.vara.mediatracker.data.TrackingLogic
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -139,6 +143,7 @@ fun DetailScreen(
     val sem = LocalSemanticColors.current
     val haptic = LocalHapticFeedback.current
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
 
     var mediaItem by remember { mutableStateOf<MediaItemEntity?>(null) }
     var statusPickerOpen by remember { mutableStateOf(false) }
@@ -489,8 +494,26 @@ fun DetailScreen(
     fun markWatched(episode: EpisodeEntity, watched: Boolean) {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         scope.launch {
-            db.mediaDao().setEpisodeWatched(episode.uniqueId, watched, if (watched) isoNow() else null)
-            syncManager.pushEpisodeWatch(MediaIds.tmdbIdOf(episode.showId).toString(), episode.seasonNumber, episode.episodeNumber, watched)
+            TrackingLogic.markEpisodeWatched(
+                container = container,
+                episode = episode,
+                watched = watched,
+                onShowUpdated = { mediaItem = it }
+            )
+        }
+    }
+
+    fun markSeasonWatched(seasonNumber: Int, seasonEpisodes: List<EpisodeEntity>, watched: Boolean) {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        scope.launch {
+            TrackingLogic.markSeasonWatched(
+                container = container,
+                showId = showIdKey,
+                seasonNumber = seasonNumber,
+                seasonEpisodes = seasonEpisodes,
+                watched = watched,
+                onShowUpdated = { mediaItem = it }
+            )
         }
     }
 
@@ -544,9 +567,23 @@ fun DetailScreen(
             subtitle = if (isTV && episodes.isNotEmpty()) "Season $selectedSeason • ${episodes.size} Episodes" else null,
             onBack = onBack,
             onAddToCollection = { collectionPickerOpen = true },
-            onCopyTitle = {
-                clipboard.setText(AnnotatedString(item.title))
-                AppToast.show("Title copied")
+            onShare = {
+                val sendIntent = Intent().apply {
+                    action = Intent.ACTION_SEND
+                    putExtra(Intent.EXTRA_TEXT, "Check out \"${item.title}\" (${item.type}) on MediaTracker!\n${item.overview.take(160)}")
+                    type = "text/plain"
+                }
+                context.startActivity(Intent.createChooser(sendIntent, "Share \"${item.title}\""))
+            },
+            onOpenWeb = {
+                val tmdbId = MediaIds.tmdbIdOf(item.id)
+                if (tmdbId > 0) {
+                    val path = if (isTV) "tv" else "movie"
+                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.themoviedb.org/$path/$tmdbId"))
+                    runCatching { context.startActivity(webIntent) }
+                } else {
+                    AppToast.show("No TMDB ID available")
+                }
             }
         )
 
@@ -744,13 +781,13 @@ fun DetailScreen(
                         val completed = item.state.equals("Completed", ignoreCase = true)
                         Button(
                             onClick = {
-                                val next = if (completed) "Active" else "Completed"
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 scope.launch {
-                                    db.mediaDao().updateState(item.id, next, isoNow())
-                                    mediaItem = item.copy(state = next)
-                                    syncManager.pushMediaUpdate(item.id, item.type, next, item.taste)
-                                    AppToast.show(if (completed) "Marked as watching" else "Marked as watched")
+                                    TrackingLogic.toggleMovieWatched(
+                                        container = container,
+                                        movie = item,
+                                        onMovieUpdated = { mediaItem = it }
+                                    )
                                 }
                             },
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(52.dp),
@@ -758,7 +795,7 @@ fun DetailScreen(
                         ) {
                             Icon(if (completed) Icons.Default.Refresh else Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (completed) "Mark Unwatched" else "Mark Watched", fontWeight = FontWeight.Bold)
+                            Text(if (completed) "Mark In Progress" else "Mark Watched", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -801,13 +838,64 @@ fun DetailScreen(
                     if (currentSeasonEpisodes.isNotEmpty()) {
                         val seasonWatched = currentSeasonEpisodes.count { it.isWatched }
                         val seasonTotal = currentSeasonEpisodes.size
-                        if (seasonWatched < seasonTotal) {
-                            item {
-                                ProgressLine(
-                                    fraction = seasonWatched.toFloat() / seasonTotal,
-                                    label = "$seasonWatched/$seasonTotal",
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                )
+                        val allSeasonWatched = seasonWatched == seasonTotal && seasonTotal > 0
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "SEASON $selectedSeason PROGRESS",
+                                            style = AppTextStyles.MonoLabel,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        ProgressLine(
+                                            fraction = if (seasonTotal > 0) seasonWatched.toFloat() / seasonTotal else 0f,
+                                            label = "$seasonWatched/$seasonTotal"
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Surface(
+                                        onClick = {
+                                            markSeasonWatched(selectedSeason, currentSeasonEpisodes, !allSeasonWatched)
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (allSeasonWatched) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.primaryContainer,
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = if (allSeasonWatched) Icons.Default.Refresh else Icons.Default.DoneAll,
+                                                contentDescription = null,
+                                                tint = if (allSeasonWatched) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(5.dp))
+                                            Text(
+                                                text = if (allSeasonWatched) "Unwatch" else "Watch All",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (allSeasonWatched) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1021,47 +1109,57 @@ fun DetailScreen(
     }
 }
 
-/** Sticky top bar: back, name + episode count, and a copy-title button. */
+/** Sticky top bar: back, name + episode count, and share/web/collection buttons. */
 @Composable
 private fun DetailTopBar(
     title: String,
     subtitle: String?,
     onBack: () -> Unit,
     onAddToCollection: () -> Unit,
-    onCopyTitle: () -> Unit
+    onShare: () -> Unit,
+    onOpenWeb: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Surface(onClick = onBack, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(40.dp)) {
+        Surface(onClick = onBack, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(38.dp)) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(19.dp))
             }
         }
 
-        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(modifier = Modifier.weight(1f).padding(horizontal = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
             if (subtitle != null) {
                 Text(subtitle.uppercase(Locale.US), style = AppTextStyles.MonoLabel, color = MaterialTheme.colorScheme.primary, maxLines = 1)
             }
         }
 
-        // Add to collection lives here now that the Library has no multi-select.
-        Surface(onClick = onAddToCollection, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(40.dp)) {
+        // Add to collection
+        Surface(onClick = onAddToCollection, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(38.dp)) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Bookmarks, contentDescription = "Add to collection", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Bookmarks, contentDescription = "Add to collection", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(17.dp))
             }
         }
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(6.dp))
 
-        Surface(onClick = onCopyTitle, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(40.dp)) {
+        // Native Share action
+        Surface(onClick = onShare, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(38.dp)) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.ContentCopy, contentDescription = "Copy title", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Share, contentDescription = "Share", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(17.dp))
+            }
+        }
+        Spacer(modifier = Modifier.width(6.dp))
+
+        // TMDB Web action
+        Surface(onClick = onOpenWeb, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(38.dp)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Language, contentDescription = "Open on TMDB", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
             }
         }
     }

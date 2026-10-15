@@ -13,3 +13,7 @@ app/build/
 *.aab
 keystore.properties
 keystore/
+node_modules/
+dist/
+bun.lock
+.aistudio/

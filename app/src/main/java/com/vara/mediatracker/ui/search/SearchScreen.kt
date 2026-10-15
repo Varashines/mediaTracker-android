@@ -1,6 +1,6 @@
 package com.vara.mediatracker.ui.search
 
-import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,10 +23,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -60,8 +63,9 @@ import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
+import com.vara.mediatracker.ui.theme.AppTextStyles
+import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -70,15 +74,11 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Search and add.
+ * Search and add media destination.
  *
- * Promoted to a primary navigation destination. For a tracker, finding and adding
- * content is the main thing a user does — the old Library screen buried it behind a
- * globe toggle, and Calendar held a nav slot despite being a view of data rather than
- * a place you live.
- *
- * Local matches are shown immediately while the TMDB request runs, so typing never
- * feels blocked on the network.
+ * Provides instant local library matches, debounced TMDB multi-search,
+ * category filters (All, Movies, TV Shows, In Library), and rich card metadata
+ * with ratings and release year.
  */
 @Composable
 fun SearchScreen(
@@ -89,8 +89,10 @@ fun SearchScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val sem = LocalSemanticColors.current
 
     var query by remember { mutableStateOf("") }
+    var selectedFilter by remember { mutableStateOf("All") } // "All", "Movies", "TV Shows", "In Library"
     var remoteResults by remember { mutableStateOf<List<TMDBSearchItem>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
     var searchedTerm by remember { mutableStateOf("") }
@@ -99,7 +101,6 @@ fun SearchScreen(
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
-    // Focus the field and raise the keyboard as soon as search opens.
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
         keyboard?.show()
@@ -111,20 +112,19 @@ fun SearchScreen(
             trending = withContext(Dispatchers.IO) {
                 container.tmdbClient().getTrending().getOrNull()?.results
                     ?.filter { it.media_type == "movie" || it.media_type == "tv" }
-                    ?.take(18)
+                    ?.take(24)
                     .orEmpty()
             }
         }
     }
 
-    val inLibraryIds = remember(items) { items.mapTo(HashSet()) { it.id } }
+    val inLibraryMap = remember(items) { items.associateBy { it.id } }
 
-    // Open if already in the library, otherwise add from TMDB then open.
     val openOrAdd: (TMDBSearchItem) -> Unit = { res ->
         val isMovie = res.media_type == "movie"
         val mediaId = (if (isMovie) "movie_" else "tv_") + res.id
         val title = res.title ?: res.name ?: "Untitled"
-        if (mediaId in inLibraryIds) {
+        if (mediaId in inLibraryMap) {
             onSelectMedia(mediaId)
         } else {
             scope.launch {
@@ -144,19 +144,26 @@ fun SearchScreen(
                 )
                 container.mediaDao.upsertMedia(newItem)
                 container.syncManager().pushMediaUpdate(mediaId, newItem.type, "Wishlist", "None")
-                AppToast.show("Added \"$title\"")
+                AppToast.show("Added \"$title\" to Watchlist")
                 onSelectMedia(mediaId)
             }
         }
     }
 
-    val localMatches = remember(items, query) {
+    val localMatches = remember(items, query, selectedFilter) {
         if (query.isBlank()) emptyList()
-        else items.filter { it.title.contains(query.trim(), ignoreCase = true) }
+        else items.filter { item ->
+            val matchesQuery = item.title.contains(query.trim(), ignoreCase = true)
+            val matchesFilter = when (selectedFilter) {
+                "Movies" -> item.type.contains("Movie", ignoreCase = true)
+                "TV Shows" -> item.type.contains("TV", ignoreCase = true)
+                else -> true
+            }
+            matchesQuery && matchesFilter
+        }
     }
 
-    // Debounced remote search. The job is cancelled on every keystroke, so a fast typist
-    // issues one request rather than one per character.
+    // Debounced remote search
     LaunchedEffect(query) {
         val term = query.trim()
         if (term.length < 2 || container.preferences.tmdbApiKey.isBlank()) {
@@ -169,11 +176,39 @@ fun SearchScreen(
         remoteResults = withContext(Dispatchers.IO) {
             container.tmdbClient().searchMulti(term).getOrNull()?.results
                 ?.filter { it.media_type == "movie" || it.media_type == "tv" }
-                ?.take(30)
+                ?.take(36)
                 .orEmpty()
         }
         searchedTerm = term
         searching = false
+    }
+
+    // Filter remote results
+    val filteredRemoteResults = remember(remoteResults, selectedFilter, inLibraryMap) {
+        remoteResults.filter { res ->
+            val isMovie = res.media_type == "movie"
+            val mediaId = (if (isMovie) "movie_" else "tv_") + res.id
+            when (selectedFilter) {
+                "Movies" -> isMovie
+                "TV Shows" -> !isMovie
+                "In Library" -> mediaId in inLibraryMap
+                else -> true
+            }
+        }
+    }
+
+    // Filter trending results
+    val filteredTrending = remember(trending, selectedFilter, inLibraryMap) {
+        trending.filter { res ->
+            val isMovie = res.media_type == "movie"
+            val mediaId = (if (isMovie) "movie_" else "tv_") + res.id
+            when (selectedFilter) {
+                "Movies" -> isMovie
+                "TV Shows" -> !isMovie
+                "In Library" -> mediaId in inLibraryMap
+                else -> true
+            }
+        }
     }
 
     Column(
@@ -182,14 +217,15 @@ fun SearchScreen(
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
     ) {
+        // Search Input Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (onBack != null) {
-                androidx.compose.material3.IconButton(
+                IconButton(
                     onClick = onBack,
                     modifier = Modifier.size(40.dp)
                 ) {
@@ -219,6 +255,21 @@ fun SearchScreen(
                         tint = MaterialTheme.colorScheme.primary
                     )
                 },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(
+                            onClick = { query = "" },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Clear",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                },
                 singleLine = true,
                 shape = RoundedCornerShape(20.dp),
                 colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
@@ -237,29 +288,70 @@ fun SearchScreen(
             )
         }
 
+        // Category Filter Chips
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("All", "Movies", "TV Shows", "In Library").forEach { filter ->
+                val isSelected = selectedFilter == filter
+                Surface(
+                    onClick = { selectedFilter = filter },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    modifier = Modifier.padding(vertical = 2.dp)
+                ) {
+                    Text(
+                        text = filter,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+
         when {
-            query.isBlank() && trending.isNotEmpty() -> LazyVerticalGrid(
+            query.isBlank() && filteredTrending.isNotEmpty() -> LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 140.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 140.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
-                    Text(
-                        text = "Trending this week",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 2.dp)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "TRENDING THIS WEEK",
+                            style = AppTextStyles.MonoLabel,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "${filteredTrending.size} TITLES",
+                            style = AppTextStyles.MonoLabel,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-                items(trending, key = { "trend_${it.media_type}_${it.id}" }) { res ->
+                items(filteredTrending, key = { "trend_${it.media_type}_${it.id}" }) { res ->
                     val isMovie = res.media_type == "movie"
                     val mediaId = (if (isMovie) "movie_" else "tv_") + res.id
+                    val libItem = inLibraryMap[mediaId]
                     SearchResultCard(
                         posterUrl = TMDBClient.buildPosterUrl(res.poster_path),
                         title = res.title ?: res.name ?: "Untitled",
                         typeLabel = if (isMovie) "FILM" else "TV",
-                        inLibrary = mediaId in inLibraryIds,
+                        year = (res.release_date ?: res.first_air_date)?.take(4),
+                        rating = res.vote_average,
+                        libraryStatus = libItem?.state,
+                        inLibrary = libItem != null,
                         onClick = { openOrAdd(res) }
                     )
                 }
@@ -268,10 +360,10 @@ fun SearchScreen(
             query.isBlank() -> EmptyState(
                 icon = Icons.Default.Search,
                 title = "Find something new",
-                body = "Search TMDB to add films and shows to your library."
+                body = "Search TMDB to discover and track movies and TV shows."
             )
 
-            localMatches.isEmpty() && remoteResults.isEmpty() && !searching -> EmptyState(
+            localMatches.isEmpty() && filteredRemoteResults.isEmpty() && !searching -> EmptyState(
                 icon = Icons.Default.Search,
                 title = "No matches",
                 body = "Nothing found for \"${query.trim()}\"."
@@ -279,16 +371,17 @@ fun SearchScreen(
 
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 140.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 140.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (localMatches.isNotEmpty()) {
                     item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
                         Text(
-                            text = "In your library",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "IN YOUR LIBRARY (${localMatches.size})",
+                            style = AppTextStyles.MonoLabel,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 4.dp)
                         )
                     }
                     items(localMatches, key = { "local_${it.id}" }) { item ->
@@ -296,31 +389,37 @@ fun SearchScreen(
                             posterUrl = item.posterUrl,
                             title = item.title,
                             typeLabel = if (item.type.contains("TV", true)) "TV" else "FILM",
+                            year = item.releaseDate?.take(4),
+                            rating = container.preferences.getCachedVoteAverage(item.id)?.toDouble(),
+                            libraryStatus = item.state,
                             inLibrary = true,
                             onClick = { onSelectMedia(item.id) }
                         )
                     }
                 }
 
-                if (remoteResults.isNotEmpty()) {
+                if (filteredRemoteResults.isNotEmpty()) {
                     item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
                         Text(
-                            text = "On TMDB",
-                            style = MaterialTheme.typography.labelMedium,
+                            text = "ON TMDB (${filteredRemoteResults.size})",
+                            style = AppTextStyles.MonoLabel,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 6.dp)
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                         )
                     }
-                    items(remoteResults, key = { "remote_${it.media_type}_${it.id}" }) { res ->
+                    items(filteredRemoteResults, key = { "remote_${it.media_type}_${it.id}" }) { res ->
                         val isMovie = res.media_type == "movie"
                         val mediaId = (if (isMovie) "movie_" else "tv_") + res.id
-                        val title = res.title ?: res.name ?: "Untitled"
+                        val libItem = inLibraryMap[mediaId]
 
                         SearchResultCard(
                             posterUrl = TMDBClient.buildPosterUrl(res.poster_path),
-                            title = title,
+                            title = res.title ?: res.name ?: "Untitled",
                             typeLabel = if (isMovie) "FILM" else "TV",
-                            inLibrary = mediaId in inLibraryIds,
+                            year = (res.release_date ?: res.first_air_date)?.take(4),
+                            rating = res.vote_average,
+                            libraryStatus = libItem?.state,
+                            inLibrary = libItem != null,
                             onClick = { openOrAdd(res) }
                         )
                     }
@@ -335,14 +434,19 @@ private fun SearchResultCard(
     posterUrl: String?,
     title: String,
     typeLabel: String,
+    year: String?,
+    rating: Double?,
+    libraryStatus: String?,
     inLibrary: Boolean,
     onClick: () -> Unit
 ) {
+    val sem = LocalSemanticColors.current
+
     ExpressiveCard(
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
         tonalElevation = 2.dp,
         pressedScale = 0.95f
     ) {
@@ -374,54 +478,91 @@ private fun SearchResultCard(
                         )
                     }
                 }
+
+                // Type & Rating Pill at Top-Start
                 Surface(
                     color = Color.Black.copy(alpha = 0.72f),
-                    shape = RoundedCornerShape(bottomEnd = 8.dp),
+                    shape = RoundedCornerShape(bottomEnd = 10.dp),
                     modifier = Modifier.align(Alignment.TopStart)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                     ) {
-                        Icon(
-                            imageVector = if (typeLabel == "TV") Icons.Default.Tv else Icons.Default.Movie,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(10.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = typeLabel,
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White
                         )
+                        if (rating != null && rating > 0) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                Icons.Default.Star,
+                                contentDescription = null,
+                                tint = sem.gold,
+                                modifier = Modifier.size(9.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = String.format(Locale.US, "%.1f", rating),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White
+                            )
+                        }
                     }
                 }
+
+                // Library state indicator at Top-End
                 if (inLibrary) {
                     Surface(
                         color = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                        shape = RoundedCornerShape(bottomStart = 10.dp),
                         modifier = Modifier.align(Alignment.TopEnd)
                     ) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "In library",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.padding(3.dp).size(12.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "In library",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            if (libraryStatus != null) {
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = libraryStatus.take(4).uppercase(Locale.US),
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
                     }
                 }
             }
-            Text(
-                text = title,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
-            )
+
+            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
+                Text(
+                    text = title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (!year.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = year,
+                        style = AppTextStyles.MonoLabel,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }

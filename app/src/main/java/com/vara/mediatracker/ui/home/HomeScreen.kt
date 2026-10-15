@@ -41,6 +41,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import com.vara.mediatracker.data.TrackingLogic
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -288,9 +290,53 @@ fun HomeScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = AppSpacing.lg, bottom = 140.dp),
+            contentPadding = PaddingValues(top = AppSpacing.sm, bottom = 140.dp),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)
         ) {
+            // Quick Library Summary Stats Row
+            item {
+                val activeCount = remember(items) { items.count { it.state.equals("Active", true) || it.state.equals("Watching", true) } }
+                val completedCount = remember(items) { items.count { it.state.equals("Completed", true) } }
+                val dropCount = comingSoonItems.size
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HomeStatCard(
+                        title = "TOTAL",
+                        value = "${items.size}",
+                        icon = Icons.Default.VideoLibrary,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    HomeStatCard(
+                        title = "ACTIVE",
+                        value = "$activeCount",
+                        icon = Icons.Default.PlayArrow,
+                        tint = sem.liked,
+                        modifier = Modifier.weight(1f)
+                    )
+                    HomeStatCard(
+                        title = "DONE",
+                        value = "$completedCount",
+                        icon = Icons.Default.Check,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    HomeStatCard(
+                        title = "DROPS",
+                        value = "$dropCount",
+                        icon = Icons.Default.CalendarMonth,
+                        tint = sem.loved,
+                        modifier = Modifier.weight(1f),
+                        onClick = onOpenCalendar
+                    )
+                }
+            }
+
             // Spotlight carousel — swipeable hero with page dots.
             if (spotlightItems.isNotEmpty()) {
                 item {
@@ -311,10 +357,6 @@ fun HomeScreen(
                                 onMarkNext = {
                                     haptics.toggle()
                                     if (sp.type.contains("TV", ignoreCase = true)) {
-                                        // Routes to the detail when there is no next episode yet,
-                                        // and shows a toast when it does mark one. The old inline
-                                        // version silently did nothing (and never toasted) when
-                                        // `nextEpisode` was null.
                                         markEpisodeWatched(
                                             showProgressMap[sp.id]?.nextEpisode,
                                             sp,
@@ -324,10 +366,10 @@ fun HomeScreen(
                                         )
                                     } else {
                                         scope.launch {
-                                            val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-                                            container.mediaDao.updateState(sp.id, "Completed", now)
-                                            container.syncManager().pushMediaUpdate(sp.id, sp.type, "Completed", sp.taste)
-                                            AppToast.show("Marked \"${sp.title}\" completed")
+                                            TrackingLogic.toggleMovieWatched(
+                                                container = container,
+                                                movie = sp
+                                            )
                                         }
                                     }
                                 }
@@ -959,7 +1001,7 @@ private fun HomeUpNextRow(
     }
 }
 
-/** Marks an episode watched + syncs it; opens the detail when there is no next episode. */
+/** Marks an episode watched + syncs it with intelligent state progression; opens detail if no next episode. */
 private fun markEpisodeWatched(
     episode: EpisodeEntity?,
     item: MediaItemEntity,
@@ -972,10 +1014,53 @@ private fun markEpisodeWatched(
         return
     }
     scope.launch {
-        val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
-        container.mediaDao.setEpisodeWatched(episode.uniqueId, true, now)
-        val showTmdbId = MediaIds.tmdbIdOf(episode.showId).toString()
-        container.syncManager().pushEpisodeWatch(showTmdbId, episode.seasonNumber, episode.episodeNumber, true)
-        AppToast.show("Marked S${episode.seasonNumber} E${episode.episodeNumber} watched")
+        TrackingLogic.markEpisodeWatched(
+            container = container,
+            episode = episode,
+            watched = true
+        )
+    }
+}
+
+@Composable
+private fun HomeStatCard(
+    title: String,
+    value: String,
+    icon: ImageVector,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
+    Surface(
+        onClick = onClick ?: {},
+        enabled = onClick != null,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(12.dp))
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = title,
+                    style = AppTextStyles.MonoLabel,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
+        }
     }
 }

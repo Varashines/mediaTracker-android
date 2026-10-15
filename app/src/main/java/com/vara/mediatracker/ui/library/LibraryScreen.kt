@@ -473,12 +473,41 @@ fun LibraryScreen(
             // 6. Posters Grid
             if (filteredItems.isEmpty()) {
                 item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                    EmptyState(
-                        icon = if (searchQuery.isNotBlank()) Icons.Default.SearchOff else Icons.Default.VideoLibrary,
-                        title = if (searchQuery.isNotBlank()) "No matches found" else "Empty Collection",
-                        body = if (searchQuery.isNotBlank()) "No titles match \"$searchQuery\" in this filter."
-                               else "Add titles by searching online TMDB or sync from Mac."
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp, horizontal = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (searchQuery.isNotBlank()) Icons.Default.SearchOff else Icons.Default.VideoLibrary,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(44.dp)
+                        )
+                        Text(
+                            text = if (searchQuery.isNotBlank()) "No matches in library" else "No titles in this view",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (searchQuery.isNotBlank()) "No library titles match \"$searchQuery\" with current filters."
+                                   else "Try switching filters or search TMDB to add new titles.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        if (searchQuery.isNotBlank()) {
+                            Button(
+                                onClick = { searchOnlineTMDB = true },
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Search Online TMDB")
+                            }
+                        }
+                    }
                 }
             } else {
                 sections.forEach { (groupTitle, groupItems) ->
