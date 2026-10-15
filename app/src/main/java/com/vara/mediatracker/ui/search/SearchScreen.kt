@@ -183,16 +183,19 @@ fun SearchScreen(
         searching = false
     }
 
-    // Filter remote results
+    // Filter remote results. The "ON TMDB" section only lists titles you don't already own —
+    // owned ones already appear in "IN YOUR LIBRARY", so showing them in both is duplication.
+    // The "In Library" chip is the explicit inverse (it exists to show the TMDB rows you own).
     val filteredRemoteResults = remember(remoteResults, selectedFilter, inLibraryMap) {
         remoteResults.filter { res ->
             val isMovie = res.media_type == "movie"
             val mediaId = (if (isMovie) "movie_" else "tv_") + res.id
+            val inLibrary = mediaId in inLibraryMap
             when (selectedFilter) {
-                "Movies" -> isMovie
-                "TV Shows" -> !isMovie
-                "In Library" -> mediaId in inLibraryMap
-                else -> true
+                "Movies" -> isMovie && !inLibrary
+                "TV Shows" -> !isMovie && !inLibrary
+                "In Library" -> inLibrary
+                else -> !inLibrary
             }
         }
     }

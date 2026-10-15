@@ -202,11 +202,10 @@ interface BadgeDao {
 @Dao
 interface CollectionDao {
     /**
-     * Manual collections only, for the UI. Smart collections carry rules rather than stored
-     * members and Android has no rule engine yet, so they'd render as empty "0 titles"
-     * collections. They still sync (see [getAllCollections]); only the UI hides them.
+     * All live collections for the UI. Smart collections carry rules rather than stored
+     * members; their contents are evaluated in-memory (see `SmartRules`).
      */
-    @Query("SELECT * FROM collections WHERE isDeleted = 0 AND isSmart = 0 ORDER BY isPinned DESC, name COLLATE NOCASE ASC")
+    @Query("SELECT * FROM collections WHERE isDeleted = 0 ORDER BY isPinned DESC, name COLLATE NOCASE ASC")
     fun observeCollections(): Flow<List<CollectionEntity>>
 
     @Query("SELECT * FROM collections")

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -46,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vara.mediatracker.data.model.CollectionEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.SmartRules
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.common.rememberHaptics
@@ -79,6 +81,9 @@ fun CollectionsContent(
 
     val itemsById = remember(items) { items.associateBy { it.id } }
     val membersByCollection = remember(membership) { membership.groupBy { it.collectionId } }
+    // Badge labels feed smart rules that match on badge.
+    val badgeRows by container.database.badgeDao().observeBadges().collectAsState(initial = emptyList())
+    val badgeLabels = remember(badgeRows) { badgeRows.associate { it.mediaId to it.badgeLabel } }
 
     var creating by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<CollectionEntity?>(null) }
@@ -186,10 +191,23 @@ fun CollectionsContent(
         }
 
         items(collections, key = { it.id }) { collection ->
-            val members = membersByCollection[collection.id].orEmpty().mapNotNull { itemsById[it.mediaId] }
+            // Smart collections store rules rather than members, so evaluate them against the
+            // library the same way macOS does. Unconditional remembers keep composition stable
+            // across the isSmart branch.
+            val ruleSet = remember(collection.id, collection.isSmart, collection.smartRules) {
+                if (collection.isSmart) SmartRules.decode(collection.smartRules) else null
+            }
+            val members = remember(items, badgeLabels, ruleSet, membersByCollection, itemsById, collection.id) {
+                if (ruleSet != null) {
+                    items.filter { SmartRules.matches(it, badgeLabels[it.id], ruleSet) }
+                } else {
+                    membersByCollection[collection.id].orEmpty().mapNotNull { itemsById[it.mediaId] }
+                }
+            }
             CollectionRow(
                 collection = collection,
                 memberCount = members.size,
+                ruleSummary = ruleSet?.summary,
                 onClick = { onOpenCollection(collection.name, members) },
                 onLongClick = {
                     haptics.toggle()
@@ -205,6 +223,7 @@ fun CollectionsContent(
 private fun CollectionRow(
     collection: CollectionEntity,
     memberCount: Int,
+    ruleSummary: String?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onDelete: () -> Unit
@@ -224,7 +243,12 @@ private fun CollectionRow(
         ) {
             Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f), modifier = Modifier.size(38.dp)) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
+                    Icon(
+                        imageVector = if (collection.isSmart) Icons.Default.AutoAwesome else Icons.Default.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(19.dp)
+                    )
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))
@@ -242,6 +266,15 @@ private fun CollectionRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (ruleSummary != null) {
+                    Text(
+                        ruleSummary,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
             Surface(
                 onClick = onDelete,
