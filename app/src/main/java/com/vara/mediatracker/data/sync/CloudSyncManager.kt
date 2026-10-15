@@ -580,7 +580,9 @@ class CloudSyncManager(
         for (local in localEpisodes) {
             val remote = remoteEpisodesById[local.uniqueId]
             if (remote == null) {
-                if (local.isWatched) outgoingEpisodes.add(local)
+                // Watermarked fetch: absent means "unchanged", so only push a watch this
+                // device made since the last sync.
+                if (local.isWatched && changedSince(local.watchedDate, since)) outgoingEpisodes.add(local)
                 continue
             }
             if (local.isWatched != remote.is_watched) {
@@ -620,6 +622,21 @@ class CloudSyncManager(
      * stamps always carry millis, so a lexicographic compare would be wrong.
      * A nil watermark means the last sync was a full pull.
      */
+    /**
+     * True when [stamp] is newer than [watermark] — or when there is no watermark, i.e. the
+     * last sync was a full pull, where "absent remotely" genuinely means "missing".
+     *
+     * Compares parsed instants, not the raw strings: the watermark comes from
+     * `Instant.toString()` (which omits trailing zero fractions) while local stamps carry
+     * millis, so a lexicographic compare is wrong.
+     */
+    private fun changedSince(stamp: String?, watermark: String?): Boolean {
+        if (watermark.isNullOrBlank()) return true
+        val since = parseInstant(watermark) ?: return true
+        val value = parseInstant(stamp) ?: return true
+        return value.after(since)
+    }
+
     private fun isNewerThanWatermark(local: MediaItemEntity, watermark: String?): Boolean {
         if (watermark.isNullOrBlank()) return true
         val since = parseInstant(watermark) ?: return true
@@ -652,7 +669,11 @@ class CloudSyncManager(
         val outgoingCycles = mutableListOf<WatchCycleEntity>()
         val incomingCycles = mutableListOf<WatchCycleEntity>()
         for (local in localCycles) {
-            val remote = remoteCycleById[local.id] ?: run { outgoingCycles.add(local); continue }
+            val remote = remoteCycleById[local.id]
+            if (remote == null) {
+                if (changedSince(local.updatedAt, since)) outgoingCycles.add(local)
+                continue
+            }
             // A cycle only progresses (started -> completed), so completedAt ?? startedAt
             // orders it well enough — it has no modified timestamp of its own.
             val localTime = cycleChangeTime(local.startedAt, local.completedAt)
@@ -692,9 +713,12 @@ class CloudSyncManager(
         val incomingEvents = mutableListOf<WatchEventEntity>()
         for (local in localEvents) {
             val remote = remoteEventById[local.id]
-            // Events are immutable facts: push when the cloud lacks it, or when it carries a
-            // void the cloud doesn't (the only forward change).
-            if (remote == null || (local.voidedAt != null && remote.voided_at == null)) {
+            // Events are immutable facts: push when it carries a void the cloud doesn't (the
+            // only forward change), or — under a full pull — when the cloud lacks it entirely.
+            // With a watermark, "missing from the response" means unchanged.
+            if (remote != null) {
+                if (local.voidedAt != null && remote.voided_at == null) outgoingEvents.add(local)
+            } else if (changedSince(local.updatedAt, since)) {
                 outgoingEvents.add(local)
             }
         }
@@ -829,7 +853,9 @@ class CloudSyncManager(
         for (local in localCollections) {
             val remote = remoteById[local.id]
             if (remote == null) {
-                outgoingCollections.add(local)
+                // Same watermark subtlety as the media loop: absent means "unchanged", so only
+                // push a collection this device actually edited since the last sync.
+                if (changedSince(local.updatedAt, since)) outgoingCollections.add(local)
                 continue
             }
             val localTime = parseInstant(local.updatedAt)
@@ -882,7 +908,10 @@ class CloudSyncManager(
                     }
                 }
                 local != null && remote == null -> {
-                    if (liveCollectionIDs.contains(local.collectionId)) outgoingItems.add(local)
+                    // Absent from a watermarked fetch = unchanged, not "missing from the cloud".
+                    if (liveCollectionIDs.contains(local.collectionId) && changedSince(local.updatedAt, since)) {
+                        outgoingItems.add(local)
+                    }
                 }
                 local != null && remote != null && local.isDeleted != remote.is_deleted -> {
                     val localTime = parseInstant(local.updatedAt)
