@@ -556,6 +556,12 @@ class CloudSyncManager(
                 } else {
                     outgoingMedia.add(local)
                 }
+            } else if (local.dateAdded == null && remote.date_added != null) {
+                // Pure backfill: nothing conflicts, we just never learned when this was added.
+                // date_added is immutable and one-way, so there is nothing to resolve — and
+                // without this it never arrived, because fromRemote only runs for rows that
+                // differ or are new.
+                incomingMedia.add(local.copy(dateAdded = remote.date_added))
             }
         }
         for (remote in remoteMedia) {
