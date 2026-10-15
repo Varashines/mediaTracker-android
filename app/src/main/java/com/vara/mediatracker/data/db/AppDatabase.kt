@@ -31,11 +31,15 @@ interface MediaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertMedia(item: MediaItemEntity)
 
-    @Query("UPDATE media_items SET state = :state, lastStateChangeDate = :now WHERE id = :id")
+    /**
+     * State change. Also stamps `lastInteractionDate` — it is the sync conflict key
+     * ("last user edit"), so it must move for any user-visible tracking change.
+     */
+    @Query("UPDATE media_items SET state = :state, lastStateChangeDate = :now, lastInteractionDate = :now WHERE id = :id")
     suspend fun updateState(id: String, state: String, now: String)
 
     /** Bulk state change for Library multi-select: one statement instead of N. */
-    @Query("UPDATE media_items SET state = :state, lastStateChangeDate = :now WHERE id IN (:ids)")
+    @Query("UPDATE media_items SET state = :state, lastStateChangeDate = :now, lastInteractionDate = :now WHERE id IN (:ids)")
     suspend fun updateStateForIds(ids: List<String>, state: String, now: String)
 
     /**
@@ -48,8 +52,12 @@ interface MediaDao {
     @Query("UPDATE media_items SET isSoftDeleted = 1, lastStateChangeDate = :now, lastInteractionDate = :now WHERE id IN (:ids)")
     suspend fun softDeleteForIds(ids: List<String>, now: String)
 
-    @Query("UPDATE media_items SET taste = :taste WHERE id = :id")
-    suspend fun updateTaste(id: String, taste: String)
+    /**
+     * Taste change (like/love). Stamps `lastInteractionDate` too — a like is a user edit and
+     * the sync keys on it, so without this an Android like never looked newer than the Mac.
+     */
+    @Query("UPDATE media_items SET taste = :taste, lastInteractionDate = :now WHERE id = :id")
+    suspend fun updateTaste(id: String, taste: String, now: String)
 
     // Episodes
     @Query("SELECT * FROM tv_episodes")

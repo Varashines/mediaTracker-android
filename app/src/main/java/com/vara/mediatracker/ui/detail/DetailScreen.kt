@@ -520,9 +520,11 @@ fun DetailScreen(
     fun setTaste(next: String) {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         scope.launch {
-            db.mediaDao().updateTaste(item.id, next)
-            mediaItem = item.copy(taste = next)
-            syncManager.pushMediaUpdate(item.id, item.type, item.state, next)
+            val now = isoNow()
+            db.mediaDao().updateTaste(item.id, next, now)
+            mediaItem = item.copy(taste = next, lastInteractionDate = now)
+            // Taste-only: don't advance last_state_change_date (it drives the watch stats).
+            syncManager.pushMediaUpdate(item.id, item.type, item.state, next, isStateChange = false)
         }
     }
 

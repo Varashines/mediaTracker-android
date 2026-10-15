@@ -343,7 +343,21 @@ class CloudSyncManager(
     /**
      * Pushes media state or taste changes directly to the cloud.
      */
-    suspend fun pushMediaUpdate(mediaId: String, type: String, state: String, taste: String) = runCatching {
+    /**
+     * Pushes a state or taste change.
+     *
+     * [isStateChange] must be false for a taste-only change: `last_state_change_date` drives
+     * macOS's "watched this year", so advancing it on a like would log an un-watched title as
+     * watched. When false the field is omitted (kotlinx omits defaults), leaving the cloud's
+     * existing value untouched.
+     */
+    suspend fun pushMediaUpdate(
+        mediaId: String,
+        type: String,
+        state: String,
+        taste: String,
+        isStateChange: Boolean = true
+    ) = runCatching {
         val now = isoNow()
         val payload = RemoteMedia(
             user_id = syncKey,
@@ -352,7 +366,7 @@ class CloudSyncManager(
             state = state,
             taste = taste,
             last_interaction_date = now,
-            last_state_change_date = now,
+            last_state_change_date = if (isStateChange) now else null,
             updated_at = now
         )
 
@@ -476,8 +490,11 @@ class CloudSyncManager(
                 local.isSoftDeleted != remote.is_soft_deleted
             if (differs) {
                 conflictTitles.add(local.title)
-                val localTime = parseInstant(local.lastStateChangeDate)
-                val remoteTime = parseInstant(remote.updated_at)
+                // Compare on the *user-edit* time, mirroring macOS's `syncEditTime`: whichever
+                // device edited state/taste last wins. (Not `updated_at`, which is the row's
+                // write time and would let a metadata refresh outrank a real edit.)
+                val localTime = parseInstant(local.lastInteractionDate) ?: parseInstant(local.lastStateChangeDate)
+                val remoteTime = parseInstant(remote.last_interaction_date) ?: parseInstant(remote.updated_at)
                 if (remoteTime != null && (localTime == null || remoteTime > localTime)) {
                     incomingMedia.add(fromRemote(remote, local))
                 } else {
