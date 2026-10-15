@@ -210,3 +210,50 @@ class CollectionConverters {
     fun toStringList(value: String?): List<String> =
         value?.takeIf { it.isNotEmpty() }?.split("\n") ?: emptyList()
 }
+
+/**
+ * One viewing run of a title, mirroring macOS's `WatchCycle`.
+ *
+ * A second+ run carries `isRewatch = true`, which is what makes "when did I rewatch this"
+ * meaningful rather than just "when did I last watch it".
+ */
+@Entity(
+    tableName = "watch_cycles",
+    indices = [Index(value = ["mediaId"])]
+)
+data class WatchCycleEntity(
+    @PrimaryKey val id: String,              // UUID string, shared with macOS
+    val mediaId: String,
+    val kind: String,                        // "movie" | "tvShow"
+    val startedAt: String,                   // ISO-8601
+    val completedAt: String? = null,
+    val state: String = "active",            // active | completed | paused | archived
+    val isRewatch: Boolean = false,
+    val isComplete: Boolean = false,
+    val scopeEpisodeIds: List<String> = emptyList(),
+    val isBackfilled: Boolean = false,
+    val updatedAt: String? = null
+)
+
+/**
+ * One immutable watch fact, mirroring macOS's `WatchEvent`. Rows are only ever voided, never
+ * edited, so the sync merge is a union by id plus a forward-only void.
+ */
+@Entity(
+    tableName = "watch_events",
+    indices = [Index(value = ["mediaId"]), Index(value = ["cycleId"]), Index(value = ["watchedAt"])]
+)
+data class WatchEventEntity(
+    @PrimaryKey val id: String,              // UUID string, shared with macOS
+    val cycleId: String,
+    val mediaId: String,
+    val episodeId: String? = null,
+    val watchedAt: String,                   // ISO-8601
+    val source: String = "manual",           // manual | automatic | imported | migration
+    val timezoneIdentifier: String? = null,
+    val runtimeMinutes: Int? = null,
+    val voidedAt: String? = null,
+    val deduplicationKey: String,
+    val isBackfilled: Boolean = false,
+    val updatedAt: String? = null
+)

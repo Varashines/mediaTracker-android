@@ -53,11 +53,27 @@ object TrackingLogic {
         dao.setEpisodeWatched(episode.uniqueId, watched, if (watched) now else null)
         dao.updateLastInteractionDate(episode.showId, now)
 
-        // 2. Sync episode watch to Supabase
+        // 2. Log it in watch history — append-only, and the sync ships it to the Mac. Without
+        //    this, history only ever existed on macOS.
+        val historyDao = container.database.watchHistoryDao()
+        if (watched) {
+            WatchHistoryRecorder.recordWatch(
+                dao = historyDao,
+                mediaId = episode.showId,
+                kind = WatchHistoryRecorder.KIND_TV,
+                episodeId = episode.uniqueId,
+                watchedAt = now,
+                runtimeMinutes = episode.runtime
+            )
+        } else {
+            WatchHistoryRecorder.voidWatch(historyDao, episode.showId, episode.uniqueId, now)
+        }
+
+        // 3. Sync episode watch to Supabase
         val showTmdbId = MediaIds.tmdbIdOf(episode.showId).toString()
         syncManager.pushEpisodeWatch(showTmdbId, episode.seasonNumber, episode.episodeNumber, watched)
 
-        // 3. Auto-progress show state
+        // 4. Auto-progress show state
         val show = dao.getMediaById(episode.showId)
         if (show != null) {
             val allEpisodes = dao.getEpisodesListForShow(episode.showId)
@@ -84,6 +100,7 @@ object TrackingLogic {
                     )
                     dao.updateState(show.id, "Completed", now)
                     syncManager.pushMediaUpdate(show.id, show.type, "Completed", show.taste)
+                    WatchHistoryRecorder.completeCycle(historyDao, show.id, now)
                     onShowUpdated?.invoke(updatedShow)
                     AppToast.show("Show Completed! 🎉")
                 } else {
@@ -99,6 +116,8 @@ object TrackingLogic {
                     )
                     dao.updateState(show.id, "Active", now)
                     syncManager.pushMediaUpdate(show.id, show.type, "Active", show.taste)
+                    // Undoing the completion re-opens the run rather than starting a rewatch.
+                    WatchHistoryRecorder.reopenCycle(historyDao, show.id, now)
                     onShowUpdated?.invoke(updatedShow)
                     AppToast.show("Moved \"${show.title}\" back to In Progress")
                 } else {
@@ -127,13 +146,30 @@ object TrackingLogic {
         dao.setSeasonEpisodesWatched(showId, seasonNumber, watched, if (watched) now else null)
         dao.updateLastInteractionDate(showId, now)
 
-        // 2. Sync to Supabase
+        // 2. Log each episode in watch history (same append-only log as the single-episode path).
+        val historyDao = container.database.watchHistoryDao()
+        for (ep in seasonEpisodes) {
+            if (watched) {
+                WatchHistoryRecorder.recordWatch(
+                    dao = historyDao,
+                    mediaId = showId,
+                    kind = WatchHistoryRecorder.KIND_TV,
+                    episodeId = ep.uniqueId,
+                    watchedAt = now,
+                    runtimeMinutes = ep.runtime
+                )
+            } else {
+                WatchHistoryRecorder.voidWatch(historyDao, showId, ep.uniqueId, now)
+            }
+        }
+
+        // 3. Sync to Supabase
         val showTmdbId = MediaIds.tmdbIdOf(showId).toString()
         for (ep in seasonEpisodes) {
             syncManager.pushEpisodeWatch(showTmdbId, ep.seasonNumber, ep.episodeNumber, watched)
         }
 
-        // 3. Auto-progress show state
+        // 4. Auto-progress show state
         val show = dao.getMediaById(showId)
         if (show != null) {
             val allEpisodes = dao.getEpisodesListForShow(showId)
@@ -149,6 +185,7 @@ object TrackingLogic {
                     )
                     dao.updateState(show.id, "Completed", now)
                     syncManager.pushMediaUpdate(show.id, show.type, "Completed", show.taste)
+                    WatchHistoryRecorder.completeCycle(historyDao, show.id, now)
                     onShowUpdated?.invoke(updatedShow)
                     AppToast.show("Season $seasonNumber & Entire Show Completed! 🎉")
                 } else if (show.state.equals("Wishlist", ignoreCase = true)) {
@@ -175,6 +212,8 @@ object TrackingLogic {
                     )
                     dao.updateState(show.id, "Active", now)
                     syncManager.pushMediaUpdate(show.id, show.type, "Active", show.taste)
+                    // Undoing the completion re-opens the run rather than starting a rewatch.
+                    WatchHistoryRecorder.reopenCycle(historyDao, show.id, now)
                     onShowUpdated?.invoke(updatedShow)
                     AppToast.show("Season $seasonNumber unwatched • In Progress")
                 } else {
@@ -198,6 +237,26 @@ object TrackingLogic {
 
         container.mediaDao.updateState(movie.id, nextState, now)
         container.syncManager().pushMediaUpdate(movie.id, movie.type, nextState, movie.taste)
+
+        // Watch history: completing logs the viewing and closes the run; un-completing voids
+        // it and re-opens the run.
+        val historyDao = container.database.watchHistoryDao()
+        if (completed) {
+            WatchHistoryRecorder.voidWatch(historyDao, movie.id, null, now)
+            WatchHistoryRecorder.reopenCycle(historyDao, movie.id, now)
+        } else {
+            WatchHistoryRecorder.recordWatch(
+                dao = historyDao,
+                mediaId = movie.id,
+                kind = WatchHistoryRecorder.KIND_MOVIE,
+                episodeId = null,
+                watchedAt = now,
+                // No runtime on the entity (the detail reads it from the TMDB cache), so the
+                // movie's minutes are left to the Mac, which has cachedRuntime.
+                runtimeMinutes = null
+            )
+            WatchHistoryRecorder.completeCycle(historyDao, movie.id, now)
+        }
 
         val updated = movie.copy(
             state = nextState,

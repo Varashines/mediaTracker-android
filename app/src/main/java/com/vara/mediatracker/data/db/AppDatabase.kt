@@ -9,6 +9,8 @@ import com.vara.mediatracker.data.model.FacetLogoEntity
 import com.vara.mediatracker.data.model.MediaBadgeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.TVSeasonEntity
+import com.vara.mediatracker.data.model.WatchCycleEntity
+import com.vara.mediatracker.data.model.WatchEventEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -241,6 +243,33 @@ interface CollectionDao {
     suspend fun upsertCollectionItems(items: List<CollectionItemEntity>)
 }
 
+/** Watch history: the per-viewing cycles and the immutable events behind them. */
+@Dao
+interface WatchHistoryDao {
+    @Query("SELECT * FROM watch_cycles")
+    suspend fun getAllCycles(): List<WatchCycleEntity>
+
+    @Query("SELECT * FROM watch_events")
+    suspend fun getAllEvents(): List<WatchEventEntity>
+
+    @Query("SELECT * FROM watch_cycles WHERE mediaId = :mediaId ORDER BY startedAt DESC")
+    suspend fun getCyclesFor(mediaId: String): List<WatchCycleEntity>
+
+    /** The cycle a new watch belongs to: the newest one that hasn't been closed out. */
+    @Query("SELECT * FROM watch_cycles WHERE mediaId = :mediaId AND state != 'completed' ORDER BY startedAt DESC LIMIT 1")
+    suspend fun getOpenCycle(mediaId: String): WatchCycleEntity?
+
+    /** The live event for one episode (or the movie itself when [episodeId] is null). */
+    @Query("SELECT * FROM watch_events WHERE mediaId = :mediaId AND episodeId IS :episodeId AND voidedAt IS NULL LIMIT 1")
+    suspend fun getActiveEvent(mediaId: String, episodeId: String?): WatchEventEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCycles(cycles: List<WatchCycleEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertEvents(events: List<WatchEventEntity>)
+}
+
 @Database(
     entities = [
         MediaItemEntity::class,
@@ -249,9 +278,11 @@ interface CollectionDao {
         TVSeasonEntity::class,
         FacetLogoEntity::class,
         CollectionEntity::class,
-        CollectionItemEntity::class
+        CollectionItemEntity::class,
+        WatchCycleEntity::class,
+        WatchEventEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = true
 )
 @TypeConverters(CollectionConverters::class)
@@ -261,4 +292,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun seasonDao(): SeasonDao
     abstract fun facetLogoDao(): FacetLogoDao
     abstract fun collectionDao(): CollectionDao
+    abstract fun watchHistoryDao(): WatchHistoryDao
 }

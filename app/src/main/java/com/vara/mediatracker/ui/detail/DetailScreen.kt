@@ -34,6 +34,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
 import com.vara.mediatracker.data.TrackingLogic
+import com.vara.mediatracker.data.WatchHistoryRecorder
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -1079,9 +1080,33 @@ fun DetailScreen(
                 statusPickerOpen = false
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 scope.launch {
-                    db.mediaDao().updateState(item.id, state.raw, isoNow())
-                    mediaItem = item.copy(state = state.raw)
+                    val now = isoNow()
+                    val wasCompleted = item.state.equals("Completed", ignoreCase = true)
+                    val isCompleted = state.raw.equals("Completed", ignoreCase = true)
+                    db.mediaDao().updateState(item.id, state.raw, now)
+                    mediaItem = item.copy(state = state.raw, lastInteractionDate = now)
                     syncManager.pushMediaUpdate(item.id, item.type, state.raw, item.taste)
+
+                    // Watch history lives outside the state column, so a status change has to
+                    // log it too (this path bypasses TrackingLogic's toggle).
+                    val historyDao = container.database.watchHistoryDao()
+                    if (isCompleted && !wasCompleted) {
+                        if (!isTV) {
+                            WatchHistoryRecorder.recordWatch(
+                                dao = historyDao,
+                                mediaId = item.id,
+                                kind = WatchHistoryRecorder.KIND_MOVIE,
+                                episodeId = null,
+                                watchedAt = now,
+                                runtimeMinutes = null
+                            )
+                        }
+                        WatchHistoryRecorder.completeCycle(historyDao, item.id, now)
+                    } else if (!isCompleted && wasCompleted) {
+                        if (!isTV) WatchHistoryRecorder.voidWatch(historyDao, item.id, null, now)
+                        WatchHistoryRecorder.reopenCycle(historyDao, item.id, now)
+                    }
+
                     AppToast.show("Marked as ${state.label}")
                 }
             },

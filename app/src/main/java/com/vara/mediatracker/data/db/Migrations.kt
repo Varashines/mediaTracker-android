@@ -200,10 +200,39 @@ object Migrations {
         }
     }
 
+    /**
+     * v13 -> v14: watch history (cycles + events), mirroring macOS's `WatchCycle`/`WatchEvent`.
+     *
+     * Table/index SQL copied verbatim from the generated `14.json` — Room validates the
+     * migrated schema against it, so any drift fails at open time.
+     */
+    val MIGRATION_13_14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `watch_cycles` (`id` TEXT NOT NULL, `mediaId` TEXT NOT NULL, " +
+                    "`kind` TEXT NOT NULL, `startedAt` TEXT NOT NULL, `completedAt` TEXT, " +
+                    "`state` TEXT NOT NULL, `isRewatch` INTEGER NOT NULL, `isComplete` INTEGER NOT NULL, " +
+                    "`scopeEpisodeIds` TEXT NOT NULL, `isBackfilled` INTEGER NOT NULL, `updatedAt` TEXT, " +
+                    "PRIMARY KEY(`id`))"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_watch_cycles_mediaId` ON `watch_cycles` (`mediaId`)")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `watch_events` (`id` TEXT NOT NULL, `cycleId` TEXT NOT NULL, " +
+                    "`mediaId` TEXT NOT NULL, `episodeId` TEXT, `watchedAt` TEXT NOT NULL, " +
+                    "`source` TEXT NOT NULL, `timezoneIdentifier` TEXT, `runtimeMinutes` INTEGER, " +
+                    "`voidedAt` TEXT, `deduplicationKey` TEXT NOT NULL, `isBackfilled` INTEGER NOT NULL, " +
+                    "`updatedAt` TEXT, PRIMARY KEY(`id`))"
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_watch_events_mediaId` ON `watch_events` (`mediaId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_watch_events_cycleId` ON `watch_events` (`cycleId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_watch_events_watchedAt` ON `watch_events` (`watchedAt`)")
+        }
+    }
+
     val ALL: Array<Migration> =
         arrayOf(
             MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
             MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
-            MIGRATION_12_13
+            MIGRATION_12_13, MIGRATION_13_14
         )
 }

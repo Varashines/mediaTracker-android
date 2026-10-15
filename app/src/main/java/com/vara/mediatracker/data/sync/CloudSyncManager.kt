@@ -8,6 +8,8 @@ import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.TVSeasonEntity
+import com.vara.mediatracker.data.model.WatchCycleEntity
+import com.vara.mediatracker.data.model.WatchEventEntity
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.okhttp.*
@@ -80,6 +82,45 @@ data class RemoteCollectionItem(
     val media_id: String,
     val is_deleted: Boolean = false,
     val updated_at: String? = null
+)
+
+/*
+ * Watch history payloads carry *no* default values on purpose: kotlinx.serialization omits
+ * fields that equal their default (and the app's Json has encodeDefaults = false), so a batch
+ * mixing rows with and without `episode_id` would send objects with different keys and
+ * PostgREST rejects that with PGRST102 "All object keys must match".
+ */
+@Serializable
+data class RemoteWatchCycle(
+    val user_id: String,
+    val cycle_id: String,
+    val media_id: String,
+    val kind: String,
+    val started_at: String,
+    val completed_at: String?,
+    val state: String,
+    val is_rewatch: Boolean,
+    val is_complete: Boolean,
+    val scope_episode_ids: List<String>,
+    val is_backfilled: Boolean,
+    val updated_at: String?
+)
+
+@Serializable
+data class RemoteWatchEvent(
+    val user_id: String,
+    val event_id: String,
+    val cycle_id: String,
+    val media_id: String,
+    val episode_id: String?,
+    val watched_at: String,
+    val source: String,
+    val timezone_identifier: String?,
+    val runtime_minutes: Int?,
+    val voided_at: String?,
+    val deduplication_key: String,
+    val is_backfilled: Boolean,
+    val updated_at: String?
 )
 
 class CloudSyncManager(
@@ -411,7 +452,11 @@ class CloudSyncManager(
         val outgoingCollections: List<CollectionEntity> = emptyList(),
         val incomingCollections: List<CollectionEntity> = emptyList(),
         val outgoingCollectionItems: List<CollectionItemEntity> = emptyList(),
-        val incomingCollectionItems: List<CollectionItemEntity> = emptyList()
+        val incomingCollectionItems: List<CollectionItemEntity> = emptyList(),
+        val outgoingCycles: List<WatchCycleEntity> = emptyList(),
+        val incomingCycles: List<WatchCycleEntity> = emptyList(),
+        val outgoingWatchEvents: List<WatchEventEntity> = emptyList(),
+        val incomingWatchEvents: List<WatchEventEntity> = emptyList()
     )
 
     /** Computes what a sync would change, without writing anything (macOS SyncImpact). */
@@ -448,15 +493,21 @@ class CloudSyncManager(
         if (r.incomingEpisodes.isNotEmpty()) mediaDao.upsertEpisodes(r.incomingEpisodes)
         if (r.incomingCollections.isNotEmpty()) db.collectionDao().upsertCollections(r.incomingCollections)
         if (r.incomingCollectionItems.isNotEmpty()) db.collectionDao().upsertCollectionItems(r.incomingCollectionItems)
+        if (r.incomingCycles.isNotEmpty()) db.watchHistoryDao().upsertCycles(r.incomingCycles)
+        if (r.incomingWatchEvents.isNotEmpty()) db.watchHistoryDao().upsertEvents(r.incomingWatchEvents)
         pushMediaBatch(r.outgoingMedia)
         pushEpisodeBatch(r.outgoingEpisodes)
         pushCollections(r.outgoingCollections)
         pushCollectionItems(r.outgoingCollectionItems)
+        pushWatchCycles(r.outgoingCycles)
+        pushWatchEvents(r.outgoingWatchEvents)
         SyncSummary(
             outgoing = r.outgoingMedia.size + r.outgoingEpisodes.size +
-                r.outgoingCollections.size + r.outgoingCollectionItems.size,
+                r.outgoingCollections.size + r.outgoingCollectionItems.size +
+                r.outgoingCycles.size + r.outgoingWatchEvents.size,
             incoming = r.incomingMedia.size + r.incomingEpisodes.size +
-                r.incomingCollections.size + r.incomingCollectionItems.size
+                r.incomingCollections.size + r.incomingCollectionItems.size +
+                r.incomingCycles.size + r.incomingWatchEvents.size
         )
     }
 
@@ -526,14 +577,194 @@ class CloudSyncManager(
         }
 
         val collections = reconcileCollections()
+        val history = reconcileWatchHistory()
         return Reconcile(
             outgoingMedia, incomingMedia, outgoingEpisodes, incomingEpisodes, conflictTitles,
             outgoingCollections = collections.outgoingCollections,
             incomingCollections = collections.incomingCollections,
             outgoingCollectionItems = collections.outgoingItems,
-            incomingCollectionItems = collections.incomingItems
+            incomingCollectionItems = collections.incomingItems,
+            outgoingCycles = history.outgoingCycles,
+            incomingCycles = history.incomingCycles,
+            outgoingWatchEvents = history.outgoingEvents,
+            incomingWatchEvents = history.incomingEvents
         )
     }
+
+    private suspend fun reconcileWatchHistory(): WatchHistoryReconcile {
+        val remoteCycles = fetchRemoteWatchCycles()
+        val remoteEvents = fetchRemoteWatchEvents()
+        val localCycles = db.watchHistoryDao().getAllCycles()
+        val localEvents = db.watchHistoryDao().getAllEvents()
+
+        val remoteCycleById = remoteCycles.associateBy { it.cycle_id }
+        val remoteEventById = remoteEvents.associateBy { it.event_id }
+        val localEventById = localEvents.associateBy { it.id }
+        val localCycleIds = localCycles.mapTo(HashSet()) { it.id }
+
+        val outgoingCycles = mutableListOf<WatchCycleEntity>()
+        val incomingCycles = mutableListOf<WatchCycleEntity>()
+        for (local in localCycles) {
+            val remote = remoteCycleById[local.id] ?: run { outgoingCycles.add(local); continue }
+            // A cycle only progresses (started -> completed), so completedAt ?? startedAt
+            // orders it well enough — it has no modified timestamp of its own.
+            val localTime = cycleChangeTime(local.startedAt, local.completedAt)
+            val remoteTime = cycleChangeTime(remote.started_at, remote.completed_at)
+            if (remoteTime != null && (localTime == null || remoteTime > localTime)) {
+                incomingCycles.add(
+                    local.copy(
+                        state = remote.state,
+                        completedAt = remote.completed_at,
+                        isComplete = remote.is_complete,
+                        updatedAt = remote.updated_at
+                    )
+                )
+            }
+        }
+        for (remote in remoteCycles) {
+            if (!localCycleIds.contains(remote.cycle_id)) {
+                incomingCycles.add(
+                    WatchCycleEntity(
+                        id = remote.cycle_id,
+                        mediaId = remote.media_id,
+                        kind = remote.kind,
+                        startedAt = remote.started_at,
+                        completedAt = remote.completed_at,
+                        state = remote.state,
+                        isRewatch = remote.is_rewatch,
+                        isComplete = remote.is_complete,
+                        scopeEpisodeIds = remote.scope_episode_ids,
+                        isBackfilled = true,
+                        updatedAt = remote.updated_at
+                    )
+                )
+            }
+        }
+
+        val outgoingEvents = mutableListOf<WatchEventEntity>()
+        val incomingEvents = mutableListOf<WatchEventEntity>()
+        for (local in localEvents) {
+            val remote = remoteEventById[local.id]
+            // Events are immutable facts: push when the cloud lacks it, or when it carries a
+            // void the cloud doesn't (the only forward change).
+            if (remote == null || (local.voidedAt != null && remote.voided_at == null)) {
+                outgoingEvents.add(local)
+            }
+        }
+        for (remote in remoteEvents) {
+            when (val local = localEventById[remote.event_id]) {
+                null -> {
+                    // Don't double-log a watch already covered locally: the Mac synthesises an
+                    // event for a watch that arrives without history, and that copy carries a
+                    // different dedup key.
+                    if (!hasEquivalentLocalEvent(localEvents, remote)) {
+                        incomingEvents.add(
+                            WatchEventEntity(
+                                id = remote.event_id,
+                                cycleId = remote.cycle_id,
+                                mediaId = remote.media_id,
+                                episodeId = remote.episode_id,
+                                watchedAt = remote.watched_at,
+                                source = remote.source,
+                                timezoneIdentifier = remote.timezone_identifier,
+                                runtimeMinutes = remote.runtime_minutes,
+                                voidedAt = remote.voided_at,
+                                deduplicationKey = remote.deduplication_key,
+                                isBackfilled = true,
+                                updatedAt = remote.updated_at
+                            )
+                        )
+                    }
+                }
+                else -> if (local.voidedAt == null && remote.voided_at != null) {
+                    incomingEvents.add(local.copy(voidedAt = remote.voided_at, updatedAt = remote.updated_at))
+                }
+            }
+        }
+
+        return WatchHistoryReconcile(outgoingCycles, incomingCycles, outgoingEvents, incomingEvents)
+    }
+
+    private fun hasEquivalentLocalEvent(all: List<WatchEventEntity>, remote: RemoteWatchEvent): Boolean {
+        val remoteDay = remote.watched_at.take(10)
+        return all.any {
+            it.mediaId == remote.media_id && it.episodeId == remote.episode_id &&
+                it.voidedAt == null && it.watchedAt.take(10) == remoteDay
+        }
+    }
+
+    private data class WatchHistoryReconcile(
+        val outgoingCycles: List<WatchCycleEntity>,
+        val incomingCycles: List<WatchCycleEntity>,
+        val outgoingEvents: List<WatchEventEntity>,
+        val incomingEvents: List<WatchEventEntity>
+    )
+
+    private suspend fun fetchRemoteWatchCycles(): List<RemoteWatchCycle> = fetchAllPages("user_watch_cycles")
+
+    private suspend fun fetchRemoteWatchEvents(): List<RemoteWatchEvent> = fetchAllPages("user_watch_events")
+
+    private suspend fun pushWatchCycles(cycles: List<WatchCycleEntity>) {
+        if (cycles.isEmpty()) return
+        val now = isoNow()
+        val payload = cycles.map { c ->
+            RemoteWatchCycle(
+                user_id = syncKey,
+                cycle_id = c.id,
+                media_id = c.mediaId,
+                kind = c.kind,
+                started_at = c.startedAt,
+                completed_at = c.completedAt,
+                state = c.state,
+                is_rewatch = c.isRewatch,
+                is_complete = c.isComplete,
+                scope_episode_ids = c.scopeEpisodeIds,
+                is_backfilled = c.isBackfilled,
+                updated_at = now
+            )
+        }
+        client.post("$supabaseUrl/rest/v1/user_watch_cycles") {
+            header("apikey", anonKey)
+            header("Authorization", "Bearer $anonKey")
+            header("x-sync-key", syncKey)
+            header("Prefer", "resolution=merge-duplicates")
+            contentType(ContentType.Application.Json)
+            setBody(payload)
+        }
+    }
+
+    private suspend fun pushWatchEvents(events: List<WatchEventEntity>) {
+        if (events.isEmpty()) return
+        val now = isoNow()
+        val payload = events.map { e ->
+            RemoteWatchEvent(
+                user_id = syncKey,
+                event_id = e.id,
+                cycle_id = e.cycleId,
+                media_id = e.mediaId,
+                episode_id = e.episodeId,
+                watched_at = e.watchedAt,
+                source = e.source,
+                timezone_identifier = e.timezoneIdentifier,
+                runtime_minutes = e.runtimeMinutes,
+                voided_at = e.voidedAt,
+                deduplication_key = e.deduplicationKey,
+                is_backfilled = e.isBackfilled,
+                updated_at = now
+            )
+        }
+        client.post("$supabaseUrl/rest/v1/user_watch_events") {
+            header("apikey", anonKey)
+            header("Authorization", "Bearer $anonKey")
+            header("x-sync-key", syncKey)
+            header("Prefer", "resolution=merge-duplicates")
+            contentType(ContentType.Application.Json)
+            setBody(payload)
+        }
+    }
+
+    private fun cycleChangeTime(startedAt: String?, completedAt: String?): Date? =
+        parseInstant(completedAt) ?: parseInstant(startedAt)
 
     /** Collections + membership diff. Newest-wins per row; membership uses tombstones. */
     private suspend fun reconcileCollections(): CollectionReconcile {
