@@ -166,7 +166,14 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
             // Genuinely "added", not "recently touched": dateAdded doesn't move on a watch,
             // a like or a sync. Rows predating the column fall back until a sync supplies the
             // Mac's dateAdded (the same value the Mac's own Home orders by).
-            .sortedByDescending { it.dateAdded ?: it.lastInteractionDate ?: it.id }
+            //
+            // Title is the tie-break, matching macOS's `dateAdded desc, title asc`. Without it
+            // ties keep the input order — which is lastInteractionDate DESC — so the ~155 rows
+            // that share the Mac's bulk-import instant reshuffled whenever anything was watched.
+            .sortedWith(
+                compareByDescending<MediaItemEntity> { it.dateAdded ?: it.lastInteractionDate ?: "" }
+                    .thenBy { it.title.lowercase() }
+            )
             .take(15)
 
         val lovedItems = items.filter {

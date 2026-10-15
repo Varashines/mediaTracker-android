@@ -538,7 +538,11 @@ class CloudSyncManager(
         for (local in localMedia) {
             val remote = remoteMediaById[local.id]
             if (remote == null) {
-                outgoingMedia.add(local)
+                // Under a watermarked fetch, "absent from the response" means *unchanged*, not
+                // "not in the cloud" — so only push when this device actually edited the row
+                // since the last sync. (With no watermark this is a full pull, where absent
+                // really does mean missing.)
+                if (isNewerThanWatermark(local, since)) outgoingMedia.add(local)
                 continue
             }
             // A differing state/taste *or* a differing soft-delete is a conflict. Without the
@@ -606,6 +610,21 @@ class CloudSyncManager(
             // for reads racing an in-flight commit), so the next pull only asks for changes.
             watermark = nextWatermark(since, remoteMedia.map { it.updated_at } + remoteEpisodes.map { it.updated_at })
         )
+    }
+
+    /**
+     * Whether this device has edited [local] since [watermark].
+     *
+     * Compares parsed instants, not the raw strings: the watermark comes from
+     * `Instant.toString()` (which omits fractional seconds when they are zero) while local
+     * stamps always carry millis, so a lexicographic compare would be wrong.
+     * A nil watermark means the last sync was a full pull.
+     */
+    private fun isNewerThanWatermark(local: MediaItemEntity, watermark: String?): Boolean {
+        if (watermark.isNullOrBlank()) return true
+        val since = parseInstant(watermark) ?: return true
+        val edited = parseInstant(local.lastInteractionDate) ?: parseInstant(local.lastStateChangeDate)
+        return edited == null || edited.after(since)
     }
 
     /**
