@@ -57,8 +57,14 @@ import androidx.compose.material3.ToggleButton
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -611,4 +617,85 @@ fun SnapRail(
         flingBehavior = rememberSnapFlingBehavior(lazyListState = listState),
         content = content
     )
+}
+
+/**
+ * Horizontal swipe action on a row.
+ *
+ * Drag right to run [onSwipeRight] (mark watched) or left for [onSwipeLeft]; the row follows
+ * the finger, reveals a proportional affordance, and fires a haptic the moment the threshold
+ * is crossed. On release it springs back — it is *never* dismissed, which is exactly why this
+ * isn't `SwipeToDismissBox` (that primitive expects the row to leave and fights a toggle).
+ */
+@Composable
+fun SwipeActionRow(
+    rightIcon: ImageVector,
+    rightTint: Color,
+    onSwipeRight: () -> Unit,
+    leftIcon: ImageVector,
+    leftTint: Color,
+    onSwipeLeft: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val density = LocalDensity.current
+    val thresholdPx = with(density) { 72.dp.toPx() }
+    val maxRevealPx = with(density) { 120.dp.toPx() }
+    val haptics = rememberHaptics()
+
+    var offsetX by remember { mutableStateOf(0f) }
+    var armed by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        if (offsetX != 0f) {
+            val toRight = offsetX > 0
+            val progress = (kotlin.math.abs(offsetX) / thresholdPx).coerceIn(0f, 1f)
+            val tint = if (toRight) rightTint else leftTint
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(tint.copy(alpha = 0.16f * progress), RoundedCornerShape(18.dp)),
+                contentAlignment = if (toRight) Alignment.CenterStart else Alignment.CenterEnd
+            ) {
+                Icon(
+                    imageVector = if (toRight) rightIcon else leftIcon,
+                    contentDescription = null,
+                    tint = tint.copy(alpha = progress),
+                    modifier = Modifier.padding(horizontal = 22.dp).size(22.dp)
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(offsetX.roundToInt(), 0) }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (kotlin.math.abs(offsetX) >= thresholdPx) {
+                                haptics.toggle()
+                                if (offsetX > 0) onSwipeRight() else onSwipeLeft()
+                            }
+                            offsetX = 0f
+                            armed = false
+                        },
+                        onDragCancel = {
+                            offsetX = 0f
+                            armed = false
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            val next = (offsetX + dragAmount).coerceIn(-maxRevealPx, maxRevealPx)
+                            offsetX = next
+                            val nowArmed = kotlin.math.abs(next) >= thresholdPx
+                            // One tick on crossing, not per frame.
+                            if (nowArmed && !armed) haptics.tap()
+                            armed = nowArmed
+                        }
+                    )
+                }
+        ) {
+            content()
+        }
+    }
 }

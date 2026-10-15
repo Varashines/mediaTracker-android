@@ -39,6 +39,7 @@ import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBSearchItem
 import com.vara.mediatracker.data.db.AppDatabase
 import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.ui.common.ChipTone
@@ -867,15 +868,25 @@ private fun LibraryOptionSheet(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
+                text = title.uppercase(java.util.Locale.US),
+                style = AppTextStyles.MonoLabel,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
                 text = title,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             options.forEach { option ->
                 val isSelected = option == selected
                 Surface(
-                    onClick = { onSelect(option) },
+                    onClick = {
+                        onSelect(option)
+                        // Single-select: choosing closes the sheet (the filter sheet stays open
+                        // because it is multi-select).
+                        onDismiss()
+                    },
                     shape = RoundedCornerShape(16.dp),
                     color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
                     modifier = Modifier.fillMaxWidth()

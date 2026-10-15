@@ -68,6 +68,7 @@ import com.vara.mediatracker.ui.common.ChipTone
 import com.vara.mediatracker.ui.common.ExpressiveSegmentedControl
 import com.vara.mediatracker.ui.common.ProgressLine
 import com.vara.mediatracker.ui.common.SectionHeader
+import com.vara.mediatracker.ui.common.SwipeActionRow
 import com.vara.mediatracker.ui.common.StatusChip
 import com.vara.mediatracker.ui.common.parseAirInstant
 import com.vara.mediatracker.ui.common.rememberCountdownText
@@ -917,13 +918,24 @@ fun DetailScreen(
                         }
                     } else {
                         items(currentSeasonEpisodes, key = { it.uniqueId }) { ep ->
-                            EpisodeCard(
-                                episode = ep,
-                                serviceHint = AirTimeResolver.serviceHint(item.network, item.studios, item.genres),
-                                timezone = item.timezone,
-                                today = todayDate,
-                                onToggleWatched = { markWatched(ep, it) }
-                            )
+                            // Swipe right = watched, left = un-watch. Idempotent, so swiping the
+                            // same way twice is harmless; the opposite swipe is the undo.
+                            SwipeActionRow(
+                                rightIcon = Icons.Default.Check,
+                                rightTint = sem.success,
+                                onSwipeRight = { if (!ep.isWatched) markWatched(ep, true) },
+                                leftIcon = Icons.Default.Refresh,
+                                leftTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                onSwipeLeft = { if (ep.isWatched) markWatched(ep, false) }
+                            ) {
+                                EpisodeCard(
+                                    episode = ep,
+                                    serviceHint = AirTimeResolver.serviceHint(item.network, item.studios, item.genres),
+                                    timezone = item.timezone,
+                                    today = todayDate,
+                                    onToggleWatched = { markWatched(ep, it) }
+                                )
+                            }
                         }
                     }
                 }
@@ -1121,47 +1133,103 @@ private fun DetailTopBar(
     onShare: () -> Unit,
     onOpenWeb: () -> Unit
 ) {
+    var actionsOpen by remember { mutableStateOf(false) }
+    // Close this sheet first, then run the action — several of them open another sheet, and
+    // dismissing and presenting in the same frame makes both stutter.
+    fun closeThen(action: () -> Unit) {
+        actionsOpen = false
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(action, 220)
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Surface(onClick = onBack, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(38.dp)) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(19.dp))
-            }
-        }
+        TopBarIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", onClick = onBack)
 
-        Column(modifier = Modifier.weight(1f).padding(horizontal = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
             if (subtitle != null) {
                 Text(subtitle.uppercase(Locale.US), style = AppTextStyles.MonoLabel, color = MaterialTheme.colorScheme.primary, maxLines = 1)
             }
         }
 
-        // Add to collection
-        Surface(onClick = onAddToCollection, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(38.dp)) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Bookmarks, contentDescription = "Add to collection", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(17.dp))
+        // One overflow instead of four 38dp buttons: four icon buttons cannot be 48dp touch
+        // targets and still leave a readable centred title on a 360dp screen.
+        TopBarIconButton(Icons.Default.MoreVert, "More actions", onClick = { actionsOpen = true })
+    }
+
+    if (actionsOpen) {
+        ModalBottomSheet(onDismissRequest = { actionsOpen = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SheetActionRow(Icons.Default.Bookmarks, "Add to collection", "Put \"$title\" in a collection") { closeThen(onAddToCollection) }
+                SheetActionRow(Icons.Default.Share, "Share", "Share this title") { closeThen(onShare) }
+                SheetActionRow(Icons.Default.Language, "Open on TMDB", "View the full page on themoviedb.org") { closeThen(onOpenWeb) }
             }
         }
-        Spacer(modifier = Modifier.width(6.dp))
+    }
+}
 
-        // Native Share action
-        Surface(onClick = onShare, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(38.dp)) {
+/** Top-bar action: compact 38dp visual with a full 48dp touch target. */
+@Composable
+private fun TopBarIconButton(
+    icon: ImageVector,
+    description: String,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(38.dp)) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Share, contentDescription = "Share", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(17.dp))
+                Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(18.dp))
             }
         }
-        Spacer(modifier = Modifier.width(6.dp))
+    }
+}
 
-        // TMDB Web action
-        Surface(onClick = onOpenWeb, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.size(38.dp)) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Language, contentDescription = "Open on TMDB", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+/** One row in the top bar's actions sheet — generous height for thumb accuracy. */
+@Composable
+private fun SheetActionRow(
+    icon: ImageVector,
+    label: String,
+    supporting: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.size(38.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                }
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
