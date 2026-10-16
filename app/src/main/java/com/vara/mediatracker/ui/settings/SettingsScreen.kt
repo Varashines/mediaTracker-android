@@ -1001,132 +1001,144 @@ fun SettingsScreen(
         }
     }
 
-    // Pre-sync preview (macOS SyncImpact): show the incoming/outgoing diff, then apply.
+    // Pre-sync preview (mirrors the macOS SyncImpact sheet): a header, then one collapsible
+    // card per category with an icon and a count. Cards start collapsed so the whole picture
+    // fits a phone; tap one to see what is inside it.
     pendingImpact?.let { impact ->
         ModalBottomSheet(onDismissRequest = { pendingImpact = null }) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .padding(bottom = 28.dp)
+                    .padding(bottom = 24.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("CLOUD SYNC PREVIEW", style = AppTextStyles.MonoLabel, color = MaterialTheme.colorScheme.primary)
-                Text(
-                    "Review what will change between this device and the cloud.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                SyncPreviewHeader(impact)
+
+                SyncPreviewSection(
+                    icon = Icons.Default.WarningAmber,
+                    title = "Conflicts",
+                    count = impact.conflictTitles.size,
+                    accent = sem.warning,
+                    summary = "Kept by both sides but disagreeing on status or taste. The newest edit wins.",
+                    names = impact.conflictTitles,
+                    initiallyExpanded = true
                 )
 
-                if (!impact.hasChanges) {
-                    Text(
-                        "Everything is already in sync.",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = sem.success
-                    )
-                }
-
-                ImpactSection(
+                SyncPreviewSection(
                     icon = Icons.Default.CloudDownload,
-                    title = "From cloud",
+                    title = "Incoming",
+                    count = impact.incomingTitles.size + impact.incomingEpisodes +
+                        impact.incomingCollections.size + impact.incomingCollectionItems,
                     accent = MaterialTheme.colorScheme.primary,
-                    summary = impactSummary(
-                        impact.incomingTitles.size,
-                        impact.incomingEpisodes,
-                        impact.incomingCollections.size,
-                        impact.incomingCollectionItems
-                    ),
+                    summary = "${impact.incomingTitles.size} titles · ${impact.incomingEpisodes} episodes · " +
+                        "${impact.incomingCollections.size + impact.incomingCollectionItems} collection rows",
                     names = impact.incomingTitles + impact.incomingCollections
                 )
 
-                ImpactSection(
+                SyncPreviewSection(
                     icon = Icons.Default.CloudUpload,
-                    title = "To cloud",
+                    title = "Uploads",
+                    count = impact.outgoingTitles.size + impact.outgoingEpisodes +
+                        impact.outgoingCollections.size + impact.outgoingCollectionItems,
                     accent = sem.success,
-                    summary = impactSummary(
-                        impact.outgoingTitles.size,
-                        impact.outgoingEpisodes,
-                        impact.outgoingCollections.size,
-                        impact.outgoingCollectionItems
-                    ),
+                    summary = "${impact.outgoingTitles.size} titles · ${impact.outgoingEpisodes} episodes · " +
+                        "${impact.outgoingCollections.size + impact.outgoingCollectionItems} collection rows",
                     names = impact.outgoingTitles + impact.outgoingCollections
                 )
 
-                if (impact.conflictTitles.isNotEmpty()) {
-                    ImpactSection(
-                        icon = Icons.Default.WarningAmber,
-                        title = "Conflicts",
-                        accent = sem.warning,
-                        summary = "${impact.conflictTitles.size} · newest edit wins",
-                        names = impact.conflictTitles
-                    )
-                }
+                SyncPreviewSection(
+                    icon = Icons.Default.History,
+                    title = "History",
+                    count = impact.incomingCycles + impact.outgoingCycles +
+                        impact.incomingEvents + impact.outgoingEvents,
+                    accent = MaterialTheme.colorScheme.primary,
+                    summary = "${impact.outgoingCycles} cycles · ${impact.outgoingEvents} events up, " +
+                        "${impact.incomingCycles} cycles · ${impact.incomingEvents} events down"
+                )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { pendingImpact = null },
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Cancel") }
-
-                    Button(
-                        onClick = {
-                            pendingImpact = null
-                            isSyncing = true
-                            container.appScope.launch {
-                                val result = container.syncManager().sync(since = prefs.syncWatermark)
-                                withContext(Dispatchers.Main) {
-                                    isSyncing = false
-                                    if (result.isSuccess) {
-                                        SyncScheduler.recordSyncCompletion(context)
-                                        lastSyncSummary = result.getOrNull()
-                                        result.getOrNull()?.watermark?.let { prefs.syncWatermark = it }
-                                        val now = System.currentTimeMillis()
-                                        prefs.lastSyncTimestamp = now
-                                        lastSyncTime = now
-                                        val s = result.getOrNull()
-                                        AppToast.show("Synced — ↑ ${s?.outgoing ?: 0} sent, ↓ ${s?.incoming ?: 0} received")
-                                    } else {
-                                        AppToast.show("Sync failed: ${result.exceptionOrNull()?.localizedMessage}")
-                                    }
+                SyncPreviewActions(
+                    isSyncing = isSyncing,
+                    onCancel = { pendingImpact = null },
+                    onSync = {
+                        pendingImpact = null
+                        isSyncing = true
+                        container.appScope.launch {
+                            val result = container.syncManager().sync(since = prefs.syncWatermark)
+                            withContext(Dispatchers.Main) {
+                                isSyncing = false
+                                if (result.isSuccess) {
+                                    SyncScheduler.recordSyncCompletion(context)
+                                    lastSyncSummary = result.getOrNull()
+                                    result.getOrNull()?.watermark?.let { prefs.syncWatermark = it }
+                                    val now = System.currentTimeMillis()
+                                    prefs.lastSyncTimestamp = now
+                                    lastSyncTime = now
+                                    val s = result.getOrNull()
+                                    AppToast.show("Synced — ↑ ${s?.outgoing ?: 0} sent, ↓ ${s?.incoming ?: 0} received")
+                                } else {
+                                    AppToast.show("Sync failed: ${result.exceptionOrNull()?.localizedMessage}")
                                 }
                             }
-                        },
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Sync Now", fontWeight = FontWeight.Bold) }
-                }
+                        }
+                    }
+                )
             }
         }
     }
 }
 
-private fun impactSummary(titles: Int, episodes: Int, collections: Int, collectionItems: Int): String =
-    buildString {
-        append("$titles titles")
-        if (episodes > 0) append(" · $episodes episodes")
-        if (collections > 0) append(" · $collections collections")
-        if (collectionItems > 0) append(" · $collectionItems items")
-    }
-
-/** One group in the sync preview: a header with a count, then a short list of names. */
+/** Header of the sync preview: a tinted glyph plus the headline count in each direction. */
 @Composable
-private fun ImpactSection(
+private fun SyncPreviewHeader(impact: CloudSyncManager.SyncImpact) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.Sync,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Cloud Sync", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                text = if (impact.hasChanges) {
+                    "${impact.totalOutgoing + impact.totalIncoming} changes — " +
+                        "↑ ${impact.totalOutgoing} · ↓ ${impact.totalIncoming}"
+                } else {
+                    "This device and the cloud already match"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/** One category: icon, title, count badge, and a tap-to-expand body. */
+@Composable
+private fun SyncPreviewSection(
     icon: ImageVector,
     title: String,
+    count: Int,
     accent: Color,
     summary: String,
-    names: List<String>
+    names: List<String> = emptyList(),
+    initiallyExpanded: Boolean = false
 ) {
+    var expanded by remember { mutableStateOf(initiallyExpanded && count > 0) }
+    val idle = MaterialTheme.colorScheme.onSurfaceVariant
+    val tint = if (count > 0) accent else idle
+
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -1134,37 +1146,97 @@ private fun ImpactSection(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
                 Text(
                     title,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(summary, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    count.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = tint,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(tint.copy(alpha = 0.14f))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Icon(
+                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = idle,
+                    modifier = Modifier.size(18.dp)
+                )
             }
-            if (names.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                names.take(8).forEach { name ->
-                    Text(
-                        "• $name",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (names.size > 8) {
-                    Text(
-                        "+ ${names.size - 8} more",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+
+            if (expanded) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (names.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    names.take(8).forEach { name ->
+                        Text(
+                            "• $name",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (names.size > 8) {
+                        Text(
+                            "+ ${names.size - 8} more",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+/** Cancel / Sync Now, with the primary action disabled while a sync is running. */
+@Composable
+private fun SyncPreviewActions(
+    isSyncing: Boolean,
+    onCancel: () -> Unit,
+    onSync: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        OutlinedButton(
+            onClick = onCancel,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.weight(1f)
+        ) { Text("Cancel") }
+
+        Button(
+            onClick = onSync,
+            enabled = !isSyncing,
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ),
+            modifier = Modifier.weight(1f)
+        ) { Text(if (isSyncing) "Syncing…" else "Sync Now", fontWeight = FontWeight.Bold) }
     }
 }
