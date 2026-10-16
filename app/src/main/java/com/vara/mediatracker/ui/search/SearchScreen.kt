@@ -65,11 +65,11 @@ import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
 import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
+import com.vara.mediatracker.util.WireTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
@@ -128,7 +128,7 @@ fun SearchScreen(
             onSelectMedia(mediaId)
         } else {
             scope.launch {
-                val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                val now = WireTime.now()
                 val newItem = MediaItemEntity(
                     id = mediaId,
                     title = title,

@@ -81,6 +81,7 @@ import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import com.vara.mediatracker.util.AirTimeResolver
 import com.vara.mediatracker.util.NetworkResolver
+import com.vara.mediatracker.util.WireTime
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -118,7 +119,7 @@ private fun matchedState(state: String): TrackingState =
             (it.raw == "Active" && state.equals("Watching", ignoreCase = true))
     } ?: TrackingStates[0]
 
-private fun isoNow(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+private fun isoNow(): String = WireTime.now()
 
 /** Detail view tabs. TV defaults to Episodes; movies default to Info. */
 private enum class DetailTab(val label: String) {

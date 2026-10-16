@@ -5,9 +5,9 @@ import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.AppToast
+import com.vara.mediatracker.util.WireTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
@@ -34,7 +34,7 @@ import java.util.Locale
  */
 object TrackingLogic {
 
-    fun isoNow(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+    fun isoNow(): String = WireTime.now()
 
     /**
      * Mark a single episode watched or unwatched with intelligent show state progression.

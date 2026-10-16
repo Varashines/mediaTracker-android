@@ -9,6 +9,7 @@ import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.TVSeasonEntity
 import com.vara.mediatracker.data.model.Taste
+import com.vara.mediatracker.util.WireTime
 import com.vara.mediatracker.data.model.WatchCycleEntity
 import com.vara.mediatracker.data.model.WatchEventEntity
 import io.ktor.client.*
@@ -30,9 +31,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 import java.util.*
 
 @Serializable
@@ -206,17 +204,7 @@ class CloudSyncManager(
         )
     }
 
-    /**
-     * UTC ISO-8601 with milliseconds, matching macOS's `ISO8601DateFormatter`
-     * (`.withInternetDateTime, .withFractionalSeconds`).
-     *
-     * `DateTimeFormatter` is immutable/thread-safe, unlike the shared `SimpleDateFormat`
-     * this replaced (same class of bug as `BadgeEngine.parseDate`).
-     */
-    private val isoFormat: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).withZone(ZoneOffset.UTC)
-
-    private fun isoNow(): String = isoFormat.format(Instant.now())
+    private fun isoNow(): String = WireTime.now()
 
     /**
      * Pulls library state from Supabase and applies updates locally.
@@ -1182,6 +1170,15 @@ class CloudSyncManager(
             updatedAt = remote.updated_at
         )
 
+    /**
+     * Parses a wire timestamp, bounding anything in the future to now.
+     *
+     * An edit cannot postdate the write that carried it, but a client clock used to stamp rows
+     * hours ahead — which made one device's rows permanently newer, so a later edit on the other
+     * device could never win and the bogus value was re-pushed on every sync. The server clamps on
+     * write as well; this bounds whatever is already stored locally.
+     */
     private fun parseInstant(value: String?): Date? =
         value?.let { runCatching { Date.from(java.time.Instant.parse(it)) }.getOrNull() }
+            ?.let { WireTime.clampToNow(it) }
 }

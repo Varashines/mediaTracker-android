@@ -53,8 +53,8 @@ import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.ui.theme.AppSpacing
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
+import com.vara.mediatracker.util.WireTime
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -89,7 +89,7 @@ fun CollectionsContent(
     var renaming by remember { mutableStateOf<CollectionEntity?>(null) }
     var deleting by remember { mutableStateOf<CollectionEntity?>(null) }
 
-    fun stamp(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+    fun stamp(): String = WireTime.now()
 
     if (creating || renaming != null) {
         CollectionNameDialog(

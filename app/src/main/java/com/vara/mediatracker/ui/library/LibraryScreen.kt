@@ -50,10 +50,10 @@ import com.vara.mediatracker.ui.theme.AppSpacing
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.data.prefs.PreferencesManager
 import com.vara.mediatracker.data.sync.CloudSyncManager
+import com.vara.mediatracker.util.WireTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -314,7 +314,7 @@ fun LibraryScreen(
                                 onSelectMedia(mediaId)
                             } else {
                                 scope.launch {
-                                    val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
+                                    val now = WireTime.now()
                                     val newItem = MediaItemEntity(
                                         id = mediaId,
                                         title = title,
