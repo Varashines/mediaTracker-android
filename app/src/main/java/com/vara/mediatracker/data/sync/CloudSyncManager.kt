@@ -377,7 +377,7 @@ class CloudSyncManager(
             header("apikey", anonKey)
             header("Authorization", "Bearer $anonKey")
             header("x-sync-key", syncKey)
-            header("Prefer", "resolution=merge-duplicates")
+            header("Prefer", "resolution=merge-duplicates, return=minimal")
             contentType(ContentType.Application.Json)
             setBody(payload)
         }
@@ -420,7 +420,7 @@ class CloudSyncManager(
             header("apikey", anonKey)
             header("Authorization", "Bearer $anonKey")
             header("x-sync-key", syncKey)
-            header("Prefer", "resolution=merge-duplicates")
+            header("Prefer", "resolution=merge-duplicates, return=minimal")
             contentType(ContentType.Application.Json)
             setBody(payload)
         }
@@ -439,12 +439,18 @@ class CloudSyncManager(
         val incomingCollections: List<String> = emptyList(),
         val outgoingCollections: List<String> = emptyList(),
         val incomingCollectionItems: Int = 0,
-        val outgoingCollectionItems: Int = 0
+        val outgoingCollectionItems: Int = 0,
+        val incomingCycles: Int = 0,
+        val outgoingCycles: Int = 0,
+        val incomingEvents: Int = 0,
+        val outgoingEvents: Int = 0
     ) {
         val totalIncoming: Int
-            get() = incomingTitles.size + incomingEpisodes + incomingCollections.size + incomingCollectionItems
+            get() = incomingTitles.size + incomingEpisodes + incomingCollections.size + incomingCollectionItems +
+                incomingCycles + incomingEvents
         val totalOutgoing: Int
-            get() = outgoingTitles.size + outgoingEpisodes + outgoingCollections.size + outgoingCollectionItems
+            get() = outgoingTitles.size + outgoingEpisodes + outgoingCollections.size + outgoingCollectionItems +
+                outgoingCycles + outgoingEvents
         val hasChanges: Boolean get() = totalIncoming + totalOutgoing > 0
     }
 
@@ -481,7 +487,11 @@ class CloudSyncManager(
             incomingCollections = r.incomingCollections.map { it.name },
             outgoingCollections = r.outgoingCollections.map { it.name },
             incomingCollectionItems = r.incomingCollectionItems.size,
-            outgoingCollectionItems = r.outgoingCollectionItems.size
+            outgoingCollectionItems = r.outgoingCollectionItems.size,
+            incomingCycles = r.incomingCycles.size,
+            outgoingCycles = r.outgoingCycles.size,
+            incomingEvents = r.incomingWatchEvents.size,
+            outgoingEvents = r.outgoingWatchEvents.size
         )
     }
 
@@ -798,7 +808,7 @@ class CloudSyncManager(
             header("apikey", anonKey)
             header("Authorization", "Bearer $anonKey")
             header("x-sync-key", syncKey)
-            header("Prefer", "resolution=merge-duplicates")
+            header("Prefer", "resolution=merge-duplicates, return=minimal")
             contentType(ContentType.Application.Json)
             setBody(payload)
         }
@@ -828,7 +838,7 @@ class CloudSyncManager(
             header("apikey", anonKey)
             header("Authorization", "Bearer $anonKey")
             header("x-sync-key", syncKey)
-            header("Prefer", "resolution=merge-duplicates")
+            header("Prefer", "resolution=merge-duplicates, return=minimal")
             contentType(ContentType.Application.Json)
             setBody(payload)
         }
@@ -967,6 +977,10 @@ class CloudSyncManager(
             val response: HttpResponse = client.get("$supabaseUrl/rest/v1/$endpoint") {
                 parameter("user_id", "eq.$syncKey")
                 parameter("select", "*")
+                // Stable paging: PostgREST pages by offset over an unspecified order, so a
+                // multi-page GET (episodes, watch events) can duplicate or drop rows without
+                // an explicit sort. updated_at is indexed on every sync table.
+                parameter("order", "updated_at.asc")
                 if (!since.isNullOrBlank()) parameter("updated_at", "gt.$since")
                 header("apikey", anonKey)
                 header("Authorization", "Bearer $anonKey")
@@ -1005,7 +1019,7 @@ class CloudSyncManager(
             header("apikey", anonKey)
             header("Authorization", "Bearer $anonKey")
             header("x-sync-key", syncKey)
-            header("Prefer", "resolution=merge-duplicates")
+            header("Prefer", "resolution=merge-duplicates, return=minimal")
             contentType(ContentType.Application.Json)
             setBody(payload)
         }
@@ -1028,7 +1042,7 @@ class CloudSyncManager(
             header("apikey", anonKey)
             header("Authorization", "Bearer $anonKey")
             header("x-sync-key", syncKey)
-            header("Prefer", "resolution=merge-duplicates")
+            header("Prefer", "resolution=merge-duplicates, return=minimal")
             contentType(ContentType.Application.Json)
             setBody(payload)
         }
@@ -1073,7 +1087,7 @@ class CloudSyncManager(
             header("apikey", anonKey)
             header("Authorization", "Bearer $anonKey")
             header("x-sync-key", syncKey)
-            header("Prefer", "resolution=merge-duplicates")
+            header("Prefer", "resolution=merge-duplicates, return=minimal")
             contentType(ContentType.Application.Json)
             setBody(payload)
         }
@@ -1106,7 +1120,7 @@ class CloudSyncManager(
             header("apikey", anonKey)
             header("Authorization", "Bearer $anonKey")
             header("x-sync-key", syncKey)
-            header("Prefer", "resolution=merge-duplicates")
+            header("Prefer", "resolution=merge-duplicates, return=minimal")
             contentType(ContentType.Application.Json)
             setBody(payload)
         }
@@ -1132,7 +1146,7 @@ class CloudSyncManager(
             header("apikey", anonKey)
             header("Authorization", "Bearer $anonKey")
             header("x-sync-key", syncKey)
-            header("Prefer", "resolution=merge-duplicates")
+            header("Prefer", "resolution=merge-duplicates, return=minimal")
             contentType(ContentType.Application.Json)
             setBody(payload)
         }
