@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.compose.runtime.remember
+import com.vara.mediatracker.data.model.Taste
 import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.util.AirTimeResolver
 import com.vara.mediatracker.data.badge.BadgeResult
@@ -177,7 +178,7 @@ fun SectionListScreen(
                                     )
                                 }
 
-                                if (item.taste.equals("Loved", ignoreCase = true) || item.taste.equals("Love", ignoreCase = true)) {
+                                if (Taste.isLove(item.taste)) {
                                     Surface(
                                         color = Color(0xFFFF2D55).copy(alpha = 0.9f),
                                         shape = CircleShape,

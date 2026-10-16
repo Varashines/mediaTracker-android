@@ -1,6 +1,7 @@
 package com.vara.mediatracker.ui.library
 
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.Taste
 import java.util.Locale
 
 /**
@@ -120,7 +121,7 @@ object LibraryQuery {
         "Watching" -> item.state.equals("Watching", true) || item.state.equals("Active", true)
         "Wishlist" -> item.state.equals("Wishlist", true)
         "Completed" -> item.state.equals("Completed", true)
-        "Loved" -> item.taste.equals("Loved", true) || item.taste.equals("Love", true)
+        "Loved" -> Taste.isLove(item.taste)
         else -> true
     }
 

@@ -61,6 +61,10 @@ interface MediaDao {
     @Query("UPDATE media_items SET taste = :taste, lastInteractionDate = :now WHERE id = :id")
     suspend fun updateTaste(id: String, taste: String, now: String)
 
+    /** One-off heal: rewrite a legacy taste spelling to its canonical form. */
+    @Query("UPDATE media_items SET taste = :canonical WHERE taste = :legacy")
+    suspend fun replaceTaste(legacy: String, canonical: String)
+
     // Episodes
     @Query("SELECT * FROM tv_episodes")
     fun getAllEpisodesFlow(): Flow<List<EpisodeEntity>>

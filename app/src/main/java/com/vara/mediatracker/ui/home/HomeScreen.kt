@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import com.vara.mediatracker.data.model.Taste
 import com.vara.mediatracker.ui.common.OverlayAwareBackHandler
 import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.ui.common.SnapRail
@@ -800,7 +801,7 @@ fun HomePosterCard(
             }
 
             // Top-Right: Taste Badge (if loved)
-            if (item.taste == "Loved" || item.taste == "Love") {
+            if (Taste.isLove(item.taste)) {
                 Surface(
                     color = sem.loved.copy(alpha = 0.9f),
                     shape = CircleShape,

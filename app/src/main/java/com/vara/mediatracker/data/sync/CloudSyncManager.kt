@@ -8,6 +8,7 @@ import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.TVSeasonEntity
+import com.vara.mediatracker.data.model.Taste
 import com.vara.mediatracker.data.model.WatchCycleEntity
 import com.vara.mediatracker.data.model.WatchEventEntity
 import io.ktor.client.*
@@ -244,7 +245,7 @@ class CloudSyncManager(
                 releaseDate = existing?.releaseDate,
                 type = rem.type,
                 state = rem.state,
-                taste = rem.taste,
+                taste = Taste.normalize(rem.taste),
                 // Preserve locally-derived air + discovery metadata; the remote schema
                 // carries none of it, and reconstructing without these wiped the TVMaze
                 // timezone/network/instant and the Discovery facets (genres/language/
@@ -409,7 +410,7 @@ class CloudSyncManager(
             media_id = mediaId,
             type = type,
             state = state,
-            taste = taste,
+            taste = Taste.normalize(taste),
             last_interaction_date = now,
             last_state_change_date = if (isStateChange) now else null,
             date_added = dateAdded,
@@ -559,7 +560,7 @@ class CloudSyncManager(
             // soft-delete term a delete on the other device was never seen here, so the title
             // simply stayed put.
             val differs = !local.state.equals(remote.state, true) ||
-                !local.taste.equals(remote.taste, true) ||
+                Taste.normalize(local.taste) != Taste.normalize(remote.taste) ||
                 local.isSoftDeleted != remote.is_soft_deleted
             if (differs) {
                 conflictTitles.add(local.title)
@@ -1072,7 +1073,7 @@ class CloudSyncManager(
                 media_id = item.id,
                 type = item.type,
                 state = item.state,
-                taste = item.taste,
+                taste = Taste.normalize(item.taste),
                 custom_poster_url = item.customPosterUrl,
                 // Must be sent: without it a soft-delete would be pushed as a live row and
                 // the delete would never propagate.
@@ -1107,7 +1108,7 @@ class CloudSyncManager(
                 media_id = item.id,
                 type = item.type,
                 state = item.state,
-                taste = item.taste,
+                taste = Taste.normalize(item.taste),
                 custom_poster_url = item.customPosterUrl,
                 is_soft_deleted = true,
                 last_interaction_date = now,

@@ -11,6 +11,7 @@ import com.vara.mediatracker.data.model.FacetLogoEntity
 import com.vara.mediatracker.data.model.MediaBadgeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.Taste
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.home.HomeEligibility
 import kotlinx.coroutines.Dispatchers
@@ -178,7 +179,7 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
 
         val lovedItems = items.filter {
             !it.isSoftDeleted &&
-                (it.taste.equals("Loved", ignoreCase = true) || it.taste.equals("Love", ignoreCase = true))
+                Taste.isLove(it.taste)
         }
 
         val spotlightItems = (resumeItems + comingSoonItems + lovedItems + items)

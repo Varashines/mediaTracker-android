@@ -88,6 +88,14 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putBoolean("detail_network_logo", value).apply()
 
     /**
+     * Set once legacy taste spellings ("Loved"/"Liked"/"Disliked") have been rewritten to the
+     * canonical "Love"/"Like"/"Dislike" the macOS enum understands. Idempotent if it re-runs.
+     */
+    var tasteCanonicalizationDone: Boolean
+        get() = prefs.getBoolean("taste_canonicalization_done", false)
+        set(value) = prefs.edit().putBoolean("taste_canonicalization_done", value).apply()
+
+    /**
      * Caches the resolved network or production company for a media item so it's
      * immediately available everywhere without making repetitive TMDB calls.
      */

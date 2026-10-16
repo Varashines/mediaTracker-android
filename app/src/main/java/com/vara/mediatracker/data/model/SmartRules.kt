@@ -165,7 +165,7 @@ object SmartRules {
         }
         is SmartRule.MediaType -> rule.values.any { item.type.equals(it, ignoreCase = true) }
         is SmartRule.State -> rule.values.any { item.state.equals(it, ignoreCase = true) }
-        is SmartRule.Taste -> rule.values.any { item.taste.equals(it, ignoreCase = true) }
+        is SmartRule.Taste -> rule.values.any { Taste.normalize(it).equals(Taste.normalize(item.taste), true) }
         is SmartRule.Badge -> badgeLabel != null && rule.values.any { it.equals(badgeLabel, ignoreCase = true) }
         is SmartRule.Network -> {
             val networks = item.network?.split(',')?.map { it.trim().lowercase() }.orEmpty()

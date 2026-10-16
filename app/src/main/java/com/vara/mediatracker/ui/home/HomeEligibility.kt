@@ -5,6 +5,7 @@ import com.vara.mediatracker.data.badge.SmartBadge
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.Taste
 import com.vara.mediatracker.util.AirTimeResolver
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -195,7 +196,7 @@ object HomeEligibility {
         if (item.state.equals("Completed", ignoreCase = true)) return false
         if (item.state.equals("Dropped", ignoreCase = true)) return false
         if (item.state.equals("On Hold", ignoreCase = true)) return false
-        if (item.taste.equals("Dislike", ignoreCase = true)) return false
+        if (Taste.isDislike(item.taste)) return false
         val air = nextUnairedAirDate ?: return false
         return air > today
     }
@@ -252,7 +253,7 @@ object HomeEligibility {
         if (item.state.equals("Completed", ignoreCase = true)) return false
         if (item.state.equals("Dropped", ignoreCase = true)) return false
         if (item.state.equals("On Hold", ignoreCase = true)) return false
-        if (item.taste.equals("Dislike", ignoreCase = true)) return false
+        if (Taste.isDislike(item.taste)) return false
         return instant != null && instant.after(now)
     }
 

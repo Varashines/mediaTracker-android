@@ -3,6 +3,7 @@ package com.vara.mediatracker.data.badge
 import androidx.compose.ui.graphics.Color
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.Taste
 import com.vara.mediatracker.util.AirTimeResolver
 import java.time.LocalDate
 import java.time.ZoneId
@@ -354,10 +355,7 @@ object BadgeEngine {
 
         // BEHIND and BINGE are both gated on taste so a backlog alone does not nag every
         // show. macOS guards here, before either check.
-        val isLikedOrLoved = item.taste.equals("Loved", ignoreCase = true) ||
-                             item.taste.equals("Love", ignoreCase = true) ||
-                             item.taste.equals("Liked", ignoreCase = true) ||
-                             item.taste.equals("Like", ignoreCase = true)
+        val isLikedOrLoved = Taste.isLikedOrLoved(item.taste)
 
         if (!isLikedOrLoved) return null
 

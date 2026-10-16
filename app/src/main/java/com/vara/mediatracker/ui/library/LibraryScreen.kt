@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.vara.mediatracker.data.model.Taste
 import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.common.EmptyState
 import com.vara.mediatracker.ui.common.ExpressiveCard
@@ -418,7 +419,7 @@ fun LibraryScreen(
                         "Watching" to scoped.count { it.state.equals("Watching", true) || it.state.equals("Active", true) },
                         "Wishlist" to scoped.count { it.state.equals("Wishlist", true) },
                         "Completed" to scoped.count { it.state.equals("Completed", true) },
-                        "Loved" to scoped.count { it.taste.equals("Loved", true) || it.taste.equals("Love", true) }
+                        "Loved" to scoped.count { Taste.isLove(it.taste) }
                     )
                 }
 
@@ -655,7 +656,7 @@ fun LibraryPosterCard(
                 )
             }
 
-            if (item.taste.equals("Loved", true) || item.taste.equals("Love", true)) {
+            if (Taste.isLove(item.taste)) {
                 Surface(
                     color = Color(0xFFFF2D55),
                     shape = RoundedCornerShape(10.dp),

@@ -7,6 +7,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.vara.mediatracker.data.badge.BadgeComputer
 import com.vara.mediatracker.data.db.EpisodeKeyReconciler
+import com.vara.mediatracker.data.db.TasteCanonicalizer
 import com.vara.mediatracker.data.sync.ReleaseNotifier
 import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.di.AppContainer
@@ -59,6 +60,14 @@ class MediaTrackerApp : Application(), ImageLoaderFactory {
             if (!container.preferences.episodeKeyMigrationDone) {
                 EpisodeKeyReconciler(container.database).reconcile()
                 container.preferences.episodeKeyMigrationDone = true
+            }
+
+            // Tastes written before the canonical vocabulary was enforced: "Loved"/"Liked"/
+            // "Disliked" are unreadable to the Mac's enum, so a like set here used to vanish
+            // on the other side. Rewrite once; the next push carries the fix to the cloud.
+            if (!container.preferences.tasteCanonicalizationDone) {
+                TasteCanonicalizer(container.database).canonicalize()
+                container.preferences.tasteCanonicalizationDone = true
             }
 
             // On a fresh install, or straight after the v3 migration, media_badges is

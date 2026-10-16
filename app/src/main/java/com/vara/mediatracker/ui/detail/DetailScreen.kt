@@ -63,6 +63,7 @@ import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.TVSeasonEntity
 import com.vara.mediatracker.data.model.CollectionItemEntity
+import com.vara.mediatracker.data.model.Taste
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.ui.common.ChipTone
@@ -440,9 +441,9 @@ fun DetailScreen(
 
     // Taste (reaction) state for the tracking card.
     var tasteMenuOpen by remember { mutableStateOf(false) }
-    val isLoved = item.taste.equals("Loved", ignoreCase = true) || item.taste.equals("Love", ignoreCase = true)
-    val isLiked = item.taste.equals("Liked", ignoreCase = true) || item.taste.equals("Like", ignoreCase = true)
-    val isDisliked = item.taste.equals("Disliked", ignoreCase = true)
+    val isLoved = Taste.isLove(item.taste)
+    val isLiked = Taste.isLike(item.taste)
+    val isDisliked = Taste.isDislike(item.taste)
     val tasteIcon = when {
         isLoved -> Icons.Default.Favorite
         isLiked -> Icons.Default.ThumbUp
@@ -762,15 +763,15 @@ fun DetailScreen(
                                         Row(modifier = Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                             ReactionButton(Icons.Default.Favorite, "Loved", isLoved, sem.loved) {
                                                 tasteMenuOpen = false
-                                                setTaste(if (isLoved) "None" else "Loved")
+                                                setTaste(if (isLoved) Taste.NONE else Taste.LOVE)
                                             }
                                             ReactionButton(Icons.Default.ThumbUp, "Liked", isLiked, sem.liked) {
                                                 tasteMenuOpen = false
-                                                setTaste(if (isLiked) "None" else "Liked")
+                                                setTaste(if (isLiked) Taste.NONE else Taste.LIKE)
                                             }
                                             ReactionButton(Icons.Default.ThumbDown, "Disliked", isDisliked, sem.disliked) {
                                                 tasteMenuOpen = false
-                                                setTaste(if (isDisliked) "None" else "Disliked")
+                                                setTaste(if (isDisliked) Taste.NONE else Taste.DISLIKE)
                                             }
                                         }
                                     }
