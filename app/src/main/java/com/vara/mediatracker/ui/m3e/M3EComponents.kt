@@ -1,13 +1,20 @@
 package com.vara.mediatracker.ui.m3e
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -123,3 +130,38 @@ val M3ECardPadding: Modifier
         horizontal = M3ESpacing.cardGap,
         vertical = M3ESpacing.inlineGap
     )
+
+/**
+ * A poster card that names itself on a long press instead of carrying a permanent caption.
+ *
+ * A caption under every poster is what the Library looked like before the artwork was worth
+ * trusting: it doubles the height of a row, and the title is often the least informative thing on
+ * the card — you recognise a title long before you read it. Holding the poster still answers the
+ * question, for the cases where recognition is not enough.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun M3EArtworkCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
+    val tooltipState = rememberTooltipState()
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(title, style = M3EType.rowSupporting()) } },
+        state = tooltipState,
+        modifier = modifier
+    ) {
+        Box(
+            modifier = if (onClick != null) {
+                Modifier.clickable(onClick = onClick)
+            } else {
+                Modifier
+            }
+        ) {
+            content()
+        }
+    }
+}

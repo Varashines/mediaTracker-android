@@ -355,16 +355,8 @@ private fun LibrarySection(core: LibraryCore, onOpen: (MediaItemEntity) -> Unit)
             }
         }
         items(library, key = { it.id }) { item ->
-            Column(modifier = Modifier.clickable { onOpen(item) }) {
+            M3EArtworkCard(title = item.title, onClick = { onOpen(item) }) {
                 Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                Text(
-                    text = item.title,
-                    style = M3EType.rowSupporting(),
-                    color = M3EColor.text(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -589,20 +581,8 @@ private fun TitleRow(
 
 @Composable
 private fun PosterCard(item: MediaItemEntity, width: Dp, onClick: (() -> Unit)? = null) {
-    Column(
-        modifier = Modifier
-            .width(width)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-    ) {
+    M3EArtworkCard(title = item.title, modifier = Modifier.width(width), onClick = onClick) {
         Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
-        Spacer(Modifier.height(M3ESpacing.tightGap))
-        Text(
-            text = item.title,
-            style = M3EType.rowSupporting(),
-            color = M3EColor.text(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 

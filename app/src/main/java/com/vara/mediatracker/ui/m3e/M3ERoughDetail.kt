@@ -836,7 +836,7 @@ private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Bool
 @Composable
 private fun RelatedCard(result: TMDBSearchItem, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val title = result.title ?: result.name ?: "Untitled"
-    Column(modifier = modifier.clickable(onClick = onClick)) {
+    M3EArtworkCard(title = title, modifier = modifier, onClick = onClick) {
         AsyncImage(
             model = TMDBClient.buildPosterUrl(result.poster_path),
             contentDescription = title,
@@ -846,14 +846,6 @@ private fun RelatedCard(result: TMDBSearchItem, modifier: Modifier = Modifier, o
                 .aspectRatio(2f / 3f)
                 .clip(M3EShape.chip())
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-        )
-        Spacer(Modifier.height(M3ESpacing.tightGap))
-        Text(
-            text = title,
-            style = M3EType.rowSupporting(),
-            color = M3EColor.text(),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
         )
     }
 }

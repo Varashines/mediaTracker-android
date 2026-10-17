@@ -281,7 +281,7 @@ private fun SearchTile(
     busy: Boolean = false,
     onClick: () -> Unit
 ) {
-    Column(modifier = Modifier.clickable(enabled = !busy, onClick = onClick)) {
+    M3EArtworkCard(title = title, onClick = if (busy) null else onClick) {
         Box {
             AsyncImage(
                 model = posterUrl,
@@ -308,13 +308,5 @@ private fun SearchTile(
                 )
             }
         }
-        Spacer(Modifier.height(M3ESpacing.tightGap))
-        Text(
-            text = title,
-            style = M3EType.rowSupporting(),
-            color = M3EColor.text(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
