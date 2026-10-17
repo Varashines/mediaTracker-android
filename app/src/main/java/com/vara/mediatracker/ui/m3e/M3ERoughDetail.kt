@@ -353,12 +353,9 @@ fun M3ERoughDetail(
                 !isTv && directors.isNotEmpty() -> "Directed by ${directors.joinToString(", ")}"
                 else -> null
             }
-            // Title, byline, year and the two pills in one column beside the poster. The pills
-            // used to sit in a row of their own below the action, which pushed everything below
-            // them down the screen for no gain — they belong with the title, one under the other.
-            // Beside the poster, in the title's own column: status takes the room it needs, taste
-            // takes only what a glyph needs. That is what lets them share the column without the
-            // state being squeezed to fit around the reaction.
+            // All of it beside the poster. In the controls row, status takes 70% of the width,
+            // taste 20%, and the last 10% is left as space: a reaction is a glyph and does not
+            // need the room a state does, and the gap keeps the pair off the screen edge.
             Title(live, byline) {
                 Row(
                     modifier = Modifier.height(IntrinsicSize.Min),
@@ -368,14 +365,15 @@ fun M3ERoughDetail(
                         label = "Status",
                         value = live.state,
                         tint = statusTint(live.state),
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        modifier = Modifier.weight(0.7f).fillMaxHeight(),
                         onClick = { statusPickerOpen = true }
                     )
                     TastePill(
                         taste = live.taste,
-                        modifier = Modifier.fillMaxHeight(),
+                        modifier = Modifier.weight(0.2f).fillMaxHeight(),
                         onClick = { tastePickerOpen = true }
                     )
+                    Spacer(Modifier.weight(0.1f))
                 }
             }
         }
@@ -729,8 +727,7 @@ private fun Title(
     byline: String? = null,
     below: @Composable (() -> Unit)? = null
 ) {
-    // Top-aligned: with the pills under the year the column is taller than the poster, and bottom
-    // alignment would float the title down against nothing.
+    // Everything is beside the poster: the heading, and the row of controls under it.
     Row(verticalAlignment = Alignment.Top) {
         AsyncImage(
             model = item.posterUrl,
