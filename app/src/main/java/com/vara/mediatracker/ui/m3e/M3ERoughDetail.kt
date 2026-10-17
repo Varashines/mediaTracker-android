@@ -493,9 +493,9 @@ fun M3ERoughDetail(
                                 }
                                 if (!network.isNullOrBlank()) DetailRow("Network", network)
                                 if (!released.isNullOrBlank()) {
-                                    DetailRow("Released", released.take(10))
+                                    DetailRow("Released", indianDate(released) ?: released)
                                 }
-                                DetailRow("Added", live.dateAdded?.take(10) ?: "—", divider = false)
+                                DetailRow("Added", indianDate(live.dateAdded) ?: "—", divider = false)
                             }
                         }
 
@@ -804,6 +804,20 @@ private fun tasteTint(taste: String): Color {
  * rather than elided, and the air date sits under it in the muted tone — the one line of supporting
  * text that was worth keeping, because a date is information where "watched" was repetition.
  */
+/**
+ * A stored date as it is read here: dd-MM-yyyy.
+ *
+ * The database keeps ISO dates and always will — they sort, compare and round-trip unchanged. This
+ * is the display side only, and it is a reordering of the parts rather than a parse, so a value
+ * that is not a plain ISO date is passed through instead of throwing.
+ */
+private fun indianDate(iso: String?): String? {
+    val raw = iso?.take(10) ?: return null
+    val parts = raw.split("-")
+    if (parts.size != 3) return raw
+    return "${parts[2]}-${parts[1]}-${parts[0]}"
+}
+
 @Composable
 private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Boolean) -> Unit) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
@@ -831,7 +845,7 @@ private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Bool
                 // Its own line, not a trailing column: an intrinsic-width sibling beside a weighted
                 // one takes the space the name needs and squeezes it, which is what used to happen
                 // to the labels in the Details card.
-                val aired = episode.airDate?.take(10)
+                val aired = indianDate(episode.airDate)
                 if (!aired.isNullOrBlank()) {
                     Text(
                         text = aired,
