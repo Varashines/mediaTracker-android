@@ -800,8 +800,9 @@ private fun tasteTint(taste: String): Color {
  *
  * The checkbox is the only thing saying "watched" — a tick already means that, and spelling it out
  * beside the tick said it twice. The episode number leads at display size because it is what an
- * episode is called when you are scanning a season, and the name takes two lines so a long one is
- * read rather than elided.
+ * episode is called when you are scanning a season, the name takes two lines so a long one is read
+ * rather than elided, and the air date sits under it in the muted tone — the one line of supporting
+ * text that was worth keeping, because a date is information where "watched" was repetition.
  */
 @Composable
 private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Boolean) -> Unit) {
@@ -818,15 +819,29 @@ private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Bool
                 modifier = Modifier.width(56.dp)
             )
             Spacer(Modifier.width(M3ESpacing.inlineGap))
-            Text(
-                text = episode.name.ifBlank { "Episode ${episode.episodeNumber}" },
-                style = M3EType.rowTitle(),
-                fontWeight = FontWeight.SemiBold,
-                color = M3EColor.text(),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = episode.name.ifBlank { "Episode ${episode.episodeNumber}" },
+                    style = M3EType.rowTitle(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = M3EColor.text(),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                // Its own line, not a trailing column: an intrinsic-width sibling beside a weighted
+                // one takes the space the name needs and squeezes it, which is what used to happen
+                // to the labels in the Details card.
+                val aired = episode.airDate?.take(10)
+                if (!aired.isNullOrBlank()) {
+                    Text(
+                        text = aired,
+                        style = M3EType.rowSupporting(),
+                        color = M3EColor.textMuted(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
             Checkbox(checked = watched, onCheckedChange = onToggle)
         }
     }
