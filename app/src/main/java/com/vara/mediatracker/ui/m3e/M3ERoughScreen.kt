@@ -1,28 +1,34 @@
 package com.vara.mediatracker.ui.m3e
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -44,6 +50,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.model.MediaItemEntity
@@ -52,10 +59,9 @@ import com.vara.mediatracker.di.AppContainer
 /**
  * A rough M3E shell, for looking at the design language on a device.
  *
- * This is a sketch, not a migration: it shows one screen built only from the vocabulary in
- * [M3E] — the screen header, an emphasised banner, a metric row, tonal cards, a poster rail and
- * the floating capsule navigation — driven by the real library so it reads like the app rather
- * than a mockup. Navigation between sections, search, detail and settings are not wired.
+ * Three sections — Home, Library and Finished — switched by the floating capsule navigation,
+ * all built only from the vocabulary in [M3E] and driven by the real library. Detail, search and
+ * settings are deliberately not wired: this is to judge the language.
  *
  * Flip [M3ERoughPreview] to false to get the existing UI back.
  */
@@ -66,7 +72,33 @@ fun M3ERoughScreen(container: AppContainer) {
     val library by produceState(initialValue = emptyList<MediaItemEntity>()) {
         value = runCatching { container.database.mediaDao().getAllMediaList() }.getOrDefault(emptyList())
     }
+    var section by remember { mutableIntStateOf(0) }
 
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(M3EColor.page())
+    ) {
+        when (section) {
+            0 -> HomeSection(library)
+            1 -> LibrarySection(library)
+            else -> FinishedSection(library)
+        }
+        FloatingNav(
+            selected = section,
+            onSelect = { section = it },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
+        )
+    }
+}
+
+// MARK: - Sections
+
+@Composable
+private fun HomeSection(library: List<MediaItemEntity>) {
     val inProgress = remember(library) {
         library.filter { it.state.equals("Active", true) || it.state.equals("Re-watching", true) }
             .sortedByDescending { it.lastInteractionDate ?: "" }
@@ -76,75 +108,123 @@ fun M3ERoughScreen(container: AppContainer) {
     }
     val completed = remember(library) { library.count { it.state.equals("Completed", true) } }
 
-    Box(modifier = Modifier.fillMaxSize().padding(horizontal = M3ESpacing.page)) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
-        ) {
-            item {
-                Spacer(Modifier.height(M3ESpacing.pageVertical))
-                M3EScreenHeader(
-                    eyebrow = "Explore",
-                    title = "MediaTracker",
-                    trailing = {
-                        IconButton(onClick = {}) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings")
-                        }
-                    }
-                )
-            }
-
-            // The one emphasised container on the screen — Material's colour tactic.
-            item {
-                EmphasisBanner(count = inProgress.size)
-            }
-
-            item {
-                MetricRow(
-                    library = library.size,
-                    inProgress = inProgress.size,
-                    completed = completed
-                )
-            }
-
-            if (inProgress.isNotEmpty()) {
-                item {
-                    Spacer(Modifier.height(M3ESpacing.tightGap))
-                    M3ESectionHeader(
-                        title = "Continue watching",
-                        trailing = { TextButton(onClick = {}) { Text("See all") } }
-                    )
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(horizontal = M3ESpacing.page),
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+    ) {
+        item {
+            Spacer(Modifier.height(M3ESpacing.pageVertical))
+            M3EScreenHeader(
+                eyebrow = "Explore",
+                title = "MediaTracker",
+                trailing = {
+                    IconButton(onClick = {}) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
                 }
-                items(inProgress.take(6), key = { it.id }) { item ->
-                    ContinueRow(item)
-                }
-            }
-
-            if (recentlyAdded.isNotEmpty()) {
-                item {
-                    Spacer(Modifier.height(M3ESpacing.tightGap))
-                    M3ESectionHeader(
-                        title = "Recently added",
-                        trailing = { TextButton(onClick = {}) { Text("See all") } }
-                    )
-                }
-                item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                        items(recentlyAdded, key = { it.id }) { item ->
-                            PosterCard(item)
-                        }
-                    }
-                }
-            }
-
-            item { Spacer(Modifier.height(96.dp)) }
+            )
         }
+        item { EmphasisBanner(count = inProgress.size) }
+        item { MetricRow(library.size, inProgress.size, completed) }
 
-        FloatingNav(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
+        if (inProgress.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                M3ESectionHeader("Continue watching", trailing = { TextButton(onClick = {}) { Text("See all") } })
+            }
+            items(inProgress.take(6), key = { it.id }) { TitleRow(it, trailing = Icons.Default.PlayArrow) }
+        }
+        if (recentlyAdded.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                M3ESectionHeader("Recently added", trailing = { TextButton(onClick = {}) { Text("See all") } })
+            }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+                    items(recentlyAdded, key = { it.id }) { PosterCard(it, width = 120.dp) }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(112.dp)) }
     }
 }
 
-/** The emphasised container: the single thing on this screen meant to be noticed. */
+@Composable
+private fun LibrarySection(library: List<MediaItemEntity>) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(horizontal = M3ESpacing.page),
+        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+    ) {
+        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(M3ESpacing.pageVertical))
+            M3EScreenHeader(
+                eyebrow = "${library.size} titles",
+                title = "Library"
+            )
+            Spacer(Modifier.height(M3ESpacing.cardGap))
+        }
+        items(library, key = { it.id }) { item ->
+            Column {
+                Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                Text(
+                    text = item.title,
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.text(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(112.dp))
+        }
+    }
+}
+
+@Composable
+private fun FinishedSection(library: List<MediaItemEntity>) {
+    val finished = remember(library) {
+        library.filter { it.state.equals("Completed", true) }
+            .sortedByDescending { it.lastStateChangeDate ?: it.lastInteractionDate ?: "" }
+    }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(horizontal = M3ESpacing.page),
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+    ) {
+        item {
+            Spacer(Modifier.height(M3ESpacing.pageVertical))
+            M3EScreenHeader(eyebrow = "${finished.size} watched", title = "Finished")
+        }
+        if (finished.isEmpty()) {
+            item {
+                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Nothing finished yet.",
+                        style = M3EType.rowSupporting(),
+                        color = M3EColor.textMuted(),
+                        modifier = Modifier.padding(M3ESpacing.cardGap)
+                    )
+                }
+            }
+        }
+        items(finished, key = { it.id }) { TitleRow(it, trailing = Icons.Default.Check) }
+        item { Spacer(Modifier.height(112.dp)) }
+    }
+}
+
+// MARK: - Building blocks
+
+/** The emphasised container: the single thing on a screen meant to be noticed. */
 @Composable
 private fun EmphasisBanner(count: Int) {
     Card(
@@ -190,7 +270,6 @@ private fun EmphasisBanner(count: Int) {
     }
 }
 
-/** Three numbers, on the page rather than in a card — Material's size tactic. */
 @Composable
 private fun MetricRow(library: Int, inProgress: Int, completed: Int) {
     Row(
@@ -206,28 +285,20 @@ private fun MetricRow(library: Int, inProgress: Int, completed: Int) {
 @Composable
 private fun Metric(label: String, value: Int, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
-        Text(
-            text = "$value",
-            style = M3EType.metric(),
-            color = M3EColor.text()
-        )
-        Text(
-            text = label.uppercase(),
-            style = M3EType.rowSupporting(),
-            color = M3EColor.textMuted()
-        )
+        Text("$value", style = M3EType.metric(), color = M3EColor.text())
+        Text(label.uppercase(), style = M3EType.rowSupporting(), color = M3EColor.textMuted())
     }
 }
 
 /** One tonal card per row: poster, title, supporting line, trailing action. */
 @Composable
-private fun ContinueRow(item: MediaItemEntity) {
+private fun TitleRow(item: MediaItemEntity, trailing: ImageVector) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Poster(item, width = 44.dp, height = 66.dp)
+            Poster(item, modifier = Modifier.width(44.dp).height(66.dp))
             Spacer(Modifier.width(M3ESpacing.inlineGap))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -247,41 +318,41 @@ private fun ContinueRow(item: MediaItemEntity) {
                 )
             }
             Spacer(Modifier.width(M3ESpacing.tightGap))
-            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = M3EColor.accent())
+            Icon(trailing, contentDescription = null, tint = M3EColor.accent())
         }
     }
 }
 
 @Composable
-private fun PosterCard(item: MediaItemEntity) {
-    Column(modifier = Modifier.width(120.dp)) {
-        Poster(item, width = 120.dp, height = 180.dp)
+private fun PosterCard(item: MediaItemEntity, width: Dp) {
+    Column(modifier = Modifier.width(width)) {
+        Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
         Spacer(Modifier.height(M3ESpacing.tightGap))
         Text(
             text = item.title,
-            style = M3EType.rowTitle(),
+            style = M3EType.rowSupporting(),
             color = M3EColor.text(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        Text(
-            text = item.type,
-            style = M3EType.rowSupporting(),
-            color = M3EColor.textMuted(),
-            maxLines = 1
-        )
     }
 }
 
+/**
+ * A poster tile.
+ *
+ * The tonal plate is painted underneath on purpose: while an image loads — or when a title has
+ * none — the tile keeps the card tone instead of showing the page through as a black hole.
+ */
 @Composable
-private fun Poster(item: MediaItemEntity, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp) {
+private fun Poster(item: MediaItemEntity, modifier: Modifier = Modifier) {
     AsyncImage(
         model = item.posterUrl,
         contentDescription = item.title,
         contentScale = ContentScale.Crop,
-        modifier = Modifier
-            .size(width = width, height = height)
+        modifier = modifier
             .clip(M3EShape.chip())
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
     )
 }
 
@@ -290,12 +361,11 @@ private fun Poster(item: MediaItemEntity, width: androidx.compose.ui.unit.Dp, he
  * pill with a stroke; the rest are bare icons.
  */
 @Composable
-private fun FloatingNav(modifier: Modifier = Modifier) {
-    var selected by remember { mutableIntStateOf(0) }
-    val items: List<Triple<String, ImageVector, String>> = listOf(
-        Triple("Home", Icons.Default.Home, "Home"),
-        Triple("Library", Icons.Default.Bookmark, "Library"),
-        Triple("Done", Icons.Default.Check, "Finished")
+private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val items: List<Pair<String, ImageVector>> = listOf(
+        "Home" to Icons.Default.Home,
+        "Library" to Icons.Default.VideoLibrary,
+        "Finished" to Icons.Default.Check
     )
 
     Surface(
@@ -309,10 +379,10 @@ private fun FloatingNav(modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            items.forEachIndexed { index, (_, icon, label) ->
+            items.forEachIndexed { index, (label, icon) ->
                 val active = index == selected
                 Surface(
-                    onClick = { selected = index },
+                    onClick = { onSelect(index) },
                     shape = RoundedCornerShape(50),
                     color = if (active) MaterialTheme.colorScheme.surface else M3EColor.card(),
                     border = if (active) {
@@ -335,11 +405,7 @@ private fun FloatingNav(modifier: Modifier = Modifier) {
                             tint = if (active) M3EColor.text() else M3EColor.textMuted()
                         )
                         if (active) {
-                            Text(
-                                text = label,
-                                style = M3EType.action(),
-                                color = M3EColor.text()
-                            )
+                            Text(label, style = M3EType.action(), color = M3EColor.text())
                         }
                     }
                 }
