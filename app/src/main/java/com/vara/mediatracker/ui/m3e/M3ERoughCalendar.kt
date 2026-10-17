@@ -61,9 +61,12 @@ import java.util.Locale
  * tinted, the selected day is filled with the emphasis tone, and the day's releases sit
  * underneath, so a tap always lands on something.
  *
- * A release is a *resolved next airing*, not a stored release date. The stored date is the show's
- * first-air date — years old for anything still running — so reading it left every month empty;
- * the resolved instant is also what carries the air time, which is what a radar is for.
+ * A release is a *resolved* date, not a stored one. The stored date is the show's first-air date —
+ * years old for anything still running — so reading it left every month empty; resolving each
+ * episode instead gives the whole run its real dates and its air times.
+ *
+ * Everything is placed, not only what is still to come. A calendar you cannot look back through
+ * is a countdown, and the question "when did this air" is asked as often as "when does it air".
  *
  * Dates are compared as day strings rather than resolved instants. Deliberately crude: the real
  * screen resolves an air time to the minute through the streaming rules the app already has, and
@@ -89,18 +92,16 @@ fun M3ERoughCalendar(
 
     // Pure: no theme reads inside `remember`.
     //
-    // Every episode still to air, not just the next one. Taking only the first unwatched meant a
-    // show appeared once — and when that episode was old, marking it watched moved the show to the
-    // next old episode or dropped it off the month entirely, so the radar never seemed to update.
-    // A release calendar is a list of dates, so each date gets its own entry.
-    val events = remember(core, today) {
-        val now = java.util.Date()
+    // Every dated episode of every show, and the release date of every film — aired, watched,
+    // upcoming alike. Each gets its own entry, so the month is a schedule rather than a countdown
+    // and checking an episode off elsewhere moves it in place instead of making the show vanish.
+    val events = remember(core) {
         buildList {
             for (item in core.items) {
                 val isTv = item.type.contains("TV", ignoreCase = true)
                 if (!isTv) {
+                    // A film has one date: the day it was released.
                     val instant = HomeEligibility.nextAiringInstant(item, emptyList()) ?: continue
-                    if (!instant.after(now)) continue
                     val zoned = instant.toInstant().atZone(zone)
                     add(
                         CalendarEvent(
@@ -113,11 +114,8 @@ fun M3ERoughCalendar(
                     continue
                 }
                 val key = MediaIds.tvShowKey(item.id)
-                val episodes = core.episodesByShow[key].orEmpty()
-                for (episode in episodes) {
-                    if (episode.isWatched) continue
+                for (episode in core.episodesByShow[key].orEmpty()) {
                     val instant = HomeEligibility.episodeInstant(item, episode) ?: continue
-                    if (!instant.after(now)) continue
                     val zoned = instant.toInstant().atZone(zone)
                     add(
                         CalendarEvent(

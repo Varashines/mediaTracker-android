@@ -690,7 +690,14 @@ private fun tasteTint(taste: String): Color {
     }
 }
 
-/** One episode: code and name, with a Material checkbox trailing. */
+/**
+ * One episode: the number large, the name beside it, a Material checkbox trailing.
+ *
+ * The checkbox is the only thing saying "watched" — a tick already means that, and spelling it out
+ * beside the tick said it twice. The episode number leads at display size because it is what an
+ * episode is called when you are scanning a season, and the name takes two lines so a long one is
+ * read rather than elided.
+ */
 @Composable
 private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Boolean) -> Unit) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
@@ -698,23 +705,23 @@ private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Bool
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "E${episode.episodeNumber} · ${episode.name.ifBlank { "Episode ${episode.episodeNumber}" }}",
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
-                    color = M3EColor.text(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = if (watched) "Watched" else episode.airDate?.take(10) ?: "Not watched",
-                    style = M3EType.rowSupporting(),
-                    color = M3EColor.textMuted(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Text(
+                text = "E${episode.episodeNumber}",
+                style = M3EType.metric(),
+                color = if (watched) M3EColor.textMuted() else M3EColor.accent(),
+                maxLines = 1,
+                modifier = Modifier.width(56.dp)
+            )
+            Spacer(Modifier.width(M3ESpacing.inlineGap))
+            Text(
+                text = episode.name.ifBlank { "Episode ${episode.episodeNumber}" },
+                style = M3EType.rowTitle(),
+                fontWeight = FontWeight.SemiBold,
+                color = M3EColor.text(),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
             Checkbox(checked = watched, onCheckedChange = onToggle)
         }
     }
