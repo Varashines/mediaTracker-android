@@ -425,15 +425,12 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
         ) {
             items.forEachIndexed { index, (label, icon) ->
                 val active = index == selected
+                // Filled means chosen, the same as the calendar's selected day: a solid accent
+                // pill, so the current section is obvious at a glance rather than by a hairline.
                 Surface(
                     onClick = { onSelect(index) },
                     shape = RoundedCornerShape(50),
-                    color = if (active) MaterialTheme.colorScheme.surface else M3EColor.card(),
-                    border = if (active) {
-                        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    } else {
-                        null
-                    }
+                    color = if (active) M3EColor.accent() else M3EColor.card()
                 ) {
                     Row(
                         modifier = Modifier.padding(
@@ -446,10 +443,10 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
                         Icon(
                             imageVector = icon,
                             contentDescription = label,
-                            tint = if (active) M3EColor.text() else M3EColor.textMuted()
+                            tint = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
                         )
                         if (active) {
-                            Text(label, style = M3EType.action(), color = M3EColor.text())
+                            Text(label, style = M3EType.action(), color = MaterialTheme.colorScheme.onPrimary)
                         }
                     }
                 }
