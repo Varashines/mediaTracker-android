@@ -54,6 +54,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.ln
@@ -117,21 +118,30 @@ fun M3ERoughCalendar(
                             item = item,
                             day = zoned.toLocalDate(),
                             time = zoned.toLocalTime().takeIf { it.hour != 0 || it.minute != 0 },
-                            episode = null
+                            episodes = emptyList()
                         )
                     )
                     continue
                 }
+
+                // A show dropping three episodes in one day is one release, not three — which is
+                // what the Mac shows, and what makes a binge-readable day. The heat still counts
+                // the episodes, because that is what "how much lands here" means.
                 val key = MediaIds.tvShowKey(item.id)
+                val byDay = LinkedHashMap<LocalDate, MutableList<Pair<EpisodeEntity, ZonedDateTime>>>()
                 for (episode in core.episodesByShow[key].orEmpty()) {
                     val instant = HomeEligibility.episodeInstant(item, episode) ?: continue
                     val zoned = instant.toInstant().atZone(zone)
+                    byDay.getOrPut(zoned.toLocalDate()) { mutableListOf() }.add(episode to zoned)
+                }
+                for ((day, entries) in byDay) {
+                    val earliest = entries.minByOrNull { it.second }?.second?.toLocalTime()
                     add(
                         CalendarEvent(
                             item = item,
-                            day = zoned.toLocalDate(),
-                            time = zoned.toLocalTime().takeIf { it.hour != 0 || it.minute != 0 },
-                            episode = episode
+                            day = day,
+                            time = earliest?.takeIf { it.hour != 0 || it.minute != 0 },
+                            episodes = entries.map { it.first }
                         )
                     )
                 }
@@ -142,8 +152,16 @@ fun M3ERoughCalendar(
 
     val monthValue = remember(month) { YearMonth.parse(month) }
     // Heat: weight is episodes + films, scaled by log1p against the busiest day of the month being
-    // shown — the Mac's rule, which keeps a single heavy day from flattening the rest.
-    val weights = remember(events) { events.groupingBy { it.day }.eachCount() }
+    // shown — the Mac's rule, which keeps a single heavy day from flattening the rest. A grouped
+    // release contributes its episode count, so grouping the rows does not change the shading.
+    val weights = remember(events) {
+        val byWeight = HashMap<LocalDate, Int>()
+        for (event in events) {
+            val weight = event.episodes.size.coerceAtLeast(1)
+            byWeight[event.day] = (byWeight[event.day] ?: 0) + weight
+        }
+        byWeight
+    }
     val maxWeight = remember(weights, monthValue) {
         var max = 0
         for (dayOfMonth in 1..monthValue.lengthOfMonth()) {
@@ -246,7 +264,7 @@ fun M3ERoughCalendar(
                     releases.sortedBy { it.time ?: LocalTime.MIDNIGHT }.forEach { event ->
                         ReleaseRow(
                             item = event.item,
-                            episode = event.episode,
+                            episodes = event.episodes,
                             time = event.time,
                             onClick = { onOpen(event.item) }
                         )
@@ -259,15 +277,19 @@ fun M3ERoughCalendar(
     }
 }
 
-/** The width of the selection ring, and the inset that keeps the day clear of it. */
+/** The width of the selection ring. */
 private val RING_WIDTH = 2.dp
 
-/** One dated release: the title, the day it lands, its resolved local air time, and the episode. */
+/**
+ * One dated release: the title, the day it lands, its resolved local air time, and the episodes it
+ * covers — one entry for a single episode, several when a show drops a batch that day, and none for
+ * a film.
+ */
 private data class CalendarEvent(
     val item: MediaItemEntity,
     val day: LocalDate,
     val time: LocalTime?,
-    val episode: EpisodeEntity?
+    val episodes: List<EpisodeEntity>
 )
 
 /** The month's days, Monday first, padded with blanks to whole weeks. */
@@ -305,9 +327,9 @@ private fun WeekdayHeader() {
  * Three states, matching the Mac's radar cell: a day carrying releases is tinted by how much lands
  * on it, today carries a dot beneath its number, and the selected day is ringed.
  *
- * The ring sits outside the cell rather than on its edge, which is what the Mac's negative padding
- * does, and it is the accent: the fill underneath is the accent at varying opacity, but the ring is
- * drawn clear of it, so the two do not merge.
+ * The ring is the cell's own border, so it traces the day exactly, and it is the accent: the fill
+ * underneath is the accent at varying opacity, but the border sits on the outline where the two do
+ * not merge.
  */
 @Composable
 private fun DayCell(
@@ -351,9 +373,12 @@ private fun DayCell(
             shape = M3EShape.chip(),
             color = fill,
             contentColor = textColor,
-            // Held in by the ring's width so the ring can sit outside the day, the way the Mac's
-            // negative padding puts it. Applied always, so selecting a day does not resize it.
-            modifier = Modifier.fillMaxSize().padding(RING_WIDTH)
+            // Drawn as the Surface's own border rather than as a separate ring around it. A ring a
+            // few dp outside the cell shares the shape constant but not the shape: the same corner
+            // radius over a larger box reads as a different, squarer outline. Here the border is
+            // the cell's outline, so the two cannot disagree.
+            border = if (isSelected) BorderStroke(RING_WIDTH, M3EColor.accent()) else null,
+            modifier = Modifier.fillMaxSize()
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -379,13 +404,6 @@ private fun DayCell(
                 }
             }
         }
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .border(RING_WIDTH, M3EColor.accent(), M3EShape.chip())
-            )
-        }
     }
 }
 
@@ -393,7 +411,7 @@ private fun DayCell(
 @Composable
 private fun ReleaseRow(
     item: MediaItemEntity,
-    episode: EpisodeEntity?,
+    episodes: List<EpisodeEntity>,
     time: LocalTime?,
     onClick: (() -> Unit)? = null
 ) {
@@ -423,7 +441,7 @@ private fun ReleaseRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = releaseSupport(item.type, episode, time),
+                    text = releaseSupport(item.type, episodes, time),
                     style = M3EType.rowSupporting(),
                     color = M3EColor.textMuted(),
                     maxLines = 1,
@@ -441,15 +459,24 @@ private fun ReleaseRow(
  * whose episode row has not been enriched yet, falls back to saying what it is rather than
  * inventing a time.
  */
-private fun releaseSupport(type: String, episode: EpisodeEntity?, time: LocalTime?): String {
-    val code = episode?.let { "S${it.seasonNumber}E${it.episodeNumber}" }
+private fun releaseSupport(
+    type: String,
+    episodes: List<EpisodeEntity>,
+    time: LocalTime?
+): String {
     // The resolved local time, not the raw airTime field: the field is the broadcaster's clock,
     // and a title airing at 21:00 in New York is not 21:00 here.
     val clock = time?.let { DateTimeFormatter.ofPattern("h:mm a", Locale.US).format(it) }
-    return when {
-        code != null && clock != null -> "$code · $clock"
-        code != null -> code
-        clock != null -> "$type · $clock"
-        else -> type
+    if (episodes.isEmpty()) return listOfNotNull(type, clock).joinToString(" · ")
+
+    // Named individually up to three, then by season: "S2 E1, E2, E3" is a schedule, "Season 2" is
+    // what you want to know once the list would stop being one — the Mac's wording.
+    val season = episodes.first().seasonNumber
+    val codes = if (episodes.size > 3) {
+        "Season $season"
+    } else {
+        val numbers = episodes.sortedBy { it.episodeNumber }.joinToString(", ") { "E${it.episodeNumber}" }
+        "S$season $numbers"
     }
+    return if (clock == null) codes else "$codes · $clock"
 }
