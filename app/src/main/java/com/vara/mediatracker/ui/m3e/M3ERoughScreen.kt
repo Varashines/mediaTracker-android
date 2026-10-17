@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Card
@@ -41,6 +43,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -60,9 +63,10 @@ import com.vara.mediatracker.di.AppContainer
 /**
  * A rough M3E shell, for looking at the design language on a device.
  *
- * Three sections — Home, Library and Finished — switched by the floating capsule navigation,
- * all built only from the vocabulary in [M3E] and driven by the real library. Detail, search and
- * settings are deliberately not wired: this is to judge the language.
+ * Three content sections — Home, Library and Finished — switched by the floating capsule
+ * navigation, with Search and Settings as overlay screens opened from the header, and the detail
+ * as an overlay from any title. Everything is built only from the vocabulary in [M3E] and driven
+ * by the real library. Actions are inert on purpose: this is the language, not the wiring.
  *
  * Flip [M3ERoughPreview] to false to get the existing UI back.
  */
@@ -74,7 +78,9 @@ fun M3ERoughScreen(container: AppContainer) {
         value = runCatching { container.database.mediaDao().getAllMediaList() }.getOrDefault(emptyList())
     }
     var section by remember { mutableIntStateOf(0) }
-    var open by remember { androidx.compose.runtime.mutableStateOf<MediaItemEntity?>(null) }
+    var open by remember { mutableStateOf<MediaItemEntity?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    var settings by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -82,15 +88,22 @@ fun M3ERoughScreen(container: AppContainer) {
             .background(M3EColor.page())
     ) {
         val opened = open
-        if (opened != null) {
-            M3ERoughDetail(item = opened, onBack = { open = null })
-        } else {
-            when (section) {
-                0 -> HomeSection(library, onOpen = { open = it })
-                1 -> LibrarySection(library, onOpen = { open = it })
-                else -> FinishedSection(library)
+        when {
+            opened != null -> M3ERoughDetail(item = opened, onBack = { open = null })
+            searching -> M3ERoughSearch(library = library, onBack = { searching = false })
+            settings -> M3ERoughSettings(onBack = { settings = false })
+            else -> when (section) {
+                0 -> HomeSection(
+                    library = library,
+                    onOpen = { open = it },
+                    onSearch = { searching = true },
+                    onSettings = { settings = true }
+                )
+                1 -> LibrarySection(library = library, onOpen = { open = it })
+                else -> FinishedSection(library = library)
             }
         }
+
         FloatingNav(
             selected = section,
             onSelect = { section = it },
@@ -105,7 +118,12 @@ fun M3ERoughScreen(container: AppContainer) {
 // MARK: - Sections
 
 @Composable
-private fun HomeSection(library: List<MediaItemEntity>, onOpen: (MediaItemEntity) -> Unit) {
+private fun HomeSection(
+    library: List<MediaItemEntity>,
+    onOpen: (MediaItemEntity) -> Unit,
+    onSearch: () -> Unit,
+    onSettings: () -> Unit
+) {
     val inProgress = remember(library) {
         library.filter { it.state.equals("Active", true) || it.state.equals("Re-watching", true) }
             .sortedByDescending { it.lastInteractionDate ?: "" }
@@ -128,7 +146,14 @@ private fun HomeSection(library: List<MediaItemEntity>, onOpen: (MediaItemEntity
                 eyebrow = "Explore",
                 title = "MediaTracker",
                 trailing = {
-                    IconButton(onClick = {}) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
+                    Row {
+                        IconButton(onClick = onSearch) {
+                            Icon(Icons.Default.Search, contentDescription = "Search")
+                        }
+                        IconButton(onClick = onSettings) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        }
+                    }
                 }
             )
         }
@@ -140,7 +165,9 @@ private fun HomeSection(library: List<MediaItemEntity>, onOpen: (MediaItemEntity
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ESectionHeader("Continue watching", trailing = { TextButton(onClick = {}) { Text("See all") } })
             }
-            items(inProgress.take(6), key = { it.id }) { TitleRow(it, trailing = Icons.Default.PlayArrow, onClick = { onOpen(it) }) }
+            items(inProgress.take(6), key = { it.id }) { item ->
+                TitleRow(item, trailing = Icons.Default.PlayArrow, onClick = { onOpen(item) })
+            }
         }
         if (recentlyAdded.isNotEmpty()) {
             item {
@@ -149,7 +176,9 @@ private fun HomeSection(library: List<MediaItemEntity>, onOpen: (MediaItemEntity
             }
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                    items(recentlyAdded, key = { it.id }) { PosterCard(it, width = 120.dp, onClick = { onOpen(it) }) }
+                    items(recentlyAdded, key = { it.id }) { item ->
+                        PosterCard(item, width = 120.dp, onClick = { onOpen(item) })
+                    }
                 }
             }
         }
@@ -168,12 +197,9 @@ private fun LibrarySection(library: List<MediaItemEntity>, onOpen: (MediaItemEnt
         horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
-        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
-            M3EScreenHeader(
-                eyebrow = "${library.size} titles",
-                title = "Library"
-            )
+            M3EScreenHeader(eyebrow = "${library.size} titles", title = "Library")
             Spacer(Modifier.height(M3ESpacing.cardGap))
         }
         items(library, key = { it.id }) { item ->
@@ -189,7 +215,7 @@ private fun LibrarySection(library: List<MediaItemEntity>, onOpen: (MediaItemEnt
                 )
             }
         }
-        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Spacer(Modifier.height(112.dp))
         }
     }
@@ -224,7 +250,9 @@ private fun FinishedSection(library: List<MediaItemEntity>) {
                 }
             }
         }
-        items(finished, key = { it.id }) { TitleRow(it, trailing = Icons.Default.Check) }
+        items(finished, key = { it.id }) { item ->
+            TitleRow(item, trailing = Icons.Default.Check)
+        }
         item { Spacer(Modifier.height(112.dp)) }
     }
 }
@@ -332,7 +360,11 @@ private fun TitleRow(item: MediaItemEntity, trailing: ImageVector, onClick: (() 
 
 @Composable
 private fun PosterCard(item: MediaItemEntity, width: Dp, onClick: (() -> Unit)? = null) {
-    Column(modifier = Modifier.width(width).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
+    Column(
+        modifier = Modifier
+            .width(width)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+    ) {
         Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
         Spacer(Modifier.height(M3ESpacing.tightGap))
         Text(
