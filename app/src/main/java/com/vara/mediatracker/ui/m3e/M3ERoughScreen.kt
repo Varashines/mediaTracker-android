@@ -2,6 +2,7 @@ package com.vara.mediatracker.ui.m3e
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -73,16 +74,22 @@ fun M3ERoughScreen(container: AppContainer) {
         value = runCatching { container.database.mediaDao().getAllMediaList() }.getOrDefault(emptyList())
     }
     var section by remember { mutableIntStateOf(0) }
+    var open by remember { androidx.compose.runtime.mutableStateOf<MediaItemEntity?>(null) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(M3EColor.page())
     ) {
-        when (section) {
-            0 -> HomeSection(library)
-            1 -> LibrarySection(library)
-            else -> FinishedSection(library)
+        val opened = open
+        if (opened != null) {
+            M3ERoughDetail(item = opened, onBack = { open = null })
+        } else {
+            when (section) {
+                0 -> HomeSection(library, onOpen = { open = it })
+                1 -> LibrarySection(library, onOpen = { open = it })
+                else -> FinishedSection(library)
+            }
         }
         FloatingNav(
             selected = section,
@@ -98,7 +105,7 @@ fun M3ERoughScreen(container: AppContainer) {
 // MARK: - Sections
 
 @Composable
-private fun HomeSection(library: List<MediaItemEntity>) {
+private fun HomeSection(library: List<MediaItemEntity>, onOpen: (MediaItemEntity) -> Unit) {
     val inProgress = remember(library) {
         library.filter { it.state.equals("Active", true) || it.state.equals("Re-watching", true) }
             .sortedByDescending { it.lastInteractionDate ?: "" }
@@ -133,7 +140,7 @@ private fun HomeSection(library: List<MediaItemEntity>) {
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ESectionHeader("Continue watching", trailing = { TextButton(onClick = {}) { Text("See all") } })
             }
-            items(inProgress.take(6), key = { it.id }) { TitleRow(it, trailing = Icons.Default.PlayArrow) }
+            items(inProgress.take(6), key = { it.id }) { TitleRow(it, trailing = Icons.Default.PlayArrow, onClick = { onOpen(it) }) }
         }
         if (recentlyAdded.isNotEmpty()) {
             item {
@@ -142,7 +149,7 @@ private fun HomeSection(library: List<MediaItemEntity>) {
             }
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                    items(recentlyAdded, key = { it.id }) { PosterCard(it, width = 120.dp) }
+                    items(recentlyAdded, key = { it.id }) { PosterCard(it, width = 120.dp, onClick = { onOpen(it) }) }
                 }
             }
         }
@@ -151,7 +158,7 @@ private fun HomeSection(library: List<MediaItemEntity>) {
 }
 
 @Composable
-private fun LibrarySection(library: List<MediaItemEntity>) {
+private fun LibrarySection(library: List<MediaItemEntity>, onOpen: (MediaItemEntity) -> Unit) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
         modifier = Modifier
@@ -170,7 +177,7 @@ private fun LibrarySection(library: List<MediaItemEntity>) {
             Spacer(Modifier.height(M3ESpacing.cardGap))
         }
         items(library, key = { it.id }) { item ->
-            Column {
+            Column(modifier = Modifier.clickable { onOpen(item) }) {
                 Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 Text(
@@ -292,8 +299,8 @@ private fun Metric(label: String, value: Int, modifier: Modifier = Modifier) {
 
 /** One tonal card per row: poster, title, supporting line, trailing action. */
 @Composable
-private fun TitleRow(item: MediaItemEntity, trailing: ImageVector) {
-    M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+private fun TitleRow(item: MediaItemEntity, trailing: ImageVector, onClick: (() -> Unit)? = null) {
+    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
             verticalAlignment = Alignment.CenterVertically
@@ -324,8 +331,8 @@ private fun TitleRow(item: MediaItemEntity, trailing: ImageVector) {
 }
 
 @Composable
-private fun PosterCard(item: MediaItemEntity, width: Dp) {
-    Column(modifier = Modifier.width(width)) {
+private fun PosterCard(item: MediaItemEntity, width: Dp, onClick: (() -> Unit)? = null) {
+    Column(modifier = Modifier.width(width).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
         Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
         Spacer(Modifier.height(M3ESpacing.tightGap))
         Text(
