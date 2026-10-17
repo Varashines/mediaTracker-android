@@ -130,11 +130,17 @@ fun M3ERoughCalendar(container: AppContainer, library: List<MediaItemEntity>) {
 
         item {
             M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(M3ESpacing.inlineGap)) {
+                Column(
+                    modifier = Modifier.padding(M3ESpacing.cardGap),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     WeekdayHeader()
                     Spacer(Modifier.height(M3ESpacing.tightGap))
                     cells.chunked(7).forEach { week ->
-                        Row(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             week.forEach { day ->
                                 DayCell(
                                     day = day,
@@ -199,7 +205,10 @@ private fun monthCells(month: YearMonth): List<LocalDate?> {
 @Composable
 private fun WeekdayHeader() {
     val labels = listOf("M", "T", "W", "T", "F", "S", "S")
-    Row(modifier = Modifier.fillMaxWidth()) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
         labels.forEach { label ->
             Text(
                 text = label,
@@ -230,7 +239,7 @@ private fun DayCell(
     modifier: Modifier = Modifier
 ) {
     if (day == null) {
-        Spacer(modifier = modifier.aspectRatio(1f))
+        Spacer(modifier = modifier.aspectRatio(0.9f))
         return
     }
 
@@ -249,7 +258,7 @@ private fun DayCell(
         else -> M3EColor.textMuted()
     }
 
-    Box(modifier = modifier.aspectRatio(1f).padding(2.dp)) {
+    Box(modifier = modifier.aspectRatio(0.9f)) {
         Surface(
             onClick = { onSelect(day) },
             shape = M3EShape.chip(),
