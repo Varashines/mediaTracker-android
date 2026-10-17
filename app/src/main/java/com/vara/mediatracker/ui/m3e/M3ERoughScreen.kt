@@ -1,5 +1,6 @@
 package com.vara.mediatracker.ui.m3e
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.di.AppContainer
 
 /**
@@ -83,6 +85,18 @@ fun M3ERoughScreen(container: AppContainer) {
     var open by remember { mutableStateOf<MediaItemEntity?>(null) }
     var searching by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
+    val haptics = rememberHaptics()
+
+    // System back closes the topmost overlay before it leaves the app. The real shell routes this
+    // through its overlay dispatcher; the sketch does the same job directly, and the habit of
+    // handling it is what matters when this replaces the real one.
+    BackHandler(enabled = open != null || searching || settings) {
+        when {
+            open != null -> open = null
+            searching -> searching = false
+            else -> settings = false
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -110,7 +124,10 @@ fun M3ERoughScreen(container: AppContainer) {
 
         FloatingNav(
             selected = section,
-            onSelect = { section = it },
+            onSelect = { target ->
+                if (target != section) haptics.tap()
+                section = target
+            },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
