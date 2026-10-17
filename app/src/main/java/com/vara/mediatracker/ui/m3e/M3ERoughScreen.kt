@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -72,6 +74,8 @@ import com.vara.mediatracker.ui.common.HomeData
 import com.vara.mediatracker.ui.common.LibraryCore
 import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.ui.home.HomeEligibility
+import com.vara.mediatracker.ui.library.LibraryFilters
+import com.vara.mediatracker.ui.library.LibraryQuery
 import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.di.AppContainer
 
@@ -164,12 +168,12 @@ fun M3ERoughScreen(
                 )
                 1 -> M3ERoughHub(
                     container = container,
-                    library = library,
+                    core = core,
                     onOpen = { open = it },
                     onOpenList = { title, items, kind -> list = SectionList(title, items, kind) }
                 )
                 2 -> M3ERoughCalendar(core = core, onOpen = { open = it })
-                3 -> LibrarySection(library = library, onOpen = { open = it })
+                3 -> LibrarySection(core = core, onOpen = { open = it })
                 else -> FinishedSection(library = library, onOpen = { open = it })
                 }
             }
@@ -304,7 +308,15 @@ private fun HomeSection(
 }
 
 @Composable
-private fun LibrarySection(library: List<MediaItemEntity>, onOpen: (MediaItemEntity) -> Unit) {
+private fun LibrarySection(core: LibraryCore, onOpen: (MediaItemEntity) -> Unit) {
+    // Real filtering and sorting: LibraryQuery is the same pure routine the shipping Library uses,
+    // including its sort orders, rather than a second set invented for this screen.
+    var filters by remember { mutableStateOf(LibraryFilters()) }
+    val badgeLabels = remember(core) { core.badges.mapValues { it.value.badge.label } }
+    val library = remember(core, filters) {
+        LibraryQuery.apply(core.items, "", filters, badgeLabels)
+    }
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
         modifier = Modifier
@@ -317,6 +329,18 @@ private fun LibrarySection(library: List<MediaItemEntity>, onOpen: (MediaItemEnt
         item(span = { GridItemSpan(maxLineSpan) }) {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
             M3EScreenHeader(eyebrow = "${library.size} titles", title = "Library")
+            Spacer(Modifier.height(M3ESpacing.tightGap))
+            ChipRow(
+                options = listOf(LibraryFilters.TYPE_ALL, "Movies", "TV Shows"),
+                selected = filters.type,
+                onSelect = { filters = filters.copy(type = it) }
+            )
+            Spacer(Modifier.height(M3ESpacing.tightGap))
+            ChipRow(
+                options = LibraryFilters.SORTS,
+                selected = filters.sort,
+                onSelect = { filters = filters.copy(sort = it) }
+            )
             Spacer(Modifier.height(M3ESpacing.cardGap))
         }
         items(library, key = { it.id }) { item ->
@@ -434,6 +458,24 @@ private fun M3ERoughList(
             )
         }
         item { Spacer(Modifier.height(48.dp)) }
+    }
+}
+
+/** A wrapping row of single-select chips, for the Library's type and sort controls. */
+@Composable
+private fun ChipRow(options: List<String>, selected: String, onSelect: (String) -> Unit) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+    ) {
+        options.forEach { option ->
+            FilterChip(
+                selected = option == selected,
+                onClick = { onSelect(option) },
+                label = { Text(option, style = M3EType.action()) },
+                shape = M3EShape.chip()
+            )
+        }
     }
 }
 

@@ -35,7 +35,9 @@ import coil.compose.AsyncImage
 import com.vara.mediatracker.data.model.CollectionEntity
 import com.vara.mediatracker.data.model.CollectionItemEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.SmartRules
 import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.ui.common.LibraryCore
 import com.vara.mediatracker.ui.theme.AppTextStyles
 
 /**
@@ -46,16 +48,19 @@ import com.vara.mediatracker.ui.theme.AppTextStyles
  * about telling you something the label does not — and "this one keeps itself up to date" is
  * exactly that.
  *
- * Cards are not tappable yet: a collection's own list is the next screen, and leaving them inert
- * is more honest than opening something empty.
+ * Tapping a card opens what it holds. A manual collection lists its members; a smart one is
+ * evaluated against its rules, which is also what its count has to be: counting stored member rows
+ * for a smart collection counted nothing, because a smart collection has none.
  */
 @Composable
-fun M3ERoughCollections(
+internal fun M3ERoughCollections(
     container: AppContainer,
-    library: List<MediaItemEntity>,
+    core: LibraryCore,
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit = { _, _, _ -> },
     /** False when embedded in the Hub, which supplies its own header. */
     showHeader: Boolean = true
 ) {
+    val library = core.items
     val collections by produceState(initialValue = emptyList<CollectionEntity>()) {
         value = runCatching { container.database.collectionDao().getAllCollections() }.getOrDefault(emptyList())
     }
@@ -64,9 +69,23 @@ fun M3ERoughCollections(
     }
 
     val live = remember(collections) { collections.filter { !it.isDeleted } }
-    val postersByMediaID = remember(library) { library.associate { it.id to it.posterUrl } }
     val smart = remember(live) { live.filter { it.isSmart } }
     val mine = remember(live) { live.filterNot { it.isSmart } }
+
+    val badgeLabels = remember(core) { core.badges.mapValues { it.value.badge.label } }
+    val itemsById = remember(library) { library.associateBy { it.id } }
+
+    // Smart membership is evaluated from the rule set the Mac wrote; manual membership is the
+    // stored rows. Both end up as titles, so a card, its count and its covers all agree.
+    fun membersOf(collection: CollectionEntity): List<MediaItemEntity> =
+        if (collection.isSmart) {
+            val rules = SmartRules.decode(collection.smartRules)
+            library.filter { SmartRules.matches(it, badgeLabels[it.id], rules) }
+        } else {
+            members
+                .filter { it.collectionId == collection.id && !it.isDeleted }
+                .mapNotNull { itemsById[it.mediaId] }
+        }
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
@@ -120,11 +139,13 @@ fun M3ERoughCollections(
             }
         } else {
             items(smart, key = { it.id }) { collection ->
+                val titles = membersOf(collection)
                 CollectionCard(
                     name = collection.name,
-                    count = countOf(collection, members),
-                    covers = coversOf(collection, members, postersByMediaID),
-                    isSmart = true
+                    count = titles.size,
+                    covers = titles.take(3).map { it.posterUrl },
+                    isSmart = true,
+                    onClick = { onOpenList(collection.name, titles, ListSubtitle.None) }
                 )
             }
         }
@@ -150,11 +171,13 @@ fun M3ERoughCollections(
             }
         } else {
             items(mine, key = { it.id }) { collection ->
+                val titles = membersOf(collection)
                 CollectionCard(
                     name = collection.name,
-                    count = countOf(collection, members),
-                    covers = coversOf(collection, members, postersByMediaID),
-                    isSmart = false
+                    count = titles.size,
+                    covers = titles.take(3).map { it.posterUrl },
+                    isSmart = false,
+                    onClick = { onOpenList(collection.name, titles, ListSubtitle.None) }
                 )
             }
         }
@@ -164,19 +187,6 @@ fun M3ERoughCollections(
         }
     }
 }
-
-private fun countOf(collection: CollectionEntity, members: List<CollectionItemEntity>): Int =
-    members.count { it.collectionId == collection.id && !it.isDeleted }
-
-/** Up to three covers, in the order the collection holds them. */
-private fun coversOf(
-    collection: CollectionEntity,
-    members: List<CollectionItemEntity>,
-    posters: Map<String, String?>
-): List<String?> =
-    members.filter { it.collectionId == collection.id && !it.isDeleted }
-        .take(3)
-        .map { posters[it.mediaId] }
 
 /**
  * A collection card: a cover strip over the name and count.
@@ -189,9 +199,10 @@ private fun CollectionCard(
     name: String,
     count: Int,
     covers: List<String?>,
-    isSmart: Boolean
+    isSmart: Boolean,
+    onClick: () -> Unit
 ) {
-    M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
         Column(modifier = Modifier.padding(M3ESpacing.inlineGap)) {
             Row(
                 modifier = Modifier

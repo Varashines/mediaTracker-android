@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.ui.common.LibraryCore
 
 /**
  * The Hub: Smart, Discover and Collections in one place, in the [M3E] vocabulary.
@@ -55,10 +56,11 @@ import com.vara.mediatracker.di.AppContainer
 @Composable
 internal fun M3ERoughHub(
     container: AppContainer,
-    library: List<MediaItemEntity>,
+    core: LibraryCore,
     onOpen: (MediaItemEntity) -> Unit = {},
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit = { _, _, _ -> }
 ) {
+    val library = core.items
     var tab by remember { mutableIntStateOf(0) }
 
     Column(
@@ -92,7 +94,12 @@ internal fun M3ERoughHub(
         when (tab) {
             0 -> SmartTab(library, onOpenList)
             1 -> DiscoverTab(library, onOpenList)
-            else -> M3ERoughCollections(container = container, library = library, showHeader = false)
+            else -> M3ERoughCollections(
+                container = container,
+                core = core,
+                onOpenList = onOpenList,
+                showHeader = false
+            )
         }
     }
 }
