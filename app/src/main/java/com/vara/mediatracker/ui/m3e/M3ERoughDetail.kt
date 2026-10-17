@@ -263,7 +263,7 @@ private fun PrimaryAction(finished: Boolean, onToggle: (String) -> Unit) {
 private fun ChoiceRow(
     options: List<String>,
     selected: String,
-    tintFor: (String) -> Color,
+    tintFor: @Composable (String) -> Color,
     onSelect: (String) -> Unit
 ) {
     androidx.compose.foundation.layout.FlowRow(
