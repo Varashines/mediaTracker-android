@@ -1,8 +1,10 @@
 package com.vara.mediatracker.ui.m3e
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -19,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
@@ -27,15 +31,17 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,8 +54,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.TrackingLogic
-import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.WatchHistoryRecorder
+import com.vara.mediatracker.data.api.TMDBClient
+import com.vara.mediatracker.data.api.TMDBSearchItem
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
@@ -61,20 +68,26 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 /**
- * The detail screen, in the [M3E] vocabulary — wired to the real library.
+ * The detail screen, in the [M3E] vocabulary: a header, one primary action, and tabs.
  *
- * Every control writes through the same path the shipping screen uses: episodes and movies go
- * through [TrackingLogic], which owns the watched/unwatched ledger and the state progression that
- * follows from it; status and taste are a DAO update plus the matching cloud push. Status carries
- * the watch-history bookkeeping too, because a status change bypasses the toggle and would
- * otherwise leave the ledger describing a different library from the state column.
+ * The screen used to be one column — status, taste, every season, every episode, overview,
+ * details — which meant a long scroll to reach anything and no way to say what you came for.
+ * Status and taste now live in a popup (they are both "how I feel about this title", and they are
+ * set together), and the body is split into sections you switch between: a show has Seasons, Info
+ * and Related, a film has Overview and Related.
  *
- * The screen holds its own optimistic copy so a tap reads back immediately, but it never invents
- * an outcome: the copy mirrors exactly what was written, and the episode list is a Room flow, so
- * anything the tracker changes lands here regardless.
+ * Every control writes through the same path the shipping screen uses: episodes and films through
+ * [TrackingLogic], which owns the watched ledger and the state progression that follows from it;
+ * status and taste as a DAO update plus the matching cloud push, with status moving the ledger too
+ * because it bypasses the toggle.
  */
 @Composable
-fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () -> Unit) {
+fun M3ERoughDetail(
+    item: MediaItemEntity,
+    container: AppContainer,
+    onBack: () -> Unit,
+    onOpenMedia: (MediaItemEntity) -> Unit = {}
+) {
     val db = container.database
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
@@ -82,16 +95,18 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
     val isTv = remember(item.id) { item.type.contains("TV", ignoreCase = true) }
     val showKey = remember(item.id) { MediaIds.tvShowKey(item.id) }
 
-    // Optimistic copy: state and taste only, kept in step with what was just persisted.
     var live by remember(item.id) { mutableStateOf(item) }
+    var season by remember(item.id) { mutableStateOf<Int?>(null) }
+    var pickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
+    var related by remember(item.id) { mutableStateOf(emptyList<TMDBSearchItem>()) }
+    var section by rememberSaveable(item.id) {
+        mutableStateOf(if (isTv) DetailSection.Seasons else DetailSection.Overview)
+    }
 
-    // Re-read once by id, then enrich from TMDB — the same two steps the shipping detail takes.
-    //
-    // The entity handed in can be a stub: a title just added from search is built from a TMDB
-    // result, and one that arrived through sync can be missing its metadata entirely, which is how
-    // a title ends up on screen under its own id. Only fields TMDB actually returns are filled in,
-    // so a good local value is never replaced by an empty one. Runs before any interaction, so it
-    // cannot race a write.
+    // Re-read the library's copy, then fill in what TMDB knows. A title added from search is a
+    // stub, and one that arrived through sync can be missing its metadata entirely — which is how a
+    // title ends up on screen under its own id. Only fields TMDB actually returns are written, so a
+    // good local value is never replaced by an empty one.
     LaunchedEffect(item.id) {
         val stored = db.mediaDao().getMediaById(item.id) ?: item
         live = stored
@@ -99,30 +114,33 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
         val tmdbId = MediaIds.tmdbIdOf(item.id)
         if (tmdbId <= 0) return@LaunchedEffect
 
+        val client = container.tmdbClient()
         val details = runCatching {
-            if (isTv) {
-                container.tmdbClient().getTVDetails(tmdbId)
-            } else {
-                container.tmdbClient().getMovieDetails(tmdbId)
+            if (isTv) client.getTVDetails(tmdbId) else client.getMovieDetails(tmdbId)
+        }.getOrNull()?.getOrNull()
+
+        if (details != null) {
+            val enriched = stored.copy(
+                title = details.title ?: details.name ?: stored.title,
+                overview = details.overview?.takeIf { it.isNotBlank() } ?: stored.overview,
+                posterUrl = TMDBClient.buildPosterUrl(details.poster_path) ?: stored.posterUrl,
+                backdropUrl = TMDBClient.buildBackdropUrl(details.backdrop_path) ?: stored.backdropUrl,
+                releaseDate = details.release_date ?: details.first_air_date ?: stored.releaseDate
+            )
+            if (enriched != stored) {
+                db.mediaDao().upsertMedia(enriched)
+                live = enriched
             }
-        }.getOrNull()?.getOrNull() ?: return@LaunchedEffect
-
-        val enriched = stored.copy(
-            title = details.title ?: details.name ?: stored.title,
-            overview = details.overview?.takeIf { it.isNotBlank() } ?: stored.overview,
-            posterUrl = TMDBClient.buildPosterUrl(details.poster_path) ?: stored.posterUrl,
-            backdropUrl = TMDBClient.buildBackdropUrl(details.backdrop_path) ?: stored.backdropUrl,
-            releaseDate = details.release_date ?: details.first_air_date ?: stored.releaseDate
-        )
-        if (enriched != stored) {
-            db.mediaDao().upsertMedia(enriched)
-            live = enriched
         }
-    }
-    var season by remember(item.id) { mutableStateOf<Int?>(null) }
 
-    // A flow, not a one-shot read: the tracker rewrites the show's state and its episodes, and
-    // those changes have to appear without this screen knowing they happened.
+        related = runCatching {
+            if (isTv) client.getTVRecommendations(tmdbId) else client.getMovieRecommendations(tmdbId)
+        }.getOrNull()?.getOrNull()?.results
+            .orEmpty()
+            .filter { it.media_type == "movie" || it.media_type == "tv" }
+            .take(12)
+    }
+
     val episodeFlow = remember(item.id) {
         if (isTv) db.mediaDao().getEpisodesForShow(showKey) else flowOf(emptyList())
     }
@@ -154,7 +172,7 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
                 dateAdded = item.dateAdded
             )
 
-            // The ledger is not the state column, so a status change has to move it as well.
+            // The ledger is not the state column, so a status change has to move it too.
             val historyDao = db.watchHistoryDao()
             if (isCompleted && !wasCompleted) {
                 if (!isTv) {
@@ -208,9 +226,9 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
             TrackingLogic.markSeasonWatched(
                 container = container,
                 showId = showKey,
-                seasonNumber = currentSeason,
-                seasonEpisodes = seasonEpisodes,
-                watched = watched
+                currentSeason,
+                seasonEpisodes,
+                watched
             ) { updated -> live = updated }
         }
     }
@@ -222,13 +240,56 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
         }
     }
 
+    /** A related title opens if it is already in the library, and is added first if it is not. */
+    fun openRelated(result: TMDBSearchItem) {
+        val isMovie = result.media_type == "movie"
+        val mediaId = (if (isMovie) "movie_" else "tv_") + result.id
+        scope.launch {
+            val existing = db.mediaDao().getMediaById(mediaId)
+            if (existing != null) {
+                onOpenMedia(existing)
+                return@launch
+            }
+            val title = result.title ?: result.name ?: return@launch
+            val added = MediaItemEntity(
+                id = mediaId,
+                title = title,
+                overview = result.overview.orEmpty(),
+                posterUrl = TMDBClient.buildPosterUrl(result.poster_path),
+                backdropUrl = TMDBClient.buildBackdropUrl(result.backdrop_path),
+                releaseDate = result.release_date ?: result.first_air_date,
+                type = if (isMovie) "Movie" else "TV",
+                state = "Wishlist",
+                dateAdded = TrackingLogic.isoNow()
+            )
+            db.mediaDao().upsertMedia(added)
+            container.syncManager().pushMediaUpdate(
+                mediaId = added.id,
+                type = added.type,
+                state = added.state,
+                taste = added.taste,
+                isStateChange = false,
+                dateAdded = added.dateAdded
+            )
+            onOpenMedia(added)
+        }
+    }
+
+    val sections = remember(isTv) {
+        if (isTv) {
+            listOf(DetailSection.Seasons, DetailSection.Info, DetailSection.Related)
+        } else {
+            listOf(DetailSection.Overview, DetailSection.Related)
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(M3EColor.page())
             .statusBarsPadding()
             .padding(horizontal = M3ESpacing.page),
-        verticalArrangement = Arrangement.spacedBy(M3ESpacing.sectionGap)
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
         item {
             Spacer(Modifier.height(M3ESpacing.tightGap))
@@ -251,119 +312,152 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
         item { Title(live) }
 
         item {
-            if (isTv) {
-                PrimaryAction(
-                    label = nextEpisode
-                        ?.let { "Mark S${it.seasonNumber} · E${it.episodeNumber} watched" }
-                        ?: "Everything watched",
-                    icon = Icons.Default.Check,
-                    enabled = nextEpisode != null,
-                    onClick = { nextEpisode?.let { setEpisodeWatched(it, true) } }
-                )
-            } else {
-                val watched = live.state.equals("Completed", ignoreCase = true)
-                PrimaryAction(
-                    label = if (watched) "Watched" else "Mark watched",
-                    icon = if (watched) Icons.Default.Check else Icons.Default.Bookmark,
-                    enabled = true,
-                    onClick = { toggleMovie() }
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
+                if (isTv) {
+                    PrimaryAction(
+                        label = nextEpisode
+                            ?.let { "Mark S${it.seasonNumber} · E${it.episodeNumber} watched" }
+                            ?: "Everything watched",
+                        icon = Icons.Default.Check,
+                        enabled = nextEpisode != null,
+                        onClick = { nextEpisode?.let { setEpisodeWatched(it, true) } }
+                    )
+                } else {
+                    val watched = live.state.equals("Completed", ignoreCase = true)
+                    PrimaryAction(
+                        label = if (watched) "Watched" else "Mark watched",
+                        icon = if (watched) Icons.Default.Check else Icons.Default.Bookmark,
+                        enabled = true,
+                        onClick = { toggleMovie() }
+                    )
+                }
+                StatusTasteButton(live) { pickerOpen = true }
             }
         }
 
         item {
-            Column {
-                M3ESectionHeader("Status")
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                ChoiceRow(
-                    options = listOf("Wishlist", "Active", "On Hold", "Dropped", "Completed"),
-                    selected = live.state,
-                    tintFor = { statusTint(it) },
-                    onSelect = { if (!it.equals(live.state, true)) setStatus(it) }
-                )
-                Spacer(Modifier.height(M3ESpacing.cardGap))
-                M3ESectionHeader("Taste")
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                ChoiceRow(
-                    options = listOf("None", "Dislike", "Like", "Love"),
-                    selected = live.taste,
-                    tintFor = { tasteTint(it) },
-                    onSelect = { if (!it.equals(live.taste, true)) setTaste(it) }
-                )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
+                verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+            ) {
+                sections.forEach { candidate ->
+                    FilterChip(
+                        selected = section == candidate,
+                        onClick = { section = candidate },
+                        label = { Text(candidate.label, style = M3EType.action()) },
+                        shape = M3EShape.chip()
+                    )
+                }
             }
         }
 
-        if (seasons.isNotEmpty()) {
-            item {
-                Column {
-                    M3ESectionHeader(
-                        title = "Seasons",
-                        trailing = {
-                            val allWatched = seasonEpisodes.isNotEmpty() && seasonEpisodes.all { it.isWatched }
-                            TextButton(onClick = { setSeasonWatched(!allWatched) }) {
-                                Text(
-                                    text = if (allWatched) "Clear season" else "Watch season",
-                                    style = M3EType.action(),
-                                    color = M3EColor.accent()
-                                )
+        when (section) {
+            DetailSection.Seasons -> {
+                item {
+                    Column {
+                        val allWatched =
+                            seasonEpisodes.isNotEmpty() && seasonEpisodes.all { it.isWatched }
+                        M3ESectionHeader(
+                            title = "Season $currentSeason",
+                            trailing = {
+                                TextButton(onClick = { setSeasonWatched(!allWatched) }) {
+                                    Text(
+                                        text = if (allWatched) "Clear season" else "Watch season",
+                                        style = M3EType.action(),
+                                        color = M3EColor.accent()
+                                    )
+                                }
                             }
-                        }
-                    )
-                    Spacer(Modifier.height(M3ESpacing.tightGap))
-                    ChoiceRow(
-                        options = seasons.map { "Season $it" },
-                        selected = "Season $currentSeason",
-                        tintFor = { M3EColor.accent() },
-                        onSelect = { label ->
-                            label.substringAfter("Season ").toIntOrNull()?.let { season = it }
-                        }
-                    )
+                        )
+                        Spacer(Modifier.height(M3ESpacing.tightGap))
+                        ChoiceRow(
+                            options = seasons.map { "Season $it" },
+                            selected = "Season $currentSeason",
+                            tintFor = { M3EColor.accent() },
+                            onSelect = { label ->
+                                label.substringAfter("Season ").toIntOrNull()?.let { season = it }
+                            }
+                        )
+                    }
                 }
-            }
-            items(seasonEpisodes, key = { it.uniqueId }) { episode ->
-                EpisodeRow(
-                    episode = episode,
-                    watched = episode.isWatched,
-                    onToggle = { setEpisodeWatched(episode, it) }
-                )
-            }
-        }
-
-        if (item.overview.isNotBlank()) {
-            item {
-                Column {
-                    M3ESectionHeader("Overview")
-                    Spacer(Modifier.height(M3ESpacing.tightGap))
-                    Text(
-                        text = item.overview,
-                        style = M3EType.rowSupporting(),
-                        color = M3EColor.textMuted()
-                    )
-                }
-            }
-        }
-
-        item {
-            Column {
-                M3ESectionHeader("Details")
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(vertical = M3ESpacing.tightGap)) {
-                        if (ordered.isNotEmpty()) {
-                            DetailRow(
-                                "Progress",
-                                "${ordered.count { it.isWatched }} / ${ordered.size} episodes"
+                if (seasonEpisodes.isEmpty()) {
+                    item {
+                        M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "No episodes here yet.",
+                                style = M3EType.rowSupporting(),
+                                color = M3EColor.textMuted(),
+                                modifier = Modifier.padding(M3ESpacing.cardGap)
                             )
                         }
-                        // Read once: `live` is a delegated property, so its fields cannot be
-                        // smart-cast after a null check.
-                        val genres = live.genres
-                        val network = live.network
-                        val released = live.releaseDate
-                        if (!genres.isNullOrBlank()) DetailRow("Genres", genres, lines = 2)
-                        if (!network.isNullOrBlank()) DetailRow("Network", network)
-                        if (!released.isNullOrBlank()) DetailRow("Released", released.take(10))
-                        DetailRow("Added", live.dateAdded?.take(10) ?: "—", divider = false)
+                    }
+                } else {
+                    items(seasonEpisodes, key = { it.uniqueId }) { episode ->
+                        EpisodeRow(
+                            episode = episode,
+                            watched = episode.isWatched,
+                            onToggle = { setEpisodeWatched(episode, it) }
+                        )
+                    }
+                }
+            }
+
+            DetailSection.Info, DetailSection.Overview -> {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+                        if (live.overview.isNotBlank()) {
+                            M3ESectionHeader("Overview")
+                            Text(
+                                text = live.overview,
+                                style = M3EType.rowSupporting(),
+                                color = M3EColor.textMuted()
+                            )
+                        }
+                        M3ESectionHeader("Details")
+                        M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(vertical = M3ESpacing.tightGap)) {
+                                // Read once: `live` is a delegated property, so its fields cannot
+                                // be smart-cast after a null check.
+                                val orderedCount = ordered.size
+                                val watchedCount = ordered.count { it.isWatched }
+                                val genres = live.genres
+                                val network = live.network
+                                val released = live.releaseDate
+                                if (orderedCount > 0) {
+                                    DetailRow("Progress", "$watchedCount / $orderedCount episodes")
+                                }
+                                if (!genres.isNullOrBlank()) {
+                                    DetailRow("Genres", genres, lines = 2)
+                                }
+                                if (!network.isNullOrBlank()) DetailRow("Network", network)
+                                if (!released.isNullOrBlank()) {
+                                    DetailRow("Released", released.take(10))
+                                }
+                                DetailRow("Added", live.dateAdded?.take(10) ?: "—", divider = false)
+                            }
+                        }
+                    }
+                }
+            }
+
+            DetailSection.Related -> {
+                item {
+                    M3ESectionHeader("More like this")
+                }
+                if (related.isEmpty()) {
+                    item {
+                        M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Nothing to suggest yet.",
+                                style = M3EType.rowSupporting(),
+                                color = M3EColor.textMuted(),
+                                modifier = Modifier.padding(M3ESpacing.cardGap)
+                            )
+                        }
+                    }
+                } else {
+                    items(related, key = { "${it.media_type}_${it.id}" }) { result ->
+                        RelatedRow(result) { openRelated(result) }
                     }
                 }
             }
@@ -371,7 +465,106 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
 
         item { Spacer(Modifier.height(48.dp)) }
     }
+
+    if (pickerOpen) {
+        StatusTastePicker(
+            status = live.state,
+            taste = live.taste,
+            onStatus = { if (!it.equals(live.state, true)) setStatus(it) },
+            onTaste = { if (!it.equals(live.taste, true)) setTaste(it) },
+            onDismiss = { pickerOpen = false }
+        )
+    }
 }
+
+private enum class DetailSection(val label: String) {
+    Seasons("Seasons"),
+    Info("Info"),
+    Overview("Overview"),
+    Related("Related")
+}
+
+/**
+ * The status and taste, shown together behind one control.
+ *
+ * Both answer "how do I feel about this", and both are set in the same moment, so they share a
+ * popup rather than occupying two permanent sections of the screen.
+ */
+@Composable
+private fun StatusTasteButton(item: MediaItemEntity, onClick: () -> Unit) {
+    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Status · Taste",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted()
+                )
+                Text(
+                    text = "${item.state} · ${item.taste}",
+                    style = M3EType.rowTitle(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = M3EColor.text(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = M3EColor.textMuted()
+            )
+        }
+    }
+}
+
+/** The popup itself: a status row and a taste row, applied as they are chosen. */
+@Composable
+private fun StatusTastePicker(
+    status: String,
+    taste: String,
+    onStatus: (String) -> Unit,
+    onTaste: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Status & taste") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+                Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
+                    Text("Status", style = M3EType.rowTitle(), color = M3EColor.text())
+                    ChoiceRow(
+                        options = TrackingStatuses,
+                        selected = status,
+                        tintFor = { statusTint(it) },
+                        onSelect = onStatus
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
+                    Text("Taste", style = M3EType.rowTitle(), color = M3EColor.text())
+                    ChoiceRow(
+                        options = listOf("None", "Dislike", "Like", "Love"),
+                        selected = taste,
+                        tintFor = { tasteTint(it) },
+                        onSelect = onTaste
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        }
+    )
+}
+
+/** The app's six tracking states, raw values — what sync and the Mac both read. */
+private val TrackingStatuses = listOf(
+    "Wishlist", "Active", "Completed", "On Hold", "Dropped", "Re-watching"
+)
 
 /** Poster, eyebrow and the editorial title — the display heading this app uses everywhere. */
 @Composable
@@ -433,9 +626,9 @@ private fun PrimaryAction(
 /**
  * A row of chips wrapping to as many lines as it needs.
  *
- * Each option carries its own tint, so a selected chip says what it means — a finished title
- * reads green, a dropped one red, a loved one the taste colour — rather than every selection
- * looking alike. That is Material's colour tactic: colour as information, not decoration.
+ * Each option carries its own tint, so a selected chip says what it means — a finished title reads
+ * green, a dropped one red, a loved one the taste colour — rather than every selection looking
+ * alike. That is Material's colour tactic: colour as information, not decoration.
  */
 @Composable
 private fun ChoiceRow(
@@ -444,7 +637,7 @@ private fun ChoiceRow(
     tintFor: @Composable (String) -> Color,
     onSelect: (String) -> Unit
 ) {
-    androidx.compose.foundation.layout.FlowRow(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
     ) {
@@ -479,6 +672,7 @@ private fun ChoiceRow(
 private fun statusTint(state: String): Color = when {
     state.equals("Completed", true) -> M3EColor.positive()
     state.equals("Active", true) -> M3EColor.accent()
+    state.equals("Re-watching", true) -> M3EColor.accent()
     state.equals("On Hold", true) -> M3EColor.warning()
     state.equals("Dropped", true) -> MaterialTheme.colorScheme.error
     else -> M3EColor.textMuted()
@@ -526,14 +720,50 @@ private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Bool
     }
 }
 
-/**
- * A label/value row inside a card, spaced by the rhythm rather than by padding literals.
- *
- * Both sides carry a weight. With only the label weighted, a long value — a genre list is the
- * obvious one — took whatever width it wanted and squeezed the label down to a single character
- * per line. Sharing the width proportionally means the label holds its own and the value wraps
- * within the remainder, and [lines] lets a genuinely long value use more than one.
- */
+/** One suggested title: poster, name, year, and whether it is already yours. */
+@Composable
+private fun RelatedRow(result: TMDBSearchItem, onClick: () -> Unit) {
+    val title = result.title ?: result.name ?: "Untitled"
+    val year = (result.release_date ?: result.first_air_date)?.take(4)
+    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AsyncImage(
+                model = TMDBClient.buildPosterUrl(result.poster_path),
+                contentDescription = title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .width(44.dp)
+                    .height(66.dp)
+                    .clip(M3EShape.chip())
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            )
+            Spacer(Modifier.width(M3ESpacing.inlineGap))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = M3EType.rowTitle(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = M3EColor.text(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = listOfNotNull(
+                        if (result.media_type == "tv") "TV Show" else "Movie",
+                        year
+                    ).joinToString(" · "),
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted()
+                )
+            }
+        }
+    }
+}
+
+/** A label/value row inside a card, spaced by the rhythm rather than by padding literals. */
 @Composable
 private fun DetailRow(label: String, value: String, divider: Boolean = true, lines: Int = 1) {
     Column {

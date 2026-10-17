@@ -137,7 +137,12 @@ fun M3ERoughScreen(
         val opened = open
         val shownList = list
         when {
-            opened != null -> M3ERoughDetail(item = opened, container = container, onBack = { open = null })
+            opened != null -> M3ERoughDetail(
+                item = opened,
+                container = container,
+                onBack = { open = null },
+                onOpenMedia = { open = it }
+            )
             shownList != null -> M3ERoughList(
                 list = shownList,
                 core = core,
