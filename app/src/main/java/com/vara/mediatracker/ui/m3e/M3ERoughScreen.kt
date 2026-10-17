@@ -525,18 +525,6 @@ private fun EmphasisBanner(count: Int) {
                     color = M3EColor.onEmphasis()
                 )
             }
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Text(
-                    text = "Resume",
-                    style = M3EType.action(),
-                    color = M3EColor.text(),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-            }
         }
     }
 }
