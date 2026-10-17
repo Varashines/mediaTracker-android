@@ -354,8 +354,8 @@ fun M3ERoughDetail(
                 else -> null
             }
             // All of it beside the poster. In the controls row, status takes 70% of the width,
-            // taste 20%, and the last 10% is left as space: a reaction is a glyph and does not
-            // need the room a state does, and the gap keeps the pair off the screen edge.
+            // taste 25%, and the last 5% is left as space: a reaction is a glyph and does not need
+            // the room a state does, but the tenth that was reserved for nothing read as a gap.
             Title(live, byline) {
                 Row(
                     modifier = Modifier.height(IntrinsicSize.Min),
@@ -370,10 +370,10 @@ fun M3ERoughDetail(
                     )
                     TastePill(
                         taste = live.taste,
-                        modifier = Modifier.weight(0.2f).fillMaxHeight(),
+                        modifier = Modifier.weight(0.25f).fillMaxHeight(),
                         onClick = { tastePickerOpen = true }
                     )
-                    Spacer(Modifier.weight(0.1f))
+                    Spacer(Modifier.weight(0.05f))
                 }
             }
         }
@@ -671,9 +671,12 @@ private fun TastePill(
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             Text(
                 text = tasteEmoji(taste),
-                fontSize = 24.sp,
+                fontSize = 28.sp,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .padding(horizontal = M3ESpacing.inlineGap)
+                    // Width rather than padding, so the glyph is centred on the pill: an emoji
+                    // carries its own side bearing, and padding around it only centres that box.
+                    .fillMaxWidth()
                     .alpha(if (unset) 0.4f else 1f)
             )
         }
