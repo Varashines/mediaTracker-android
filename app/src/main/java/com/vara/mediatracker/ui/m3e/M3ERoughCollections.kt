@@ -93,10 +93,25 @@ fun M3ERoughCollections(container: AppContainer, library: List<MediaItemEntity>)
             }
         }
 
-        if (smart.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                M3ESectionHeader("Smart")
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Column {
+                M3ESectionHeader("Smart playlists (${smart.size})")
+                Text(
+                    text = "Kept up to date from your ratings and progress.",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted()
+                )
             }
+        }
+        if (smart.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = "None yet.",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted()
+                )
+            }
+        } else {
             items(smart, key = { it.id }) { collection ->
                 CollectionCard(
                     name = collection.name,
@@ -107,11 +122,26 @@ fun M3ERoughCollections(container: AppContainer, library: List<MediaItemEntity>)
             }
         }
 
-        if (mine.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Column {
                 Spacer(Modifier.height(M3ESpacing.tightGap))
-                M3ESectionHeader("Yours")
+                M3ESectionHeader("Your collections (${mine.size})")
+                Text(
+                    text = "Made by hand, on either device.",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted()
+                )
             }
+        }
+        if (mine.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = "None yet.",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted()
+                )
+            }
+        } else {
             items(mine, key = { it.id }) { collection ->
                 CollectionCard(
                     name = collection.name,
