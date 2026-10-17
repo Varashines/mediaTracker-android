@@ -522,83 +522,14 @@ class CloudSyncManager(
     private suspend fun reconcile(since: String? = null): Reconcile {
         val remoteMedia = fetchRemoteMedia(since)
         val remoteEpisodes = fetchRemoteEpisodes(since)
-        val remoteMediaById = remoteMedia.associateBy { it.media_id }
-        // Cloud rows carry legacy episode ids ("1412_5_10"); normalize to the canonical
-        // "tv_1412_s5_e10" so they actually match the local rows.
-        val remoteEpisodesById = remoteEpisodes.associateBy { canonicalEpisodeId(it.episode_id) }
 
-        val localMedia = mediaDao.getAllMediaList()
-        val localEpisodes = mediaDao.getAllEpisodesList()
-        val localMediaById = localMedia.associateBy { it.id }
-
-        val outgoingMedia = mutableListOf<MediaItemEntity>()
-        val incomingMedia = mutableListOf<MediaItemEntity>()
-        val conflictTitles = mutableListOf<String>()
-        for (local in localMedia) {
-            val remote = remoteMediaById[local.id]
-            if (remote == null) {
-                // Under a watermarked fetch, "absent from the response" means *unchanged*, not
-                // "not in the cloud" — so only push when this device actually edited the row
-                // since the last sync. (With no watermark this is a full pull, where absent
-                // really does mean missing.)
-                if (isNewerThanWatermark(local, since)) outgoingMedia.add(local)
-                continue
-            }
-            // A differing state/taste *or* a differing soft-delete is a conflict. Without the
-            // soft-delete term a delete on the other device was never seen here, so the title
-            // simply stayed put.
-            val differs = !local.state.equals(remote.state, true) ||
-                Taste.normalize(local.taste) != Taste.normalize(remote.taste) ||
-                local.isSoftDeleted != remote.is_soft_deleted
-            if (differs) {
-                conflictTitles.add(local.title)
-                // Compare on the *user-edit* time, mirroring macOS's `syncEditTime`: whichever
-                // device edited state/taste last wins. (Not `updated_at`, which is the row's
-                // write time and would let a metadata refresh outrank a real edit.)
-                val localTime = parseInstant(local.lastInteractionDate) ?: parseInstant(local.lastStateChangeDate)
-                val remoteTime = parseInstant(remote.last_interaction_date) ?: parseInstant(remote.updated_at)
-                if (remoteTime != null && (localTime == null || remoteTime > localTime)) {
-                    incomingMedia.add(fromRemote(remote, local))
-                } else {
-                    outgoingMedia.add(local)
-                }
-            } else if (local.dateAdded == null && remote.date_added != null) {
-                // Pure backfill: nothing conflicts, we just never learned when this was added.
-                // date_added is immutable and one-way, so there is nothing to resolve — and
-                // without this it never arrived, because fromRemote only runs for rows that
-                // differ or are new.
-                incomingMedia.add(local.copy(dateAdded = remote.date_added))
-            }
-        }
-        for (remote in remoteMedia) {
-            if (!localMediaById.containsKey(remote.media_id)) incomingMedia.add(fromRemote(remote, null))
-        }
-
-        val outgoingEpisodes = mutableListOf<EpisodeEntity>()
-        val incomingEpisodes = mutableListOf<EpisodeEntity>()
-        for (local in localEpisodes) {
-            val remote = remoteEpisodesById[local.uniqueId]
-            if (remote == null) {
-                // Watermarked fetch: absent means "unchanged", so only push a watch this
-                // device made since the last sync.
-                if (local.isWatched && changedSince(local.watchedDate, since)) outgoingEpisodes.add(local)
-                continue
-            }
-            if (local.isWatched != remote.is_watched) {
-                val localTime = parseInstant(local.watchedDate)
-                val remoteTime = parseInstant(remote.updated_at)
-                if (remoteTime != null && (localTime == null || remoteTime > localTime)) {
-                    incomingEpisodes.add(local.copy(isWatched = remote.is_watched, watchedDate = remote.watched_date))
-                } else {
-                    outgoingEpisodes.add(local)
-                }
-            }
-        }
+        val media = SyncReconciler.reconcileMedia(mediaDao.getAllMediaList(), remoteMedia, since)
+        val episodes = SyncReconciler.reconcileEpisodes(mediaDao.getAllEpisodesList(), remoteEpisodes, since)
 
         val collections = reconcileCollections(since)
         val history = reconcileWatchHistory(since)
         return Reconcile(
-            outgoingMedia, incomingMedia, outgoingEpisodes, incomingEpisodes, conflictTitles,
+            media.outgoing, media.incoming, episodes.outgoing, episodes.incoming, media.conflicts,
             outgoingCollections = collections.outgoingCollections,
             incomingCollections = collections.incomingCollections,
             outgoingCollectionItems = collections.outgoingItems,
@@ -629,19 +560,8 @@ class CloudSyncManager(
      * `Instant.toString()` (which omits trailing zero fractions) while local stamps carry
      * millis, so a lexicographic compare is wrong.
      */
-    private fun changedSince(stamp: String?, watermark: String?): Boolean {
-        if (watermark.isNullOrBlank()) return true
-        val since = parseInstant(watermark) ?: return true
-        val value = parseInstant(stamp) ?: return true
-        return value.after(since)
-    }
-
-    private fun isNewerThanWatermark(local: MediaItemEntity, watermark: String?): Boolean {
-        if (watermark.isNullOrBlank()) return true
-        val since = parseInstant(watermark) ?: return true
-        val edited = parseInstant(local.lastInteractionDate) ?: parseInstant(local.lastStateChangeDate)
-        return edited == null || edited.after(since)
-    }
+    private fun changedSince(stamp: String?, watermark: String?): Boolean =
+        SyncReconciler.changedSince(stamp, watermark)
 
     /**
      * The watermark to store after this pull: the newest server `updated_at` observed, backed
@@ -708,51 +628,10 @@ class CloudSyncManager(
             }
         }
 
-        val outgoingEvents = mutableListOf<WatchEventEntity>()
-        val incomingEvents = mutableListOf<WatchEventEntity>()
-        for (local in localEvents) {
-            val remote = remoteEventById[local.id]
-            // Events are immutable facts: push when it carries a void the cloud doesn't (the
-            // only forward change), or — under a full pull — when the cloud lacks it entirely.
-            // With a watermark, "missing from the response" means unchanged.
-            if (remote != null) {
-                if (local.voidedAt != null && remote.voided_at == null) outgoingEvents.add(local)
-            } else if (changedSince(local.updatedAt, since)) {
-                outgoingEvents.add(local)
-            }
-        }
-        for (remote in remoteEvents) {
-            when (val local = localEventById[remote.event_id]) {
-                null -> {
-                    // Don't double-log a watch already covered locally: the Mac synthesises an
-                    // event for a watch that arrives without history, and that copy carries a
-                    // different dedup key.
-                    if (!hasEquivalentLocalEvent(localEvents, remote)) {
-                        incomingEvents.add(
-                            WatchEventEntity(
-                                id = remote.event_id,
-                                cycleId = remote.cycle_id,
-                                mediaId = remote.media_id,
-                                episodeId = remote.episode_id,
-                                watchedAt = remote.watched_at,
-                                source = remote.source,
-                                timezoneIdentifier = remote.timezone_identifier,
-                                runtimeMinutes = remote.runtime_minutes,
-                                voidedAt = remote.voided_at,
-                                deduplicationKey = remote.deduplication_key,
-                                isBackfilled = true,
-                                updatedAt = remote.updated_at
-                            )
-                        )
-                    }
-                }
-                else -> if (local.voidedAt == null && remote.voided_at != null) {
-                    incomingEvents.add(local.copy(voidedAt = remote.voided_at, updatedAt = remote.updated_at))
-                }
-            }
-        }
+        // Events are decided by the reconciler (shared with the JVM scenario tests).
+        val events = SyncReconciler.reconcileEvents(localEvents, remoteEvents, since)
 
-        return WatchHistoryReconcile(outgoingCycles, incomingCycles, outgoingEvents, incomingEvents)
+        return WatchHistoryReconcile(outgoingCycles, incomingCycles, events.outgoing, events.incoming)
     }
 
     /**
@@ -765,16 +644,6 @@ class CloudSyncManager(
      * time can cross midnight, which is how one viewing came to appear on two days in Year in
      * Review.
      */
-    private fun hasEquivalentLocalEvent(all: List<WatchEventEntity>, remote: RemoteWatchEvent): Boolean {
-        val targetEpisode = MediaIds.canonicalEpisodeIdOrNull(remote.episode_id)
-        val remoteInstant = parseInstant(remote.watched_at) ?: return false
-        return all.any { local ->
-            local.voidedAt == null && local.mediaId == remote.media_id &&
-                MediaIds.canonicalEpisodeIdOrNull(local.episodeId) == targetEpisode &&
-                parseInstant(local.watchedAt)?.let { WireTime.isSameWatch(it, remoteInstant) } == true
-        }
-    }
-
     private data class WatchHistoryReconcile(
         val outgoingCycles: List<WatchCycleEntity>,
         val incomingCycles: List<WatchCycleEntity>,
@@ -1151,34 +1020,6 @@ class CloudSyncManager(
     }
 
     /** Local entity from a remote row, preserving the locally-derived fields. */
-    private fun fromRemote(remote: RemoteMedia, existing: MediaItemEntity?): MediaItemEntity =
-        MediaItemEntity(
-            id = remote.media_id,
-            title = existing?.title?.takeIf { it != remote.media_id } ?: remote.media_id,
-            overview = existing?.overview ?: "",
-            posterUrl = existing?.posterUrl,
-            backdropUrl = existing?.backdropUrl,
-            releaseDate = existing?.releaseDate,
-            type = remote.type,
-            state = remote.state,
-            taste = remote.taste,
-            nextAiringInstant = existing?.nextAiringInstant,
-            timezone = existing?.timezone,
-            network = existing?.network,
-            genres = existing?.genres,
-            language = existing?.language,
-            studios = existing?.studios,
-            providers = existing?.providers,
-            customPosterUrl = remote.custom_poster_url,
-            isSoftDeleted = remote.is_soft_deleted,
-            lastInteractionDate = remote.last_interaction_date,
-            lastStateChangeDate = remote.last_state_change_date,
-            // Keep what we already know; take the cloud's (the Mac's dateAdded) when we don't —
-            // that is how rows that predate the column get a real "added" time.
-            dateAdded = existing?.dateAdded ?: remote.date_added,
-            updatedAt = remote.updated_at
-        )
-
     /**
      * Parses a wire timestamp, bounding anything in the future to now.
      *
@@ -1187,7 +1028,5 @@ class CloudSyncManager(
      * device could never win and the bogus value was re-pushed on every sync. The server clamps on
      * write as well; this bounds whatever is already stored locally.
      */
-    private fun parseInstant(value: String?): Date? =
-        value?.let { runCatching { Date.from(java.time.Instant.parse(it)) }.getOrNull() }
-            ?.let { WireTime.clampToNow(it) }
+    private fun parseInstant(value: String?): Date? = WireTime.parseInstant(value)
 }

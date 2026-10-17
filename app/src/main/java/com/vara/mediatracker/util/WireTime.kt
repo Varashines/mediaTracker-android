@@ -55,4 +55,57 @@ object WireTime {
         if (kotlin.math.abs(a.time - b.time) <= SAME_WATCH_WINDOW_MILLIS) return true
         return utcDay.format(a.toInstant()) == utcDay.format(b.toInstant())
     }
+
+    /** Parses a wire stamp, bounding anything in the future to now. */
+    fun parseInstant(value: String?): Date? =
+        value?.let { runCatching { Date.from(Instant.parse(it)) }.getOrNull() }
+            ?.let { clampToNow(it) }
+
+    /**
+     * A cloud row's edit time — the stamp every conflict is decided on.
+     *
+     * An edit cannot postdate the write that carried it, so when the two disagree the write time is
+     * the better evidence: the old rule took `last_interaction_date` at face value, which let a
+     * device with a fast clock keep its rows permanently newer (the last edit here could never
+     * win, and the bogus value was pushed back every sync). Mirrors macOS's
+     * `SyncTimestamps.remoteEditTime`, including the write-time cap and the fallback for rows that
+     * never carried an edit stamp.
+     */
+    fun remoteEditTime(lastInteraction: Date?, updatedAt: Date?, now: Date = Date()): Date {
+        val candidate = when {
+            lastInteraction != null && updatedAt != null -> minOf(lastInteraction, updatedAt)
+            lastInteraction != null -> lastInteraction
+            updatedAt != null -> updatedAt
+            else -> Date(0)
+        }
+        return clampToNow(candidate, now)
+    }
+
+    /** Wire stamps carry millisecond-to-microsecond precision depending on the writer. */
+    private const val EDIT_TIME_TOLERANCE_MILLIS = 1000L
+
+    /** Whether two stamps differ by more than a second; `null` against a real stamp differs. */
+    fun stampsDiffer(a: Date?, b: Date?): Boolean = when {
+        a == null && b == null -> false
+        a == null || b == null -> true
+        else -> kotlin.math.abs(a.time - b.time) > EDIT_TIME_TOLERANCE_MILLIS
+    }
+
+    /**
+     * Whether a pulled episode row differs from the local one in a way worth applying.
+     *
+     * A corrected watch *date* counts, not just the watched flag: the date drives the streak and
+     * the monthly numbers, and it used to be editable only on the device that made the change.
+     * Mirrors macOS's `SyncTimestamps.episodeNeedsUpdate`.
+     */
+    fun episodeNeedsUpdate(
+        isWatched: Boolean,
+        remoteIsWatched: Boolean,
+        watchedDate: Date?,
+        remoteWatchedDate: Date?
+    ): Boolean {
+        if (isWatched != remoteIsWatched) return true
+        if (!isWatched) return false
+        return stampsDiffer(watchedDate, remoteWatchedDate)
+    }
 }

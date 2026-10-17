@@ -1115,7 +1115,7 @@ private fun SyncPreviewHeader(impact: CloudSyncManager.SyncImpact) {
                     "${impact.totalOutgoing + impact.totalIncoming} changes — " +
                         "↑ ${impact.totalOutgoing} · ↓ ${impact.totalIncoming}"
                 } else {
-                    "This device and the cloud already match"
+                    "No title changes to review — episodes and history still sync"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
