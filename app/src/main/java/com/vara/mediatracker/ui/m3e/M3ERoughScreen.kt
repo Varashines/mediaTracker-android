@@ -227,6 +227,7 @@ private fun HomeSection(
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
         item {
+            Column {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
             M3EScreenHeader(
                 eyebrow = "Explore",
@@ -242,6 +243,7 @@ private fun HomeSection(
                     }
                 }
             )
+            }
         }
         item { EmphasisBanner(count = inProgress.size) }
         item { MetricRow(core.items.size, inProgress.size, completed) }
@@ -331,22 +333,26 @@ private fun LibrarySection(core: LibraryCore, onOpen: (MediaItemEntity) -> Unit)
         horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
+        // A lazy item's content is not a container: several children are drawn at the same
+        // offset. Anything with more than one visible child has to bring its own Column.
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Spacer(Modifier.height(M3ESpacing.pageVertical))
-            M3EScreenHeader(eyebrow = "${library.size} titles", title = "Library")
-            Spacer(Modifier.height(M3ESpacing.tightGap))
-            ChipRow(
-                options = listOf(LibraryFilters.TYPE_ALL, "Movies", "TV Shows"),
-                selected = filters.type,
-                onSelect = { filters = filters.copy(type = it) }
-            )
-            Spacer(Modifier.height(M3ESpacing.tightGap))
-            ChipRow(
-                options = LibraryFilters.SORTS,
-                selected = filters.sort,
-                onSelect = { filters = filters.copy(sort = it) }
-            )
-            Spacer(Modifier.height(M3ESpacing.cardGap))
+            Column {
+                Spacer(Modifier.height(M3ESpacing.pageVertical))
+                M3EScreenHeader(eyebrow = "${library.size} titles", title = "Library")
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                ChipRow(
+                    options = listOf(LibraryFilters.TYPE_ALL, "Movies", "TV Shows"),
+                    selected = filters.type,
+                    onSelect = { filters = filters.copy(type = it) }
+                )
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                ChipRow(
+                    options = LibraryFilters.SORTS,
+                    selected = filters.sort,
+                    onSelect = { filters = filters.copy(sort = it) }
+                )
+                Spacer(Modifier.height(M3ESpacing.cardGap))
+            }
         }
         items(library, key = { it.id }) { item ->
             Column(modifier = Modifier.clickable { onOpen(item) }) {
@@ -381,8 +387,10 @@ private fun FinishedSection(library: List<MediaItemEntity>, onOpen: (MediaItemEn
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
         item {
-            Spacer(Modifier.height(M3ESpacing.pageVertical))
-            M3EScreenHeader(eyebrow = "${finished.size} watched", title = "Finished")
+            Column {
+                Spacer(Modifier.height(M3ESpacing.pageVertical))
+                M3EScreenHeader(eyebrow = "${finished.size} watched", title = "Finished")
+            }
         }
         if (finished.isEmpty()) {
             item {
@@ -436,17 +444,19 @@ private fun M3ERoughList(
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
         item {
-            Spacer(Modifier.height(M3ESpacing.tightGap))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = M3EColor.text()
-                    )
+            Column {
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = M3EColor.text()
+                        )
+                    }
                 }
+                M3EScreenHeader(eyebrow = "${list.items.size} titles", title = list.title)
             }
-            M3EScreenHeader(eyebrow = "${list.items.size} titles", title = list.title)
         }
         items(list.items, key = { it.id }) { item ->
             val subtitle = when (list.subtitle) {

@@ -144,6 +144,7 @@ fun M3ERoughCalendar(
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.sectionGap)
     ) {
         item {
+            Column {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
             M3EScreenHeader(
                 eyebrow = monthLabel.format(monthValue),
@@ -159,6 +160,7 @@ fun M3ERoughCalendar(
                     }
                 }
             )
+            }
         }
 
         item {
