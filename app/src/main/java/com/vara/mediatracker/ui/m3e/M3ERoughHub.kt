@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
@@ -218,9 +220,9 @@ private fun DiscoverTab(library: List<MediaItemEntity>) {
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                FacetGroup("Genres", genres)
-                FacetGroup("Networks", networks)
-                FacetGroup("Languages", languages)
+                if (genres.isNotEmpty()) GenreGrid(genres)
+                if (networks.isNotEmpty()) FacetGroup("Networks", networks)
+                if (languages.isNotEmpty()) LanguageChips(languages)
             }
         }
         item { Spacer(Modifier.height(112.dp)) }
@@ -276,5 +278,111 @@ private fun FacetLine(facet: Facet) {
                 color = M3EColor.textMuted()
             )
         }
+    }
+}
+
+/**
+ * Genres as a grid of tiles.
+ *
+ * A list made every genre look equally incidental; tiles give the counts somewhere to sit and let
+ * the grid itself carry the browsing — which is the point of a facet. The count is the prominent
+ * number and the genre is the label under it, the same shape the Smart tiles use.
+ */
+@Composable
+private fun GenreGrid(facets: List<Facet>) {
+    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+        M3ESectionHeader("Genres")
+        facets.chunked(2).forEach { pair ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+            ) {
+                pair.forEach { facet -> GenreTile(facet, Modifier.weight(1f)) }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun GenreTile(facet: Facet, modifier: Modifier = Modifier) {
+    M3ETonalCard(modifier = modifier) {
+        Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
+            Text(
+                text = "${facet.count}",
+                style = M3EType.metric(),
+                color = M3EColor.text()
+            )
+            Text(
+                text = facet.name,
+                style = M3EType.rowSupporting(),
+                color = M3EColor.textMuted(),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * Languages as chips.
+ *
+ * Language names are one or two words, so a row of them reads faster than a list, and the counts
+ * are small enough to sit inline. Codes are shown as the language they name — "en" is "English",
+ * because a code is a database value, not something to put in front of a person.
+ */
+@Composable
+private fun LanguageChips(facets: List<Facet>) {
+    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
+        M3ESectionHeader("Languages")
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
+            verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+        ) {
+            facets.forEach { facet ->
+                Surface(
+                    shape = M3EShape.chip(),
+                    color = M3EColor.card()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = M3ESpacing.inlineGap, vertical = M3ESpacing.tightGap),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = languageName(facet.name),
+                            style = M3EType.action(),
+                            color = M3EColor.text()
+                        )
+                        Spacer(Modifier.width(M3ESpacing.tightGap))
+                        Text(
+                            text = "${facet.count}",
+                            style = M3EType.rowSupporting(),
+                            color = M3EColor.textMuted()
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A language code as its English name.
+ *
+ * Anything Locale cannot resolve — a stored full name, an unknown tag — falls back to the raw
+ * value rather than rendering "Unknown language", which is what Locale returns for a tag it does
+ * not recognise.
+ */
+private fun languageName(code: String): String {
+    val tag = code.trim()
+    if (tag.isEmpty()) return tag
+    val resolved = java.util.Locale.forLanguageTag(tag).getDisplayLanguage(java.util.Locale.ENGLISH)
+    val unusable = resolved.isBlank() ||
+        resolved.equals(tag, ignoreCase = true) ||
+        resolved.contains("Unknown", ignoreCase = true)
+    return if (unusable) {
+        tag.replaceFirstChar { it.uppercase(java.util.Locale.US) }
+    } else {
+        resolved.replaceFirstChar { it.uppercase(java.util.Locale.US) }
     }
 }
