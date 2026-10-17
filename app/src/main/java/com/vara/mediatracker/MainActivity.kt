@@ -26,6 +26,8 @@ import com.vara.mediatracker.ui.common.AppToastHost
 import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.ui.common.LocalOverlayOpen
 import com.vara.mediatracker.ui.common.ExpressiveNavigationBar
+import com.vara.mediatracker.ui.m3e.M3ERoughPreview
+import com.vara.mediatracker.ui.m3e.M3ERoughScreen
 import com.vara.mediatracker.ui.theme.AppMotion as motion
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -92,6 +94,10 @@ class MainActivity : ComponentActivity() {
                 // Single app-wide clock so countdown labels stay live without each
                 // card owning its own ticker coroutine.
                 CompositionLocalProvider(LocalNowMillis provides rememberNowMillis()) {
+                    // Rough M3E shell on the rebuild branch; the existing UI is one flag away.
+                    if (M3ERoughPreview) {
+                        M3ERoughScreen(container = container)
+                    } else {
                     MainAppScreen(
                         container = container,
                         onThemePresetChanged = { newPreset ->
@@ -103,6 +109,7 @@ class MainActivity : ComponentActivity() {
                             currentThemeMode = newMode
                         }
                     )
+                    }
                 }
             }
         }
