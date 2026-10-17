@@ -1,0 +1,212 @@
+package com.vara.mediatracker.ui.m3e
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.vara.mediatracker.data.model.CollectionEntity
+import com.vara.mediatracker.data.model.CollectionItemEntity
+import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.ui.theme.AppTextStyles
+
+/**
+ * Collections, in the [M3E] vocabulary.
+ *
+ * A two-column grid of tonal cards, each showing a cover strip from the titles it holds, its name
+ * and how many it contains. Smart collections are marked, because Material's colour tactic is
+ * about telling you something the label does not — and "this one keeps itself up to date" is
+ * exactly that.
+ *
+ * Cards are not tappable yet: a collection's own list is the next screen, and leaving them inert
+ * is more honest than opening something empty.
+ */
+@Composable
+fun M3ERoughCollections(container: AppContainer, library: List<MediaItemEntity>) {
+    val collections by produceState(initialValue = emptyList<CollectionEntity>()) {
+        value = runCatching { container.database.collectionDao().getAllCollections() }.getOrDefault(emptyList())
+    }
+    val members by produceState(initialValue = emptyList<CollectionItemEntity>()) {
+        value = runCatching { container.database.collectionDao().getAllCollectionItems() }.getOrDefault(emptyList())
+    }
+
+    val live = remember(collections) { collections.filter { !it.isDeleted } }
+    val postersByMediaID = remember(library) { library.associate { it.id to it.posterUrl } }
+    val smart = remember(live) { live.filter { it.isSmart } }
+    val mine = remember(live) { live.filterNot { it.isSmart } }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(horizontal = M3ESpacing.page),
+        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap),
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(M3ESpacing.pageVertical))
+            M3EScreenHeader(eyebrow = "${live.size} collections", title = "Collections")
+            Spacer(Modifier.height(M3ESpacing.cardGap))
+        }
+
+        if (live.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
+                        Text("No collections yet", style = M3EType.rowTitle(), color = M3EColor.text())
+                        Text(
+                            text = "Collections you make on either device appear here.",
+                            style = M3EType.rowSupporting(),
+                            color = M3EColor.textMuted()
+                        )
+                    }
+                }
+            }
+        }
+
+        if (smart.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                M3ESectionHeader("Smart")
+            }
+            items(smart, key = { it.id }) { collection ->
+                CollectionCard(
+                    name = collection.name,
+                    count = countOf(collection, members),
+                    covers = coversOf(collection, members, postersByMediaID),
+                    isSmart = true
+                )
+            }
+        }
+
+        if (mine.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                M3ESectionHeader("Yours")
+            }
+            items(mine, key = { it.id }) { collection ->
+                CollectionCard(
+                    name = collection.name,
+                    count = countOf(collection, members),
+                    covers = coversOf(collection, members, postersByMediaID),
+                    isSmart = false
+                )
+            }
+        }
+
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(112.dp))
+        }
+    }
+}
+
+private fun countOf(collection: CollectionEntity, members: List<CollectionItemEntity>): Int =
+    members.count { it.collectionId == collection.id && !it.isDeleted }
+
+/** Up to three covers, in the order the collection holds them. */
+private fun coversOf(
+    collection: CollectionEntity,
+    members: List<CollectionItemEntity>,
+    posters: Map<String, String?>
+): List<String?> =
+    members.filter { it.collectionId == collection.id && !it.isDeleted }
+        .take(3)
+        .map { posters[it.mediaId] }
+
+/**
+ * A collection card: a cover strip over the name and count.
+ *
+ * The strip is the sanctioned composition here — three rounded posters in a row read as one
+ * object, which no single Material component expresses.
+ */
+@Composable
+private fun CollectionCard(
+    name: String,
+    count: Int,
+    covers: List<String?>,
+    isSmart: Boolean
+) {
+    M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(M3ESpacing.inlineGap)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(3f / 2f)
+                    .clip(M3EShape.chip())
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                if (covers.isEmpty()) {
+                    Spacer(Modifier.fillMaxWidth())
+                } else {
+                    covers.forEach { poster ->
+                        AsyncImage(
+                            model = poster,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.weight(1f).fillMaxSize()
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(M3ESpacing.tightGap))
+            Text(
+                text = name,
+                style = M3EType.rowTitle(),
+                fontWeight = FontWeight.SemiBold,
+                color = M3EColor.text(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "$count ${if (count == 1) "title" else "titles"}",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted()
+                )
+                if (isSmart) {
+                    Spacer(Modifier.width(M3ESpacing.tightGap))
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = M3EColor.emphasis(),
+                        contentColor = M3EColor.onEmphasis()
+                    ) {
+                        Text(
+                            text = "SMART",
+                            style = AppTextStyles.MonoLabel,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

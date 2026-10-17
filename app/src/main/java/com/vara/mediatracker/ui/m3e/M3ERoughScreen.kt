@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -100,6 +101,7 @@ fun M3ERoughScreen(container: AppContainer) {
                     onSettings = { settings = true }
                 )
                 1 -> LibrarySection(library = library, onOpen = { open = it })
+                2 -> M3ERoughCollections(container = container, library = library)
                 else -> FinishedSection(library = library)
             }
         }
@@ -404,6 +406,7 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
     val items: List<Pair<String, ImageVector>> = listOf(
         "Home" to Icons.Default.Home,
         "Library" to Icons.Default.VideoLibrary,
+        "Collections" to Icons.Default.Collections,
         "Finished" to Icons.Default.Check
     )
 
