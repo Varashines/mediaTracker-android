@@ -356,10 +356,10 @@ fun M3ERoughDetail(
             // Title, byline, year and the two pills in one column beside the poster. The pills
             // used to sit in a row of their own below the action, which pushed everything below
             // them down the screen for no gain — they belong with the title, one under the other.
+            // Beside the poster, in the title's own column: status takes the room it needs, taste
+            // takes only what a glyph needs. That is what lets them share the column without the
+            // state being squeezed to fit around the reaction.
             Title(live, byline) {
-                // One row, two controls. Status keeps its full pill — it is a value you read.
-                // Taste collapses to an emoji, which is a value you recognise, and that is what
-                // lets both fit the column the title is in rather than needing a row of their own.
                 Row(
                     modifier = Modifier.height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
@@ -643,10 +643,10 @@ private fun PickerPill(
 /**
  * The taste as a single emoji.
  *
- * A reaction is recognised, not read — nobody needs the word "Like" next to a thumbs-up — and one
- * glyph is what lets it sit beside a full status pill in the space the title already occupies.
- * Nothing chosen shows the neutral face greyed back, so the control still reads as set to something
- * rather than as broken.
+ * A reaction is recognised, not read — nobody needs the word "Like" next to a thumbs-up — which is
+ * what lets it be small beside a status pill rather than competing with it for the same room.
+ * Nothing chosen shows the neutral face held back, so it reads as set to nothing rather than as
+ * broken.
  */
 @Composable
 private fun TastePill(
@@ -675,7 +675,7 @@ private fun TastePill(
                 text = tasteEmoji(taste),
                 fontSize = 24.sp,
                 modifier = Modifier
-                    .padding(horizontal = M3ESpacing.cardGap)
+                    .padding(horizontal = M3ESpacing.inlineGap)
                     .alpha(if (unset) 0.4f else 1f)
             )
         }
