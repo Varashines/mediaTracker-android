@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -127,9 +128,20 @@ private fun HomeSection(
     onSearch: () -> Unit,
     onSettings: () -> Unit
 ) {
-    val inProgress = remember(library) {
-        library.filter { it.state.equals("Active", true) || it.state.equals("Re-watching", true) }
-            .sortedByDescending { it.lastInteractionDate ?: "" }
+    val today = remember { java.time.LocalDate.now().toString() }
+    // A title that has not landed yet belongs in Coming soon, not in Continue watching — the two
+    // were the same list because both are simply "Active". The split is the title's own date.
+    val inProgress = remember(library, today) {
+        library.filter {
+            (it.state.equals("Active", true) || it.state.equals("Re-watching", true)) &&
+                !isUpcoming(it, today)
+        }.sortedByDescending { it.lastInteractionDate ?: "" }
+    }
+    val comingSoon = remember(library, today) {
+        library.filter {
+            (it.state.equals("Active", true) || it.state.equals("Wishlist", true)) &&
+                isUpcoming(it, today)
+        }.sortedBy { releaseDay(it) ?: "" }.take(6)
     }
     val recentlyAdded = remember(library) {
         library.sortedByDescending { it.dateAdded ?: it.lastInteractionDate ?: "" }.take(12)
@@ -170,6 +182,19 @@ private fun HomeSection(
             }
             items(inProgress.take(6), key = { it.id }) { item ->
                 TitleRow(item, trailing = Icons.Default.PlayArrow, onClick = { onOpen(item) })
+            }
+        }
+        if (comingSoon.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                M3ESectionHeader("Coming soon", trailing = { TextButton(onClick = {}) { Text("See all") } })
+            }
+            items(comingSoon, key = { it.id }) { item ->
+                TitleRow(
+                    item = item,
+                    trailing = Icons.Default.Schedule,
+                    subtitle = releaseDay(item)?.let { "Arrives $it" }
+                )
             }
         }
         if (recentlyAdded.isNotEmpty()) {
@@ -330,7 +355,12 @@ private fun Metric(label: String, value: Int, modifier: Modifier = Modifier) {
 
 /** One tonal card per row: poster, title, supporting line, trailing action. */
 @Composable
-private fun TitleRow(item: MediaItemEntity, trailing: ImageVector, onClick: (() -> Unit)? = null) {
+private fun TitleRow(
+    item: MediaItemEntity,
+    trailing: ImageVector,
+    onClick: (() -> Unit)? = null,
+    subtitle: String? = null
+) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
@@ -348,7 +378,7 @@ private fun TitleRow(item: MediaItemEntity, trailing: ImageVector, onClick: (() 
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${item.type} · ${item.state}",
+                    text = subtitle ?: "${item.type} · ${item.state}",
                     style = M3EType.rowSupporting(),
                     color = M3EColor.textMuted(),
                     maxLines = 1,
@@ -453,4 +483,14 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
             }
         }
     }
+}
+
+/** The day a title lands: an air date for a show, a release date for a movie. */
+private fun releaseDay(item: MediaItemEntity): String? =
+    item.nextAiringInstant?.take(10) ?: item.releaseDate?.take(10)
+
+/** Whether a title is still ahead of the given day. */
+private fun isUpcoming(item: MediaItemEntity, today: String): Boolean {
+    val day = releaseDay(item) ?: return false
+    return day > today
 }
