@@ -79,7 +79,11 @@ import com.vara.mediatracker.di.AppContainer
 const val M3ERoughPreview = true
 
 @Composable
-fun M3ERoughScreen(container: AppContainer) {
+fun M3ERoughScreen(
+    container: AppContainer,
+    onThemePresetChanged: (Int) -> Unit = {},
+    onThemeModeChanged: (Int) -> Unit = {}
+) {
     val library by produceState(initialValue = emptyList<MediaItemEntity>()) {
         value = runCatching { container.database.mediaDao().getAllMediaList() }.getOrDefault(emptyList())
     }
@@ -113,7 +117,12 @@ fun M3ERoughScreen(container: AppContainer) {
         when {
             opened != null -> M3ERoughDetail(item = opened, container = container, onBack = { open = null })
             searching -> M3ERoughSearch(library = library, onBack = { searching = false })
-            settings -> M3ERoughSettings(onBack = { settings = false })
+            settings -> M3ERoughSettings(
+                    container = container,
+                    onBack = { settings = false },
+                    onThemePresetChanged = onThemePresetChanged,
+                    onThemeModeChanged = onThemeModeChanged
+                )
             else -> holder.SaveableStateProvider(section) {
                 when (section) {
                 0 -> HomeSection(

@@ -96,7 +96,17 @@ class MainActivity : ComponentActivity() {
                 CompositionLocalProvider(LocalNowMillis provides rememberNowMillis()) {
                     // Rough M3E shell on the rebuild branch; the existing UI is one flag away.
                     if (M3ERoughPreview) {
-                        M3ERoughScreen(container = container)
+                        M3ERoughScreen(
+                            container = container,
+                            onThemePresetChanged = { newPreset ->
+                                container.preferences.themePreset = newPreset
+                                currentThemePreset = newPreset
+                            },
+                            onThemeModeChanged = { newMode ->
+                                container.preferences.themeMode = newMode
+                                currentThemeMode = newMode
+                            }
+                        )
                     } else {
                     MainAppScreen(
                         container = container,
