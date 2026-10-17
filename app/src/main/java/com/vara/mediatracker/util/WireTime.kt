@@ -35,4 +35,24 @@ object WireTime {
      * unbounded advantage, so the next genuine edit on the other device wins normally.
      */
     fun clampToNow(value: Date, now: Date = Date()): Date = if (value.after(now)) now else value
+
+    /** A single viewing logged from two devices can differ by up to a device's timezone offset. */
+    private const val SAME_WATCH_WINDOW_MILLIS = 12L * 60 * 60 * 1000
+
+    private val utcDay: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneOffset.UTC)
+
+    /**
+     * Whether two stamps describe the same viewing — the ledger's duplicate rule, mirroring
+     * macOS's `SyncTimestamps.isSameWatch`.
+     *
+     * Same UTC day, or within twelve hours. A copy stamped from local wall-clock time (the bug
+     * that made stamps land hours ahead) can cross midnight, so comparing calendar days in the
+     * device's zone splits one viewing into two; a deliberate rewatch is a day or more apart and
+     * stays distinct.
+     */
+    fun isSameWatch(a: Date, b: Date): Boolean {
+        if (kotlin.math.abs(a.time - b.time) <= SAME_WATCH_WINDOW_MILLIS) return true
+        return utcDay.format(a.toInstant()) == utcDay.format(b.toInstant())
+    }
 }

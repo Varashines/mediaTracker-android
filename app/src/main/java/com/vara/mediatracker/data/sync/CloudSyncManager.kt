@@ -755,11 +755,23 @@ class CloudSyncManager(
         return WatchHistoryReconcile(outgoingCycles, incomingCycles, outgoingEvents, incomingEvents)
     }
 
+    /**
+     * True when the ledger already holds this viewing.
+     *
+     * Episode ids are compared *canonically* ([MediaIds.canonicalEpisodeIdOrNull]): the legacy
+     * `{show}_{s}_{e}` and the `tv_\u2026` spellings used to be compared literally, so the same
+     * watch — recorded here and pulled back from the Mac — counted as two. Stamps are compared as
+     * instants rather than by their date prefix, because a stamp written from local wall-clock
+     * time can cross midnight, which is how one viewing came to appear on two days in Year in
+     * Review.
+     */
     private fun hasEquivalentLocalEvent(all: List<WatchEventEntity>, remote: RemoteWatchEvent): Boolean {
-        val remoteDay = remote.watched_at.take(10)
-        return all.any {
-            it.mediaId == remote.media_id && it.episodeId == remote.episode_id &&
-                it.voidedAt == null && it.watchedAt.take(10) == remoteDay
+        val targetEpisode = MediaIds.canonicalEpisodeIdOrNull(remote.episode_id)
+        val remoteInstant = parseInstant(remote.watched_at) ?: return false
+        return all.any { local ->
+            local.voidedAt == null && local.mediaId == remote.media_id &&
+                MediaIds.canonicalEpisodeIdOrNull(local.episodeId) == targetEpisode &&
+                parseInstant(local.watchedAt)?.let { WireTime.isSameWatch(it, remoteInstant) } == true
         }
     }
 
@@ -934,10 +946,7 @@ class CloudSyncManager(
         val incomingItems: List<CollectionItemEntity>
     )
 
-    private fun canonicalEpisodeId(id: String): String =
-        MediaIds.parseEpisodeUniqueId(id)?.let {
-            MediaIds.buildEpisodeUniqueId(it.showId, it.seasonNumber, it.episodeNumber)
-        } ?: id
+    private fun canonicalEpisodeId(id: String): String = MediaIds.canonicalEpisodeIdOrNull(id) ?: id
 
     private suspend fun fetchRemoteMedia(since: String? = null): List<RemoteMedia> =
         fetchAllPages("user_media", since)

@@ -94,4 +94,16 @@ class MediaIdsTest {
             assertEquals(canonical, MediaIds.buildEpisodeUniqueId(parsed.showId, parsed.seasonNumber, parsed.episodeNumber))
         }
     }
+
+    @Test
+    fun `canonicalEpisodeIdOrNull collapses both spellings`() {
+        assertEquals("tv_293610_s1_e3", MediaIds.canonicalEpisodeIdOrNull("293610_1_3"))
+        assertEquals("tv_293610_s1_e3", MediaIds.canonicalEpisodeIdOrNull("tv_293610_s1_e3"))
+    }
+
+    @Test
+    fun `canonicalEpisodeIdOrNull keeps null and unknown values`() {
+        assertNull(MediaIds.canonicalEpisodeIdOrNull(null))
+        assertEquals("movie_550", MediaIds.canonicalEpisodeIdOrNull("movie_550"))
+    }
 }

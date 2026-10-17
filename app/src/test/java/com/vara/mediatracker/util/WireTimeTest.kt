@@ -90,4 +90,24 @@ class WireTimeTest {
         assertFalse("before the clamp the remote never won", macEdit.after(phoneStamp))
         assertTrue("after the clamp the later edit wins", macEdit.after(WireTime.clampToNow(phoneStamp, now)))
     }
+
+    @Test
+    fun `the same instant is the same watch`() {
+        val t = Date()
+        assertTrue(WireTime.isSameWatch(t, t))
+    }
+
+    @Test
+    fun `an offset shift is the same watch`() {
+        // The Doctor X pair: the correct stamp and the +5:30 one from the old formatter.
+        val correct = Date(1_761_000_000_000)
+        val mislabelled = Date(correct.time + (5 * 60 + 30) * 60 * 1000)
+        assertTrue(WireTime.isSameWatch(correct, mislabelled))
+    }
+
+    @Test
+    fun `a rewatch the next day is a different watch`() {
+        val first = Date(1_761_000_000_000)
+        assertFalse(WireTime.isSameWatch(first, Date(first.time + 24 * 60 * 60 * 1000)))
+    }
 }

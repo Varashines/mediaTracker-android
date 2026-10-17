@@ -49,6 +49,20 @@ object MediaIds {
 
     fun isCanonicalEpisodeId(uniqueId: String): Boolean = CANONICAL_EPISODE.matches(uniqueId)
 
+    /**
+     * Canonical `tv_{show}_s{season}_e{episode}` for either spelling; `null` stays `null`
+     * (movies carry no episode id).
+     *
+     * The two spellings are compared literally elsewhere in the sync, which is how one viewing
+     * ended up in the ledger twice: the event recorded here used the canonical form, the one
+     * pulled back from the Mac the legacy `{show}_{s}_{e}` form.
+     */
+    fun canonicalEpisodeIdOrNull(id: String?): String? = id?.let {
+        parseEpisodeUniqueId(it)?.let { key ->
+            buildEpisodeUniqueId(key.showId, key.seasonNumber, key.episodeNumber)
+        } ?: it
+    }
+
     /** Parses both canonical and legacy episode keys. Returns null for unrecognized formats. */
     fun parseEpisodeUniqueId(uniqueId: String): EpisodeKey? {
         val id = uniqueId.trim()
