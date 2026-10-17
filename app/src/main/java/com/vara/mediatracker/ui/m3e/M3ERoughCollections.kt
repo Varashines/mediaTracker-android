@@ -50,12 +50,7 @@ import com.vara.mediatracker.ui.theme.AppTextStyles
  * is more honest than opening something empty.
  */
 @Composable
-fun M3ERoughCollections(
-    container: AppContainer,
-    library: List<MediaItemEntity>,
-    /** False when this is embedded in the Hub, which supplies its own header. */
-    showHeader: Boolean = true
-) {
+fun M3ERoughCollections(container: AppContainer, library: List<MediaItemEntity>) {
     val collections by produceState(initialValue = emptyList<CollectionEntity>()) {
         value = runCatching { container.database.collectionDao().getAllCollections() }.getOrDefault(emptyList())
     }
@@ -72,17 +67,15 @@ fun M3ERoughCollections(
         columns = GridCells.Fixed(2),
         modifier = Modifier
             .fillMaxSize()
-            .let { if (showHeader) it.statusBarsPadding() else it }
+            .statusBarsPadding()
             .padding(horizontal = M3ESpacing.page),
         horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap),
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
-        if (showHeader) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Spacer(Modifier.height(M3ESpacing.pageVertical))
-                M3EScreenHeader(eyebrow = "${live.size} collections", title = "Collections")
-                Spacer(Modifier.height(M3ESpacing.cardGap))
-            }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(M3ESpacing.pageVertical))
+            M3EScreenHeader(eyebrow = "${live.size} collections", title = "Collections")
+            Spacer(Modifier.height(M3ESpacing.cardGap))
         }
 
         if (live.isEmpty()) {
