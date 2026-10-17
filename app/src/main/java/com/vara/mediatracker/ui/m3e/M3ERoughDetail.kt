@@ -77,6 +77,7 @@ import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
@@ -147,6 +148,43 @@ fun M3ERoughDetail(
             if (enriched != stored) {
                 db.mediaDao().upsertMedia(enriched)
                 live = enriched
+            }
+        }
+
+        // Episodes are not fetched on open by anything else: they arrive from sync, or from the
+        // enrichment worker running later. A show added from search therefore had a Seasons tab
+        // with nothing in it.
+        //
+        // Only seasons with no local rows are fetched, so this fills the gap without overwriting
+        // watched state that came from somewhere real.
+        if (isTv) {
+            val local = runCatching { db.mediaDao().getEpisodesForShow(showKey).first() }
+                .getOrDefault(emptyList())
+            val held = local.mapTo(HashSet()) { it.seasonNumber }
+            for (season in details?.seasons.orEmpty()) {
+                if (season.season_number < 1 || season.season_number in held) continue
+                val seasonDetails = client.getSeasonDetails(tmdbId, season.season_number)
+                    .getOrNull() ?: continue
+                val rows = seasonDetails.episodes.map { episode ->
+                    EpisodeEntity(
+                        uniqueId = MediaIds.buildEpisodeUniqueId(
+                            showKey,
+                            episode.season_number,
+                            episode.episode_number
+                        ),
+                        showId = showKey,
+                        seasonNumber = episode.season_number,
+                        episodeNumber = episode.episode_number,
+                        name = episode.name.orEmpty(),
+                        overview = episode.overview.orEmpty(),
+                        stillPath = episode.still_path,
+                        isWatched = false,
+                        airDate = episode.air_date,
+                        airTime = episode.air_time,
+                        runtime = episode.runtime
+                    )
+                }
+                if (rows.isNotEmpty()) db.mediaDao().upsertEpisodes(rows)
             }
         }
 
