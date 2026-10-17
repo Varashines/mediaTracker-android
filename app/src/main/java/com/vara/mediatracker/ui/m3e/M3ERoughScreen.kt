@@ -53,6 +53,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,10 +66,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.common.HomeData
 import com.vara.mediatracker.ui.common.LibraryCore
 import com.vara.mediatracker.ui.common.LibraryViewModel
+import com.vara.mediatracker.ui.home.HomeEligibility
 import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.di.AppContainer
 
@@ -130,6 +135,7 @@ fun M3ERoughScreen(
             opened != null -> M3ERoughDetail(item = opened, container = container, onBack = { open = null })
             shownList != null -> M3ERoughList(
                 list = shownList,
+                core = core,
                 home = home,
                 onOpen = { open = it },
                 onBack = { list = null }
@@ -162,11 +168,7 @@ fun M3ERoughScreen(
                     onOpen = { open = it },
                     onOpenList = { title, items, kind -> list = SectionList(title, items, kind) }
                 )
-                2 -> M3ERoughCalendar(
-                    container = container,
-                    library = library,
-                    onOpen = { open = it }
-                )
+                2 -> M3ERoughCalendar(core = core, onOpen = { open = it })
                 3 -> LibrarySection(library = library, onOpen = { open = it })
                 else -> FinishedSection(library = library, onOpen = { open = it })
                 }
@@ -273,7 +275,7 @@ private fun HomeSection(
                     item = item,
                     trailing = Icons.Default.Schedule,
                     onClick = { onOpen(item) },
-                    subtitle = comingSoonDay(item, home)?.let { "Arrives $it" }
+                    subtitle = arrivalLabel(item, core)
                 )
             }
         }
@@ -392,6 +394,7 @@ private data class SectionList(
 @Composable
 private fun M3ERoughList(
     list: SectionList,
+    core: LibraryCore,
     home: HomeData,
     onOpen: (MediaItemEntity) -> Unit,
     onBack: () -> Unit
@@ -420,7 +423,7 @@ private fun M3ERoughList(
         items(list.items, key = { it.id }) { item ->
             val subtitle = when (list.subtitle) {
                 ListSubtitle.Progress -> progressSubtitle(item, home)
-                ListSubtitle.Arrival -> comingSoonDay(item, home)?.let { "Arrives $it" }
+                ListSubtitle.Arrival -> arrivalLabel(item, core)
                 ListSubtitle.None -> null
             }
             TitleRow(
@@ -648,8 +651,31 @@ private fun progressSubtitle(item: MediaItemEntity, home: HomeData): String? {
 }
 
 /**
- * The day a coming-soon title lands. The derived next airing wins over the stored one: it is
- * computed from the unwatched episodes, so it cannot be the stale instant a sync left behind.
+ * When a Coming soon title lands, from its resolved air instant rather than its date.
+ *
+ * A date cannot tell a premiere that airs at 21:00 from one that lands at midnight, and it cannot
+ * tell whether today has already passed — an instant can. Today and tomorrow are named because
+ * that is how a person reads a radar, and the local time is shown whenever the app knows one, so
+ * "Arrives today · 21:00" is a fact rather than an approximation.
  */
-private fun comingSoonDay(item: MediaItemEntity, home: HomeData): String? =
-    home.showProgressMap[item.id]?.nextAiringDate ?: releaseDay(item)
+private fun arrivalLabel(item: MediaItemEntity, core: LibraryCore): String? {
+    val key = if (item.type.contains("TV", ignoreCase = true)) MediaIds.tvShowKey(item.id) else null
+    val episodes = key?.let { core.episodesByShow[it] }.orEmpty()
+    val instant = HomeEligibility.nextAiringInstant(item, episodes)
+        ?: return releaseDay(item)?.let { "Arrives $it" }
+
+    val zoned = instant.toInstant().atZone(ZoneId.systemDefault())
+    val today = LocalDate.now()
+    val dayLabel = when (zoned.toLocalDate()) {
+        today -> "today"
+        today.plusDays(1) -> "tomorrow"
+        else -> zoned.toLocalDate().toString()
+    }
+    val time = zoned.toLocalTime()
+    val known = time.hour != 0 || time.minute != 0
+    return if (known) {
+        "Arrives $dayLabel · " + String.format(Locale.US, "%02d:%02d", time.hour, time.minute)
+    } else {
+        "Arrives $dayLabel"
+    }
+}

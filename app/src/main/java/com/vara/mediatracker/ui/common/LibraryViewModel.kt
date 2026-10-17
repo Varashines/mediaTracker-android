@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
-import java.time.LocalDate
+import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
@@ -119,7 +119,6 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
         val items = core.items
         val episodesByShow = core.episodesByShow
         val badges = core.badges
-        val todayDateStr = LocalDate.now().toString()
         val now = Date()
 
         val showProgressMap = items.filter { it.type.contains("TV", ignoreCase = true) }.associate { item ->
@@ -129,10 +128,12 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
             val total = showEps.size
             val watched = showEps.count { it.isWatched }
             val nextEp = showEps.firstOrNull { !it.isWatched }
-            // nextAir is the FIRST unwatched episode that airs in the STRICT FUTURE (> today)
-            val nextAir = showEps.firstOrNull { ep ->
-                !ep.isWatched && !ep.airDate.isNullOrBlank() && ep.airDate > todayDateStr
-            }?.airDate
+            // nextAir comes from the resolved instant, not the air-date string: an episode
+            // airing at 21:00 in New York lands tomorrow in IST, and a date-only comparison both
+            // missed that and called an episode already airing today "not upcoming".
+            val nextAir = HomeEligibility.nextAiringInstant(item, showEps)
+                ?.takeIf { it.after(now) }
+                ?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(it) }
             item.id to TVShowProgress(
                 totalEpisodes = total,
                 watchedEpisodes = watched,

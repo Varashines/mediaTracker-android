@@ -28,7 +28,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -42,11 +41,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.model.EpisodeEntity
+import com.vara.mediatracker.data.model.MediaIds
+import com.vara.mediatracker.ui.common.LibraryCore
 import com.vara.mediatracker.ui.common.LocalNowMillis
+import com.vara.mediatracker.ui.home.HomeEligibility
 import com.vara.mediatracker.data.model.MediaItemEntity
-import com.vara.mediatracker.di.AppContainer
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -55,8 +58,12 @@ import java.util.Locale
  *
  * A week of dates in a row tells you what is next; a month tells you the shape of it — which
  * weeks are busy, which are bare — and that is what a radar is for. Days carrying a release are
- * tinted and show how many, the selected day is filled with the emphasis tone, and the day's
- * releases sit underneath, so a tap always lands on something.
+ * tinted, the selected day is filled with the emphasis tone, and the day's releases sit
+ * underneath, so a tap always lands on something.
+ *
+ * A release is a *resolved next airing*, not a stored release date. The stored date is the show's
+ * first-air date — years old for anything still running — so reading it left every month empty;
+ * the resolved instant is also what carries the air time, which is what a radar is for.
  *
  * Dates are compared as day strings rather than resolved instants. Deliberately crude: the real
  * screen resolves an air time to the minute through the streaming rules the app already has, and
@@ -64,8 +71,7 @@ import java.util.Locale
  */
 @Composable
 fun M3ERoughCalendar(
-    container: AppContainer,
-    library: List<MediaItemEntity>,
+    core: LibraryCore,
     onOpen: (MediaItemEntity) -> Unit = {}
 ) {
     // Reading the app clock is what recomposes this as it ticks, so `today` re-derives rather
@@ -76,44 +82,39 @@ fun M3ERoughCalendar(
     var month by rememberSaveable { mutableStateOf(YearMonth.from(today).toString()) }
     var selected by rememberSaveable { mutableStateOf(today.toString()) }
 
+    val zone = remember { ZoneId.systemDefault() }
     val monthLabel = remember { DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US) }
     val dayLabel = remember { DateTimeFormatter.ofPattern("d", Locale.US) }
     val fullLabel = remember { DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.US) }
 
     // Pure: no theme reads inside `remember`.
-    val byDay = remember(library) {
-        val map = HashMap<String, MutableList<MediaItemEntity>>()
-        for (item in library) {
-            val date = item.nextAiringInstant?.take(10) ?: item.releaseDate?.take(10) ?: continue
-            map.getOrPut(date) { mutableListOf() }.add(item)
+    val events = remember(core, today) {
+        buildList {
+            for (item in core.items) {
+                val key = if (item.type.contains("TV", ignoreCase = true)) {
+                    MediaIds.tvShowKey(item.id)
+                } else {
+                    null
+                }
+                val episodes = key?.let { core.episodesByShow[it] }.orEmpty()
+                val instant = HomeEligibility.nextAiringInstant(item, episodes) ?: continue
+                val zoned = instant.toInstant().atZone(zone)
+                add(
+                    CalendarEvent(
+                        item = item,
+                        day = zoned.toLocalDate(),
+                        time = zoned.toLocalTime().takeIf { it.hour != 0 || it.minute != 0 },
+                        episode = HomeEligibility.nextAiringEpisode(episodes, today.toString())
+                    )
+                )
+            }
         }
-        map
     }
+    val byDay: Map<LocalDate, List<CalendarEvent>> = remember(events) { events.groupBy { it.day } }
     val monthValue = remember(month) { YearMonth.parse(month) }
     val selectedDay = remember(selected) { LocalDate.parse(selected) }
     val cells = remember(monthValue) { monthCells(monthValue) }
-    val releases = remember(byDay, selectedDay) { byDay[selectedDay.toString()].orEmpty() }
-    // A release row wants the episode and its air time, and only the episode rows carry those —
-    // read asynchronously, since the DAO is suspend, then derived purely. Keyed by show and day,
-    // because that is what a release is.
-    val episodes by produceState(initialValue = emptyList<EpisodeEntity>(), container) {
-        value = runCatching {
-            container.database.mediaDao().getAllEpisodesList()
-        }.getOrDefault(emptyList())
-    }
-    val episodeByShowAndDay = remember(episodes, byDay) {
-        val map = HashMap<String, EpisodeEntity>()
-        val shows = byDay.values.flatten().mapTo(HashSet()) { it.id }
-        val wanted = byDay.keys
-        for (episode in episodes) {
-            val showId = episode.uniqueId.substringBefore("_s")
-            if (showId !in shows) continue
-            val day = (episode.airstamp ?: episode.airDate)?.take(10) ?: continue
-            if (day !in wanted) continue
-            map.putIfAbsent("$showId|$day", episode)
-        }
-        map
-    }
+    val releases = remember(byDay, selectedDay) { byDay[selectedDay].orEmpty() }
 
     LazyColumn(
         modifier = Modifier
@@ -159,7 +160,7 @@ fun M3ERoughCalendar(
                                     day = day,
                                     today = today,
                                     selected = selectedDay,
-                                    count = day?.let { byDay[it.toString()]?.size ?: 0 } ?: 0,
+                                    count = day?.let { byDay[it]?.size ?: 0 } ?: 0,
                                     label = dayLabel,
                                     onSelect = { selected = it.toString() },
                                     modifier = Modifier.weight(1f)
@@ -193,12 +194,13 @@ fun M3ERoughCalendar(
                         )
                     }
                 } else {
-                    val day = selectedDay.toString()
-                    releases.forEach { item ->
+                    // Ordered by the resolved air time, so a day reads as a running order.
+                    releases.sortedBy { it.time ?: LocalTime.MIDNIGHT }.forEach { event ->
                         ReleaseRow(
-                            item = item,
-                            episode = episodeByShowAndDay["${item.id}|$day"],
-                            onClick = { onOpen(item) }
+                            item = event.item,
+                            episode = event.episode,
+                            time = event.time,
+                            onClick = { onOpen(event.item) }
                         )
                     }
                 }
@@ -208,6 +210,14 @@ fun M3ERoughCalendar(
         item { Spacer(Modifier.height(112.dp)) }
     }
 }
+
+/** One dated release: the title, the day it lands, its resolved local air time, and the episode. */
+private data class CalendarEvent(
+    val item: MediaItemEntity,
+    val day: LocalDate,
+    val time: LocalTime?,
+    val episode: EpisodeEntity?
+)
 
 /** The month's days, Monday first, padded with blanks to whole weeks. */
 private fun monthCells(month: YearMonth): List<LocalDate?> {
@@ -310,6 +320,7 @@ private fun DayCell(
 private fun ReleaseRow(
     item: MediaItemEntity,
     episode: EpisodeEntity?,
+    time: LocalTime?,
     onClick: (() -> Unit)? = null
 ) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
@@ -338,7 +349,7 @@ private fun ReleaseRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = releaseSupport(item.type, episode),
+                    text = releaseSupport(item.type, episode, time),
                     style = M3EType.rowSupporting(),
                     color = M3EColor.textMuted(),
                     maxLines = 1,
@@ -356,9 +367,15 @@ private fun ReleaseRow(
  * whose episode row has not been enriched yet, falls back to saying what it is rather than
  * inventing a time.
  */
-private fun releaseSupport(type: String, episode: EpisodeEntity?): String {
-    if (episode == null) return type
-    val code = "S${episode.seasonNumber}E${episode.episodeNumber}"
-    val time = episode.airTime?.trim()
-    return if (time.isNullOrBlank()) code else "$code · $time"
+private fun releaseSupport(type: String, episode: EpisodeEntity?, time: LocalTime?): String {
+    val code = episode?.let { "S${it.seasonNumber}E${it.episodeNumber}" }
+    // The resolved local time, not the raw airTime field: the field is the broadcaster's clock,
+    // and a title airing at 21:00 in New York is not 21:00 here.
+    val clock = time?.let { DateTimeFormatter.ofPattern("h:mm a", Locale.US).format(it) }
+    return when {
+        code != null && clock != null -> "$code · $clock"
+        code != null -> code
+        clock != null -> "$type · $clock"
+        else -> type
+    }
 }
