@@ -101,7 +101,7 @@ fun M3ERoughScreen(container: AppContainer) {
                     onSettings = { settings = true }
                 )
                 1 -> M3ERoughHub(container = container, library = library)
-                2 -> M3ERoughCalendar(library = library)
+                2 -> M3ERoughCalendar(container = container, library = library)
                 3 -> LibrarySection(library = library, onOpen = { open = it })
                 else -> FinishedSection(library = library)
             }

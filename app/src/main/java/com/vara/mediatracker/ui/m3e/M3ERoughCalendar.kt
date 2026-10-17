@@ -27,15 +27,21 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.di.AppContainer
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -54,7 +60,7 @@ import java.util.Locale
  * this is here to judge the layout, not the timekeeping.
  */
 @Composable
-fun M3ERoughCalendar(library: List<MediaItemEntity>) {
+fun M3ERoughCalendar(container: AppContainer, library: List<MediaItemEntity>) {
     val today = remember { LocalDate.now() }
     var month by remember { mutableStateOf(YearMonth.from(today)) }
     var selected by remember { mutableStateOf(today) }
@@ -74,6 +80,27 @@ fun M3ERoughCalendar(library: List<MediaItemEntity>) {
     }
     val cells = remember(month) { monthCells(month) }
     val releases = remember(byDay, selected) { byDay[selected.toString()].orEmpty() }
+    // A release row wants the episode and its air time, and only the episode rows carry those —
+    // read asynchronously, since the DAO is suspend, then derived purely. Keyed by show and day,
+    // because that is what a release is.
+    val episodes by produceState(initialValue = emptyList<EpisodeEntity>(), container) {
+        value = runCatching {
+            container.database.mediaDao().getAllEpisodesList()
+        }.getOrDefault(emptyList())
+    }
+    val episodeByShowAndDay = remember(episodes, byDay) {
+        val map = HashMap<String, EpisodeEntity>()
+        val shows = byDay.values.flatten().mapTo(HashSet()) { it.id }
+        val wanted = byDay.keys
+        for (episode in episodes) {
+            val showId = episode.uniqueId.substringBefore("_s")
+            if (showId !in shows) continue
+            val day = (episode.airstamp ?: episode.airDate)?.take(10) ?: continue
+            if (day !in wanted) continue
+            map.putIfAbsent("$showId|$day", episode)
+        }
+        map
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -147,7 +174,10 @@ fun M3ERoughCalendar(library: List<MediaItemEntity>) {
                         )
                     }
                 } else {
-                    releases.forEach { item -> ReleaseRow(item) }
+                    val day = selected.toString()
+                    releases.forEach { item ->
+                        ReleaseRow(item, episodeByShowAndDay["${item.id}|$day"])
+                    }
                 }
             }
         }
@@ -260,17 +290,21 @@ private fun DayCell(
 
 /** One release on the selected day. */
 @Composable
-private fun ReleaseRow(item: MediaItemEntity) {
+private fun ReleaseRow(item: MediaItemEntity, episode: EpisodeEntity?) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.Schedule,
-                contentDescription = null,
-                tint = M3EColor.accent(),
-                modifier = Modifier.size(20.dp)
+            AsyncImage(
+                model = item.posterUrl,
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .width(44.dp)
+                    .height(66.dp)
+                    .clip(M3EShape.chip())
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             )
             Spacer(Modifier.width(M3ESpacing.inlineGap))
             Column(modifier = Modifier.weight(1f)) {
@@ -283,7 +317,7 @@ private fun ReleaseRow(item: MediaItemEntity) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = item.type,
+                    text = releaseSupport(item.type, episode),
                     style = M3EType.rowSupporting(),
                     color = M3EColor.textMuted(),
                     maxLines = 1,
@@ -292,4 +326,18 @@ private fun ReleaseRow(item: MediaItemEntity) {
             }
         }
     }
+}
+
+/**
+ * The second line of a release: the slot when the database knows it, the kind of title otherwise.
+ *
+ * "S2E5 · 9:00 PM" is what a radar is for — the episode and when it lands. A movie, or a show
+ * whose episode row has not been enriched yet, falls back to saying what it is rather than
+ * inventing a time.
+ */
+private fun releaseSupport(type: String, episode: EpisodeEntity?): String {
+    if (episode == null) return type
+    val code = "S${episode.seasonNumber}E${episode.episodeNumber}"
+    val time = episode.airTime?.trim()
+    return if (time.isNullOrBlank()) code else "$code · $time"
 }
