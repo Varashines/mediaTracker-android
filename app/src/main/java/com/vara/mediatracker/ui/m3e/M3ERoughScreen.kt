@@ -27,9 +27,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -100,8 +100,9 @@ fun M3ERoughScreen(container: AppContainer) {
                     onSearch = { searching = true },
                     onSettings = { settings = true }
                 )
-                1 -> LibrarySection(library = library, onOpen = { open = it })
-                2 -> M3ERoughCollections(container = container, library = library)
+                1 -> M3ERoughHub(container = container, library = library)
+                2 -> M3ERoughCalendar(library = library)
+                3 -> LibrarySection(library = library, onOpen = { open = it })
                 else -> FinishedSection(library = library)
             }
         }
@@ -405,8 +406,9 @@ private fun Poster(item: MediaItemEntity, modifier: Modifier = Modifier) {
 private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val items: List<Pair<String, ImageVector>> = listOf(
         "Home" to Icons.Default.Home,
+        "Hub" to Icons.Default.AutoAwesome,
+        "Calendar" to Icons.Default.Schedule,
         "Library" to Icons.Default.VideoLibrary,
-        "Collections" to Icons.Default.Collections,
         "Finished" to Icons.Default.Check
     )
 
