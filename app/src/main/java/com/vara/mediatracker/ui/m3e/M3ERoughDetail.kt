@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.TrackingLogic
+import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.WatchHistoryRecorder
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
@@ -84,11 +85,39 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
     // Optimistic copy: state and taste only, kept in step with what was just persisted.
     var live by remember(item.id) { mutableStateOf(item) }
 
-    // Re-read once by id. The entity handed in can be a stub — a title just added from search is
-    // built from a TMDB result and carries no genres, network or runtime — and the library's copy
-    // is the one worth showing. Runs before any interaction, so it cannot race a write.
+    // Re-read once by id, then enrich from TMDB — the same two steps the shipping detail takes.
+    //
+    // The entity handed in can be a stub: a title just added from search is built from a TMDB
+    // result, and one that arrived through sync can be missing its metadata entirely, which is how
+    // a title ends up on screen under its own id. Only fields TMDB actually returns are filled in,
+    // so a good local value is never replaced by an empty one. Runs before any interaction, so it
+    // cannot race a write.
     LaunchedEffect(item.id) {
-        db.mediaDao().getMediaById(item.id)?.let { live = it }
+        val stored = db.mediaDao().getMediaById(item.id) ?: item
+        live = stored
+
+        val tmdbId = MediaIds.tmdbIdOf(item.id)
+        if (tmdbId <= 0) return@LaunchedEffect
+
+        val details = runCatching {
+            if (isTv) {
+                container.tmdbClient().getTVDetails(tmdbId)
+            } else {
+                container.tmdbClient().getMovieDetails(tmdbId)
+            }
+        }.getOrNull()?.getOrNull() ?: return@LaunchedEffect
+
+        val enriched = stored.copy(
+            title = details.title ?: details.name ?: stored.title,
+            overview = details.overview?.takeIf { it.isNotBlank() } ?: stored.overview,
+            posterUrl = TMDBClient.buildPosterUrl(details.poster_path) ?: stored.posterUrl,
+            backdropUrl = TMDBClient.buildBackdropUrl(details.backdrop_path) ?: stored.backdropUrl,
+            releaseDate = details.release_date ?: details.first_air_date ?: stored.releaseDate
+        )
+        if (enriched != stored) {
+            db.mediaDao().upsertMedia(enriched)
+            live = enriched
+        }
     }
     var season by remember(item.id) { mutableStateOf<Int?>(null) }
 
@@ -219,7 +248,7 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
             }
         }
 
-        item { Title(item) }
+        item { Title(live) }
 
         item {
             if (isTv) {

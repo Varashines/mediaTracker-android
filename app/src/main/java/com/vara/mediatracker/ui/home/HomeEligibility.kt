@@ -247,6 +247,14 @@ object HomeEligibility {
         return ordered.asSequence().mapNotNull { epInstant(it, item) }.minOrNull()
     }
 
+    /**
+     * A single episode's resolved instant.
+     *
+     * Public because the release radar and the Home rails both need to ask "when does *this*
+     * episode land" without re-implementing the streaming rules.
+     */
+    fun episodeInstant(item: MediaItemEntity, episode: EpisodeEntity): Date? = epInstant(episode, item)
+
     /** Coming Soon evaluated against a resolved [instant]. */
     fun isComingSoonAt(item: MediaItemEntity, instant: Date?, now: Date): Boolean {
         if (item.isSoftDeleted) return false

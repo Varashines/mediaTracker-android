@@ -184,7 +184,7 @@ private fun SmartTab(
                             SmartCard(
                                 tile = tile,
                                 modifier = Modifier.weight(1f),
-                                onClick = { onOpenList(tile.label, tile.items, ListSubtitle.Progress) }
+                                onClick = { onOpenList(tile.label, tile.items, ListSubtitle.Episode) }
                             )
                         }
                         if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -275,7 +275,7 @@ private fun FacetGroup(
     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
         M3ESectionHeader(title)
         facets.forEach { facet ->
-            FacetLine(facet) { onOpenList(facet.name, facet.items, ListSubtitle.Progress) }
+            FacetLine(facet) { onOpenList(facet.name, facet.items, ListSubtitle.Episode) }
         }
     }
 }
@@ -349,7 +349,7 @@ private fun GenreGrid(
                     GenreTile(
                         facet = facet,
                         modifier = Modifier.weight(1f),
-                        onClick = { onOpenList(facet.name, facet.items, ListSubtitle.Progress) }
+                        onClick = { onOpenList(facet.name, facet.items, ListSubtitle.Episode) }
                     )
                 }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -404,7 +404,7 @@ private fun LanguageChips(
                 Surface(
                     shape = M3EShape.chip(),
                     color = M3EColor.card(),
-                    onClick = { onOpenList(languageName(facet.name), facet.items, ListSubtitle.Progress) }
+                    onClick = { onOpenList(languageName(facet.name), facet.items, ListSubtitle.Episode) }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = M3ESpacing.inlineGap, vertical = M3ESpacing.tightGap),

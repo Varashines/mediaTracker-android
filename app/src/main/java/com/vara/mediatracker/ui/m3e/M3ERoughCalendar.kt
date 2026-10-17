@@ -88,25 +88,46 @@ fun M3ERoughCalendar(
     val fullLabel = remember { DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.US) }
 
     // Pure: no theme reads inside `remember`.
+    //
+    // Every episode still to air, not just the next one. Taking only the first unwatched meant a
+    // show appeared once — and when that episode was old, marking it watched moved the show to the
+    // next old episode or dropped it off the month entirely, so the radar never seemed to update.
+    // A release calendar is a list of dates, so each date gets its own entry.
     val events = remember(core, today) {
+        val now = java.util.Date()
         buildList {
             for (item in core.items) {
-                val key = if (item.type.contains("TV", ignoreCase = true)) {
-                    MediaIds.tvShowKey(item.id)
-                } else {
-                    null
-                }
-                val episodes = key?.let { core.episodesByShow[it] }.orEmpty()
-                val instant = HomeEligibility.nextAiringInstant(item, episodes) ?: continue
-                val zoned = instant.toInstant().atZone(zone)
-                add(
-                    CalendarEvent(
-                        item = item,
-                        day = zoned.toLocalDate(),
-                        time = zoned.toLocalTime().takeIf { it.hour != 0 || it.minute != 0 },
-                        episode = HomeEligibility.nextAiringEpisode(episodes, today.toString())
+                val isTv = item.type.contains("TV", ignoreCase = true)
+                if (!isTv) {
+                    val instant = HomeEligibility.nextAiringInstant(item, emptyList()) ?: continue
+                    if (!instant.after(now)) continue
+                    val zoned = instant.toInstant().atZone(zone)
+                    add(
+                        CalendarEvent(
+                            item = item,
+                            day = zoned.toLocalDate(),
+                            time = zoned.toLocalTime().takeIf { it.hour != 0 || it.minute != 0 },
+                            episode = null
+                        )
                     )
-                )
+                    continue
+                }
+                val key = MediaIds.tvShowKey(item.id)
+                val episodes = core.episodesByShow[key].orEmpty()
+                for (episode in episodes) {
+                    if (episode.isWatched) continue
+                    val instant = HomeEligibility.episodeInstant(item, episode) ?: continue
+                    if (!instant.after(now)) continue
+                    val zoned = instant.toInstant().atZone(zone)
+                    add(
+                        CalendarEvent(
+                            item = item,
+                            day = zoned.toLocalDate(),
+                            time = zoned.toLocalTime().takeIf { it.hour != 0 || it.minute != 0 },
+                            episode = episode
+                        )
+                    )
+                }
             }
         }
     }

@@ -68,6 +68,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.common.HomeData
@@ -140,7 +141,6 @@ fun M3ERoughScreen(
             shownList != null -> M3ERoughList(
                 list = shownList,
                 core = core,
-                home = home,
                 onOpen = { open = it },
                 onBack = { list = null }
             )
@@ -247,18 +247,18 @@ private fun HomeSection(
                 M3ESectionHeader(
                     "Continue watching",
                     trailing = {
-                        TextButton(onClick = { onSeeAll("Continue watching", inProgress, ListSubtitle.Progress) }) {
+                        TextButton(onClick = { onSeeAll("Continue watching", inProgress, ListSubtitle.Episode) }) {
                             Text("See all")
                         }
                     }
                 )
             }
-            items(inProgress.take(6), key = { it.id }) { item ->
+            items(inProgress.take(RAIL_SIZE), key = { it.id }) { item ->
                 TitleRow(
                     item = item,
                     trailing = Icons.Default.PlayArrow,
                     onClick = { onOpen(item) },
-                    subtitle = progressSubtitle(item, home)
+                    subtitle = nextEpisodeSubtitle(item, core)
                 )
             }
         }
@@ -274,12 +274,12 @@ private fun HomeSection(
                     }
                 )
             }
-            items(comingSoon, key = { it.id }) { item ->
+            items(comingSoon.take(RAIL_SIZE), key = { it.id }) { item ->
                 TitleRow(
                     item = item,
                     trailing = Icons.Default.Schedule,
                     onClick = { onOpen(item) },
-                    subtitle = arrivalLabel(item, core)
+                    subtitle = comingSoonSubtitle(item, core)
                 )
             }
         }
@@ -399,7 +399,7 @@ private fun FinishedSection(library: List<MediaItemEntity>, onOpen: (MediaItemEn
 }
 
 /** Which supporting line an opened list shows. Shared with the Hub, which pushes lists too. */
-internal enum class ListSubtitle { Progress, Arrival, None }
+internal enum class ListSubtitle { Episode, Arrival, None }
 
 /** A list pushed by a rail's "See all". The subtitle is derived on render, so it stays current. */
 private data class SectionList(
@@ -419,7 +419,6 @@ private data class SectionList(
 private fun M3ERoughList(
     list: SectionList,
     core: LibraryCore,
-    home: HomeData,
     onOpen: (MediaItemEntity) -> Unit,
     onBack: () -> Unit
 ) {
@@ -446,7 +445,7 @@ private fun M3ERoughList(
         }
         items(list.items, key = { it.id }) { item ->
             val subtitle = when (list.subtitle) {
-                ListSubtitle.Progress -> progressSubtitle(item, home)
+                ListSubtitle.Episode -> nextEpisodeSubtitle(item, core)
                 ListSubtitle.Arrival -> arrivalLabel(item, core)
                 ListSubtitle.None -> null
             }
@@ -683,13 +682,45 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
 private fun releaseDay(item: MediaItemEntity): String? =
     item.nextAiringInstant?.take(10) ?: item.releaseDate?.take(10)
 
-/** "12 of 45 watched · next 2026-11-02", or null when the title has no episode progress. */
-private fun progressSubtitle(item: MediaItemEntity, home: HomeData): String? {
-    val progress = home.showProgressMap[item.id] ?: return null
-    if (progress.totalEpisodes == 0) return null
-    val watched = "${progress.watchedEpisodes} of ${progress.totalEpisodes} watched"
-    val next = progress.nextAiringDate
-    return if (next.isNullOrBlank()) watched else "$watched · next $next"
+/** How many titles a rail shows before "See all" takes over. */
+private const val RAIL_SIZE = 5
+
+/**
+ * The next episode of a show: the first unwatched one, or — for a rail about what is coming — the
+ * first one still to air. Both the Continue watching and Coming soon rails show this rather than a
+ * watched count, because the episode is the thing you would actually do next.
+ */
+private fun nextEpisodeFor(
+    item: MediaItemEntity,
+    core: LibraryCore,
+    futureOnly: Boolean
+): EpisodeEntity? {
+    if (!item.type.contains("TV", ignoreCase = true)) return null
+    val episodes = core.episodesByShow[MediaIds.tvShowKey(item.id)].orEmpty()
+        .sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+    if (!futureOnly) return episodes.firstOrNull { !it.isWatched }
+    val now = java.util.Date()
+    return episodes.firstOrNull {
+        !it.isWatched && HomeEligibility.episodeInstant(item, it)?.after(now) == true
+    }
+}
+
+private fun episodeCode(episode: EpisodeEntity): String =
+    "S${episode.seasonNumber} E${episode.episodeNumber}"
+
+/** "S2 E5", or null for a film or a show with nothing left to watch. */
+private fun nextEpisodeSubtitle(item: MediaItemEntity, core: LibraryCore): String? =
+    nextEpisodeFor(item, core, futureOnly = false)?.let { episodeCode(it) }
+
+/** "S2 E5 · Arrives today · 21:00" — the episode, and when it lands. */
+private fun comingSoonSubtitle(item: MediaItemEntity, core: LibraryCore): String? {
+    val code = nextEpisodeFor(item, core, futureOnly = true)?.let { episodeCode(it) }
+    val when_ = arrivalLabel(item, core)
+    return when {
+        code != null && when_ != null -> "$code · $when_"
+        code != null -> code
+        else -> when_
+    }
 }
 
 /**
