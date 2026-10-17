@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -100,7 +101,8 @@ fun M3ERoughScreen(container: AppContainer) {
                     onSettings = { settings = true }
                 )
                 1 -> M3ERoughHub(container = container, library = library)
-                2 -> LibrarySection(library = library, onOpen = { open = it })
+                2 -> M3ERoughCalendar(library = library)
+                3 -> LibrarySection(library = library, onOpen = { open = it })
                 else -> FinishedSection(library = library)
             }
         }
@@ -405,6 +407,7 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
     val items: List<Pair<String, ImageVector>> = listOf(
         "Home" to Icons.Default.Home,
         "Hub" to Icons.Default.AutoAwesome,
+        "Calendar" to Icons.Default.Schedule,
         "Library" to Icons.Default.VideoLibrary,
         "Finished" to Icons.Default.Check
     )
