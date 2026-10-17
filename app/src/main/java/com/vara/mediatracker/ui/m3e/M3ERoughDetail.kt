@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
@@ -21,13 +22,20 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,22 +44,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.theme.AppTextStyles
 
 /**
- * The detail screen, in the [M3E] vocabulary.
+ * The detail screen, in the [M3E] vocabulary — now interactive.
  *
- * The shape Material's tactics point at for a detail view: one editorial title, one emphasised
- * action that is the largest thing on the screen (the size tactic), then calm sections — an
- * overview, and a tonal card of label/value rows. The poster is the exception that needs no
- * component: a rounded image on a tonal plate.
- *
- * Actions are inert on purpose. This is a sketch of the language; wire them through the existing
- * tracking logic when the screen replaces the real one.
+ * The controls are real Material components and they respond, but every change lives in this
+ * screen's own state: nothing is written to the library or synced. That keeps the sketch truthful
+ * — it shows the interaction, not a half-wired migration. When this replaces the real screen, the
+ * same controls call the tracking logic that already exists.
  */
 @Composable
-fun M3ERoughDetail(item: MediaItemEntity, onBack: () -> Unit) {
+fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () -> Unit) {
+    val episodes by produceState(initialValue = emptyList<EpisodeEntity>(), item.id) {
+        // Episodes key their id as `tv_1399_s1_e1`, so the show's own id is the prefix.
+        value = runCatching {
+            container.database.mediaDao().getAllEpisodesList().filter { it.uniqueId.startsWith(item.id) }
+        }.getOrDefault(emptyList())
+    }
+
+    // UI-local interaction state.
+    var status by remember(item.id) { mutableStateOf(item.state) }
+    var taste by remember(item.id) { mutableStateOf(item.taste) }
+    val watched = remember(item.id) { mutableStateMapOf<String, Boolean>() }
+    val seasons = remember(episodes) { episodes.map { it.seasonNumber }.distinct().sorted() }
+    var season by remember(seasons) { mutableStateOf(seasons.firstOrNull() ?: 1) }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -76,7 +97,52 @@ fun M3ERoughDetail(item: MediaItemEntity, onBack: () -> Unit) {
 
         item { Title(item) }
 
-        item { PrimaryAction(item) }
+        item { PrimaryAction(finished = status.equals("Completed", true)) { status = it } }
+
+        item {
+            Column {
+                M3ESectionHeader("Status")
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                ChoiceRow(
+                    options = listOf("Wishlist", "Active", "On Hold", "Dropped", "Completed"),
+                    selected = status,
+                    onSelect = { status = it }
+                )
+                Spacer(Modifier.height(M3ESpacing.cardGap))
+                M3ESectionHeader("Taste")
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                ChoiceRow(
+                    options = listOf("None", "Dislike", "Like", "Love"),
+                    selected = taste,
+                    onSelect = { taste = it }
+                )
+            }
+        }
+
+        if (episodes.isNotEmpty()) {
+            item {
+                Column {
+                    M3ESectionHeader("Seasons")
+                    Spacer(Modifier.height(M3ESpacing.tightGap))
+                    ChoiceRow(
+                        options = seasons.map { "Season $it" },
+                        selected = "Season $season",
+                        onSelect = { label -> season = label.substringAfter("Season ").toIntOrNull() ?: season }
+                    )
+                }
+            }
+            items(
+                episodes.filter { it.seasonNumber == season }
+                    .sortedBy { it.episodeNumber },
+                key = { it.uniqueId }
+            ) { episode ->
+                EpisodeRow(
+                    episode = episode,
+                    watched = watched[episode.uniqueId] ?: episode.isWatched,
+                    onToggle = { watched[episode.uniqueId] = it }
+                )
+            }
+        }
 
         if (item.overview.isNotBlank()) {
             item {
@@ -98,12 +164,11 @@ fun M3ERoughDetail(item: MediaItemEntity, onBack: () -> Unit) {
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(vertical = M3ESpacing.tightGap)) {
-                        DetailRow("Status", item.state)
-                        DetailRow("Taste", item.taste)
+                        DetailRow("Progress", progressLabel(episodes, watched))
                         if (!item.genres.isNullOrBlank()) DetailRow("Genres", item.genres)
                         if (!item.network.isNullOrBlank()) DetailRow("Network", item.network)
                         if (!item.releaseDate.isNullOrBlank()) DetailRow("Released", item.releaseDate.take(10))
-                        if (!item.dateAdded.isNullOrBlank()) DetailRow("Added", item.dateAdded.take(10), divider = false)
+                        DetailRow("Added", item.dateAdded?.take(10) ?: "—", divider = false)
                     }
                 }
             }
@@ -111,6 +176,16 @@ fun M3ERoughDetail(item: MediaItemEntity, onBack: () -> Unit) {
 
         item { Spacer(Modifier.height(48.dp)) }
     }
+}
+
+/** How many of the known episodes count as watched, counting the local toggles. */
+private fun progressLabel(
+    episodes: List<EpisodeEntity>,
+    watched: Map<String, Boolean>
+): String {
+    if (episodes.isEmpty()) return "—"
+    val seen = episodes.count { watched[it.uniqueId] ?: it.isWatched }
+    return "$seen / ${episodes.size} episodes"
 }
 
 /** Poster, eyebrow and the editorial title — the display heading this app uses everywhere. */
@@ -151,32 +226,70 @@ private fun Title(item: MediaItemEntity) {
 
 /** One emphasised action, deliberately the largest element on the screen. */
 @Composable
-private fun PrimaryAction(item: MediaItemEntity) {
-    val finished = item.state.equals("Completed", true)
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap)
+private fun PrimaryAction(finished: Boolean, onToggle: (String) -> Unit) {
+    Button(
+        onClick = { onToggle(if (finished) "Active" else "Completed") },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(M3ESpacing.rowMinHeight)
     ) {
-        Button(
-            onClick = {},
-            modifier = Modifier.weight(1f).height(M3ESpacing.rowMinHeight)
-        ) {
-            Icon(
-                imageVector = if (finished) Icons.Default.Check else Icons.Default.Bookmark,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(Modifier.width(M3ESpacing.tightGap))
-            Text(
-                text = if (finished) "Watched" else "Mark watched",
-                style = M3EType.action()
+        Icon(
+            imageVector = if (finished) Icons.Default.Check else Icons.Default.Bookmark,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(M3ESpacing.tightGap))
+        Text(
+            text = if (finished) "Watched" else "Mark watched",
+            style = M3EType.action()
+        )
+    }
+}
+
+/** A row of chips wrapping to as many lines as it needs. */
+@Composable
+private fun ChoiceRow(options: List<String>, selected: String, onSelect: (String) -> Unit) {
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+    ) {
+        options.forEach { option ->
+            FilterChip(
+                selected = option.equals(selected, ignoreCase = true),
+                onClick = { onSelect(option) },
+                label = { Text(option, style = M3EType.action()) },
+                shape = M3EShape.chip()
             )
         }
-        FilledTonalButton(
-            onClick = {},
-            modifier = Modifier.height(M3ESpacing.rowMinHeight)
+    }
+}
+
+/** One episode: code and name, with a Material checkbox trailing. */
+@Composable
+private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Boolean) -> Unit) {
+    M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Save", style = M3EType.action())
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "E${episode.episodeNumber} · ${episode.name.ifBlank { "Episode ${episode.episodeNumber}" }}",
+                    style = M3EType.rowTitle(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = M3EColor.text(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (watched) "Watched" else episode.airDate?.take(10) ?: "Not watched",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Checkbox(checked = watched, onCheckedChange = onToggle)
         }
     }
 }

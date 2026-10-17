@@ -89,7 +89,7 @@ fun M3ERoughScreen(container: AppContainer) {
     ) {
         val opened = open
         when {
-            opened != null -> M3ERoughDetail(item = opened, onBack = { open = null })
+            opened != null -> M3ERoughDetail(item = opened, container = container, onBack = { open = null })
             searching -> M3ERoughSearch(library = library, onBack = { searching = false })
             settings -> M3ERoughSettings(onBack = { settings = false })
             else -> when (section) {
