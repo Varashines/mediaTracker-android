@@ -348,7 +348,26 @@ fun M3ERoughDetail(
                 !isTv && directors.isNotEmpty() -> "Directed by ${directors.joinToString(", ")}"
                 else -> null
             }
-            Title(live, byline)
+            // Title, byline, year and the two pills in one column beside the poster. The pills
+            // used to sit in a row of their own below the action, which pushed everything below
+            // them down the screen for no gain — they belong with the title, one under the other.
+            Title(live, byline) {
+                PickerPill(
+                    label = "Status",
+                    value = live.state,
+                    tint = statusTint(live.state),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { statusPickerOpen = true }
+                )
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                PickerPill(
+                    label = "Taste",
+                    value = live.taste,
+                    tint = tasteTint(live.taste),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { tastePickerOpen = true }
+                )
+            }
         }
 
         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -369,25 +388,6 @@ fun M3ERoughDetail(
                         icon = if (watched) Icons.Default.Check else Icons.Default.Bookmark,
                         enabled = true,
                         onClick = { toggleMovie() }
-                    )
-                }
-                // Two pills, each its own popup: they are two decisions, not one, and a pill
-                // that opens exactly what it names is quicker than a shared sheet you then have
-                // to read.
-                Row(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
-                    PickerPill(
-                        label = "Status",
-                        value = live.state,
-                        tint = statusTint(live.state),
-                        modifier = Modifier.weight(1f),
-                        onClick = { statusPickerOpen = true }
-                    )
-                    PickerPill(
-                        label = "Taste",
-                        value = live.taste,
-                        tint = tasteTint(live.taste),
-                        modifier = Modifier.weight(1f),
-                        onClick = { tastePickerOpen = true }
                     )
                 }
             }
@@ -663,8 +663,14 @@ private val TrackingStatuses = listOf(
 
 /** Poster, eyebrow and the editorial title — the display heading this app uses everywhere. */
 @Composable
-private fun Title(item: MediaItemEntity, byline: String? = null) {
-    Row(verticalAlignment = Alignment.Bottom) {
+private fun Title(
+    item: MediaItemEntity,
+    byline: String? = null,
+    below: @Composable (() -> Unit)? = null
+) {
+    // Top-aligned: with the pills under the year the column is taller than the poster, and bottom
+    // alignment would float the title down against nothing.
+    Row(verticalAlignment = Alignment.Top) {
         AsyncImage(
             model = item.posterUrl,
             contentDescription = item.title,
@@ -703,6 +709,10 @@ private fun Title(item: MediaItemEntity, byline: String? = null) {
                 style = M3EType.rowSupporting(),
                 color = M3EColor.textMuted()
             )
+            if (below != null) {
+                Spacer(Modifier.height(M3ESpacing.cardGap))
+                below()
+            }
         }
     }
 }
