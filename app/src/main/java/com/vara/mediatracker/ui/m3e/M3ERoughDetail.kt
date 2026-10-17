@@ -4,11 +4,14 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,6 +55,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -59,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.TrackingLogic
 import com.vara.mediatracker.data.WatchHistoryRecorder
@@ -352,21 +357,26 @@ fun M3ERoughDetail(
             // used to sit in a row of their own below the action, which pushed everything below
             // them down the screen for no gain — they belong with the title, one under the other.
             Title(live, byline) {
-                PickerPill(
-                    label = "Status",
-                    value = live.state,
-                    tint = statusTint(live.state),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { statusPickerOpen = true }
-                )
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                PickerPill(
-                    label = "Taste",
-                    value = live.taste,
-                    tint = tasteTint(live.taste),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { tastePickerOpen = true }
-                )
+                // One row, two controls. Status keeps its full pill — it is a value you read.
+                // Taste collapses to an emoji, which is a value you recognise, and that is what
+                // lets both fit the column the title is in rather than needing a row of their own.
+                Row(
+                    modifier = Modifier.height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+                ) {
+                    PickerPill(
+                        label = "Status",
+                        value = live.state,
+                        tint = statusTint(live.state),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        onClick = { statusPickerOpen = true }
+                    )
+                    TastePill(
+                        taste = live.taste,
+                        modifier = Modifier.fillMaxHeight(),
+                        onClick = { tastePickerOpen = true }
+                    )
+                }
             }
         }
 
@@ -600,8 +610,9 @@ private fun PickerPill(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = M3ESpacing.inlineGap, vertical = M3ESpacing.tightGap)
+                .fillMaxSize()
+                .padding(horizontal = M3ESpacing.inlineGap, vertical = M3ESpacing.tightGap),
+            verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = label,
@@ -627,6 +638,56 @@ private fun PickerPill(
             }
         }
     }
+}
+
+/**
+ * The taste as a single emoji.
+ *
+ * A reaction is recognised, not read — nobody needs the word "Like" next to a thumbs-up — and one
+ * glyph is what lets it sit beside a full status pill in the space the title already occupies.
+ * Nothing chosen shows the neutral face greyed back, so the control still reads as set to something
+ * rather than as broken.
+ */
+@Composable
+private fun TastePill(
+    taste: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val unset = taste.equals("None", ignoreCase = true)
+    val tint = tasteTint(taste)
+    Surface(
+        onClick = onClick,
+        shape = M3EShape.chip(),
+        color = if (unset) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            tint.copy(alpha = 0.18f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (unset) MaterialTheme.colorScheme.outlineVariant else tint.copy(alpha = 0.5f)
+        ),
+        modifier = modifier
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Text(
+                text = tasteEmoji(taste),
+                fontSize = 24.sp,
+                modifier = Modifier
+                    .padding(horizontal = M3ESpacing.cardGap)
+                    .alpha(if (unset) 0.4f else 1f)
+            )
+        }
+    }
+}
+
+/** The glyph for a reaction: the face for it, and a neutral one when there is none. */
+private fun tasteEmoji(taste: String): String = when {
+    taste.equals("Love", ignoreCase = true) -> "\uD83D\uDE0D"
+    taste.equals("Like", ignoreCase = true) -> "\uD83D\uDC4D"
+    taste.equals("Dislike", ignoreCase = true) -> "\uD83D\uDC4E"
+    else -> "\uD83D\uDE10"
 }
 
 /** One popup for one decision: a row of chips, applied as it is chosen. */
