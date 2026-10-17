@@ -19,6 +19,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -307,15 +311,20 @@ fun M3ERoughDetail(
         }
     }
 
-    LazyColumn(
+    // A grid for the whole screen, not a column with a grid inside it: Related is a grid of
+    // posters, and nesting one inside a column would need a fixed height. Everything that is not a
+    // poster spans every column, so the header and the sections read exactly as they did.
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
         modifier = Modifier
             .fillMaxSize()
             .background(M3EColor.page())
             .statusBarsPadding()
             .padding(horizontal = M3ESpacing.page),
+        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Spacer(Modifier.height(M3ESpacing.tightGap))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
@@ -333,7 +342,7 @@ fun M3ERoughDetail(
             }
         }
 
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             val byline = when {
                 isTv && creators.isNotEmpty() -> "Created by ${creators.joinToString(", ")}"
                 !isTv && directors.isNotEmpty() -> "Directed by ${directors.joinToString(", ")}"
@@ -342,7 +351,7 @@ fun M3ERoughDetail(
             Title(live, byline)
         }
 
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
                 if (isTv) {
                     PrimaryAction(
@@ -384,7 +393,7 @@ fun M3ERoughDetail(
             }
         }
 
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
                 verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
@@ -402,7 +411,7 @@ fun M3ERoughDetail(
 
         when (section) {
             DetailSection.Seasons -> {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     Column {
                         val allWatched =
                             seasonEpisodes.isNotEmpty() && seasonEpisodes.all { it.isWatched }
@@ -430,7 +439,7 @@ fun M3ERoughDetail(
                     }
                 }
                 if (seasonEpisodes.isEmpty()) {
-                    item {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
                         M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                             Text(
                                 text = "No episodes here yet.",
@@ -441,7 +450,11 @@ fun M3ERoughDetail(
                         }
                     }
                 } else {
-                    items(seasonEpisodes, key = { it.uniqueId }) { episode ->
+                    items(
+                        items = seasonEpisodes,
+                        key = { it.uniqueId },
+                        span = { GridItemSpan(maxLineSpan) }
+                    ) { episode ->
                         EpisodeRow(
                             episode = episode,
                             watched = episode.isWatched,
@@ -452,7 +465,7 @@ fun M3ERoughDetail(
             }
 
             DetailSection.Info, DetailSection.Overview -> {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
                         if (live.overview.isNotBlank()) {
                             M3ESectionHeader("Overview")
@@ -502,11 +515,11 @@ fun M3ERoughDetail(
             }
 
             DetailSection.Related -> {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     M3ESectionHeader("More like this")
                 }
                 if (related.isEmpty()) {
-                    item {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
                         M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                             Text(
                                 text = "Nothing to suggest yet.",
@@ -517,34 +530,21 @@ fun M3ERoughDetail(
                         }
                     }
                 } else {
-                    item {
-                        // Poster cards, as the Library shows titles. A suggestion is judged by its
-                        // artwork, and a row of text gives you nothing to recognise it by.
-                        Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                            related.chunked(3).forEach { row ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap)
-                                ) {
-                                    row.forEach { result ->
-                                        RelatedCard(
-                                            result = result,
-                                            modifier = Modifier.weight(1f),
-                                            onClick = { openRelated(result) }
-                                        )
-                                    }
-                                    // Keeps a short last row from stretching its cards.
-                                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                                }
-                            }
-                        }
+                    // Cells of the same grid the Library uses, rather than rows of three built by
+                    // hand — the layout is the grid's, so it cannot drift from the Library's.
+                    items(related, key = { "${it.media_type}_${it.id}" }) { result ->
+                        RelatedCard(
+                            result = result,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { openRelated(result) }
+                        )
                     }
                 }
             }
         }
 
         // Clears the floating navigation bar: at 48 the last row sat underneath it.
-        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
     }
 
     if (statusPickerOpen) {
