@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -49,9 +48,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,6 +63,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.ui.common.HomeData
+import com.vara.mediatracker.ui.common.LibraryCore
+import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.di.AppContainer
 
@@ -84,9 +87,14 @@ fun M3ERoughScreen(
     onThemePresetChanged: (Int) -> Unit = {},
     onThemeModeChanged: (Int) -> Unit = {}
 ) {
-    val library by produceState(initialValue = emptyList<MediaItemEntity>()) {
-        value = runCatching { container.database.mediaDao().getAllMediaList() }.getOrDefault(emptyList())
-    }
+    // The same activity-scoped holder the shipping shell collects: the library joined once per DB
+    // change off the UI thread, plus Home's own derivations. Querying Room here instead would mean
+    // a second build of the same data, and — because it was a one-shot read — a shell that never
+    // noticed anything the app wrote.
+    val libraryVm: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(container))
+    val core by libraryVm.core.collectAsState()
+    val home by libraryVm.home.collectAsState()
+    val library = core.items
     var section by rememberSaveable { mutableIntStateOf(0) }
     var open by remember { mutableStateOf<MediaItemEntity?>(null) }
     var searching by remember { mutableStateOf(false) }
@@ -126,7 +134,8 @@ fun M3ERoughScreen(
             else -> holder.SaveableStateProvider(section) {
                 when (section) {
                 0 -> HomeSection(
-                    library = library,
+                    core = core,
+                    home = home,
                     onOpen = { open = it },
                     onSearch = { searching = true },
                     onSettings = { settings = true }
@@ -157,30 +166,21 @@ fun M3ERoughScreen(
 
 @Composable
 private fun HomeSection(
-    library: List<MediaItemEntity>,
+    core: LibraryCore,
+    home: HomeData,
     onOpen: (MediaItemEntity) -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit
 ) {
-    val today = remember { java.time.LocalDate.now().toString() }
-    // A title that has not landed yet belongs in Coming soon, not in Continue watching — the two
-    // were the same list because both are simply "Active". The split is the title's own date.
-    val inProgress = remember(library, today) {
-        library.filter {
-            (it.state.equals("Active", true) || it.state.equals("Re-watching", true)) &&
-                !isUpcoming(it, today)
-        }.sortedByDescending { it.lastInteractionDate ?: "" }
+    // Rails come from the same derivations the shipping Home uses — HomeEligibility's eligibility
+    // rules decide Continue watching, next-airing instants decide Coming soon — rather than this
+    // sketch's own date comparisons. Which rail a title belongs in is decided there, not here.
+    val inProgress = home.resumeItems
+    val comingSoon = home.comingSoonItems
+    val recentlyAdded = home.recentlyAddedItems
+    val completed = remember(core.items) {
+        core.items.count { it.state.equals("Completed", true) }
     }
-    val comingSoon = remember(library, today) {
-        library.filter {
-            (it.state.equals("Active", true) || it.state.equals("Wishlist", true)) &&
-                isUpcoming(it, today)
-        }.sortedBy { releaseDay(it) ?: "" }.take(6)
-    }
-    val recentlyAdded = remember(library) {
-        library.sortedByDescending { it.dateAdded ?: it.lastInteractionDate ?: "" }.take(12)
-    }
-    val completed = remember(library) { library.count { it.state.equals("Completed", true) } }
 
     LazyColumn(
         modifier = Modifier
@@ -207,7 +207,7 @@ private fun HomeSection(
             )
         }
         item { EmphasisBanner(count = inProgress.size) }
-        item { MetricRow(library.size, inProgress.size, completed) }
+        item { MetricRow(core.items.size, inProgress.size, completed) }
 
         if (inProgress.isNotEmpty()) {
             item {
@@ -215,7 +215,12 @@ private fun HomeSection(
                 M3ESectionHeader("Continue watching", trailing = { TextButton(onClick = {}) { Text("See all") } })
             }
             items(inProgress.take(6), key = { it.id }) { item ->
-                TitleRow(item, trailing = Icons.Default.PlayArrow, onClick = { onOpen(item) })
+                TitleRow(
+                    item = item,
+                    trailing = Icons.Default.PlayArrow,
+                    onClick = { onOpen(item) },
+                    subtitle = progressSubtitle(item, home)
+                )
             }
         }
         if (comingSoon.isNotEmpty()) {
@@ -227,7 +232,7 @@ private fun HomeSection(
                 TitleRow(
                     item = item,
                     trailing = Icons.Default.Schedule,
-                    subtitle = releaseDay(item)?.let { "Arrives $it" }
+                    subtitle = comingSoonDay(item, home)?.let { "Arrives $it" }
                 )
             }
         }
@@ -523,8 +528,18 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
 private fun releaseDay(item: MediaItemEntity): String? =
     item.nextAiringInstant?.take(10) ?: item.releaseDate?.take(10)
 
-/** Whether a title is still ahead of the given day. */
-private fun isUpcoming(item: MediaItemEntity, today: String): Boolean {
-    val day = releaseDay(item) ?: return false
-    return day > today
+/** "12 of 45 watched · next 2026-11-02", or null when the title has no episode progress. */
+private fun progressSubtitle(item: MediaItemEntity, home: HomeData): String? {
+    val progress = home.showProgressMap[item.id] ?: return null
+    if (progress.totalEpisodes == 0) return null
+    val watched = "${progress.watchedEpisodes} of ${progress.totalEpisodes} watched"
+    val next = progress.nextAiringDate
+    return if (next.isNullOrBlank()) watched else "$watched · next $next"
 }
+
+/**
+ * The day a coming-soon title lands. The derived next airing wins over the stored one: it is
+ * computed from the unwatched episodes, so it cannot be the stale instant a sync left behind.
+ */
+private fun comingSoonDay(item: MediaItemEntity, home: HomeData): String? =
+    home.showProgressMap[item.id]?.nextAiringDate ?: releaseDay(item)
