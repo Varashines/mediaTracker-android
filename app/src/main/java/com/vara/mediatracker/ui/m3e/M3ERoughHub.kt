@@ -53,7 +53,12 @@ import com.vara.mediatracker.di.AppContainer
  * rows: for six tiles, a lazy grid buys nothing and costs a second set of scope types.
  */
 @Composable
-fun M3ERoughHub(container: AppContainer, library: List<MediaItemEntity>) {
+internal fun M3ERoughHub(
+    container: AppContainer,
+    library: List<MediaItemEntity>,
+    onOpen: (MediaItemEntity) -> Unit = {},
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit = { _, _, _ -> }
+) {
     var tab by remember { mutableIntStateOf(0) }
 
     Column(
@@ -85,8 +90,8 @@ fun M3ERoughHub(container: AppContainer, library: List<MediaItemEntity>) {
         }
 
         when (tab) {
-            0 -> SmartTab(library)
-            1 -> DiscoverTab(library)
+            0 -> SmartTab(library, onOpenList)
+            1 -> DiscoverTab(library, onOpenList)
             else -> M3ERoughCollections(container = container, library = library, showHeader = false)
         }
     }
@@ -96,55 +101,61 @@ fun M3ERoughHub(container: AppContainer, library: List<MediaItemEntity>) {
 
 private data class SmartTile(
     val label: String,
-    val count: Int,
     val icon: ImageVector,
-    val tint: Color
-)
+    val tint: Color,
+    val items: List<MediaItemEntity>
+) {
+    val count: Int get() = items.size
+}
 
 @Composable
-private fun SmartTab(library: List<MediaItemEntity>) {
+private fun SmartTab(
+    library: List<MediaItemEntity>,
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
+) {
     // The tints are read here, in a composable context: `M3EColor` reads the theme, so calling
     // it inside `remember`'s calculation is not allowed — the lambda is not composable.
     val accent = M3EColor.accent()
     val positive = M3EColor.positive()
     val warning = M3EColor.warning()
     val tiles = remember(library, accent, positive, warning) {
+        fun of(predicate: (MediaItemEntity) -> Boolean) = library.filter(predicate)
         listOf(
             SmartTile(
                 label = "Continue watching",
-                count = library.count { it.state.equals("Active", true) || it.state.equals("Re-watching", true) },
                 icon = Icons.Default.PlayArrow,
-                tint = accent
+                tint = accent,
+                items = of { it.state.equals("Active", true) || it.state.equals("Re-watching", true) }
             ),
             SmartTile(
                 label = "Loved",
-                count = library.count { it.taste.equals("Love", true) },
                 icon = Icons.Default.Favorite,
-                tint = positive
+                tint = positive,
+                items = of { it.taste.equals("Love", true) }
             ),
             SmartTile(
                 label = "Wishlist",
-                count = library.count { it.state.equals("Wishlist", true) },
                 icon = Icons.Default.Bookmark,
-                tint = accent
+                tint = accent,
+                items = of { it.state.equals("Wishlist", true) }
             ),
             SmartTile(
                 label = "Finished",
-                count = library.count { it.state.equals("Completed", true) },
                 icon = Icons.Default.Check,
-                tint = positive
+                tint = positive,
+                items = of { it.state.equals("Completed", true) }
             ),
             SmartTile(
                 label = "On hold",
-                count = library.count { it.state.equals("On Hold", true) },
                 icon = Icons.Default.PauseCircle,
-                tint = warning
+                tint = warning,
+                items = of { it.state.equals("On Hold", true) }
             ),
             SmartTile(
                 label = "Liked",
-                count = library.count { it.taste.equals("Like", true) },
                 icon = Icons.Default.Star,
-                tint = warning
+                tint = warning,
+                items = of { it.taste.equals("Like", true) }
             )
         )
     }
@@ -162,7 +173,13 @@ private fun SmartTab(library: List<MediaItemEntity>) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
                     ) {
-                        pair.forEach { tile -> SmartCard(tile, Modifier.weight(1f)) }
+                        pair.forEach { tile ->
+                            SmartCard(
+                                tile = tile,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onOpenList(tile.label, tile.items, ListSubtitle.Progress) }
+                            )
+                        }
                         if (pair.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
@@ -173,8 +190,12 @@ private fun SmartTab(library: List<MediaItemEntity>) {
 }
 
 @Composable
-private fun SmartCard(tile: SmartTile, modifier: Modifier = Modifier) {
-    M3ETonalCard(modifier = modifier) {
+private fun SmartCard(
+    tile: SmartTile,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
+    M3ETonalCard(modifier = modifier, onClick = onClick) {
         Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
             Icon(tile.icon, contentDescription = null, tint = tile.tint, modifier = Modifier.size(24.dp))
             Spacer(Modifier.height(M3ESpacing.rowGap))
@@ -192,10 +213,18 @@ private fun SmartCard(tile: SmartTile, modifier: Modifier = Modifier) {
 
 // MARK: - Discover
 
-private data class Facet(val name: String, val count: Int)
+private data class Facet(
+    val name: String,
+    val items: List<MediaItemEntity>
+) {
+    val count: Int get() = items.size
+}
 
 @Composable
-private fun DiscoverTab(library: List<MediaItemEntity>) {
+private fun DiscoverTab(
+    library: List<MediaItemEntity>,
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
+) {
     val genres = remember(library) { facets(library) { it.genres }.take(8) }
     val networks = remember(library) { facets(library) { it.network }.take(6) }
     val languages = remember(library) { facets(library) { it.language }.take(6) }
@@ -220,9 +249,9 @@ private fun DiscoverTab(library: List<MediaItemEntity>) {
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                if (genres.isNotEmpty()) GenreGrid(genres)
-                if (networks.isNotEmpty()) FacetGroup("Networks", networks)
-                if (languages.isNotEmpty()) LanguageChips(languages)
+                if (genres.isNotEmpty()) GenreGrid(genres, onOpenList)
+                if (networks.isNotEmpty()) FacetGroup("Networks", networks, onOpenList)
+                if (languages.isNotEmpty()) LanguageChips(languages, onOpenList)
             }
         }
         item { Spacer(Modifier.height(112.dp)) }
@@ -230,11 +259,17 @@ private fun DiscoverTab(library: List<MediaItemEntity>) {
 }
 
 @Composable
-private fun FacetGroup(title: String, facets: List<Facet>) {
+private fun FacetGroup(
+    title: String,
+    facets: List<Facet>,
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
+) {
     if (facets.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
         M3ESectionHeader(title)
-        facets.forEach { facet -> FacetLine(facet) }
+        facets.forEach { facet ->
+            FacetLine(facet) { onOpenList(facet.name, facet.items, ListSubtitle.Progress) }
+        }
     }
 }
 
@@ -243,22 +278,25 @@ private fun facets(
     library: List<MediaItemEntity>,
     selector: (MediaItemEntity) -> String?
 ): List<Facet> {
-    val counts = LinkedHashMap<String, Int>()
+    val buckets = LinkedHashMap<String, MutableList<MediaItemEntity>>()
     for (item in library) {
         val raw = selector(item) ?: continue
         for (part in raw.split(",")) {
             val name = part.trim()
-            if (name.isNotEmpty()) counts[name] = (counts[name] ?: 0) + 1
+            if (name.isNotEmpty()) buckets.getOrPut(name) { mutableListOf() }.add(item)
         }
     }
-    return counts.entries
-        .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+    return buckets.entries
+        .sortedWith(
+            compareByDescending<Map.Entry<String, MutableList<MediaItemEntity>>> { it.value.size }
+                .thenBy { it.key }
+        )
         .map { Facet(it.key, it.value) }
 }
 
 @Composable
-private fun FacetLine(facet: Facet) {
-    M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+private fun FacetLine(facet: Facet, onClick: () -> Unit) {
+    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
             verticalAlignment = Alignment.CenterVertically
@@ -289,7 +327,10 @@ private fun FacetLine(facet: Facet) {
  * number and the genre is the label under it, the same shape the Smart tiles use.
  */
 @Composable
-private fun GenreGrid(facets: List<Facet>) {
+private fun GenreGrid(
+    facets: List<Facet>,
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
         M3ESectionHeader("Genres")
         facets.chunked(2).forEach { pair ->
@@ -297,7 +338,13 @@ private fun GenreGrid(facets: List<Facet>) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
             ) {
-                pair.forEach { facet -> GenreTile(facet, Modifier.weight(1f)) }
+                pair.forEach { facet ->
+                    GenreTile(
+                        facet = facet,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onOpenList(facet.name, facet.items, ListSubtitle.Progress) }
+                    )
+                }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
@@ -305,8 +352,12 @@ private fun GenreGrid(facets: List<Facet>) {
 }
 
 @Composable
-private fun GenreTile(facet: Facet, modifier: Modifier = Modifier) {
-    M3ETonalCard(modifier = modifier) {
+private fun GenreTile(
+    facet: Facet,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
+    M3ETonalCard(modifier = modifier, onClick = onClick) {
         Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
             Text(
                 text = "${facet.count}",
@@ -332,7 +383,10 @@ private fun GenreTile(facet: Facet, modifier: Modifier = Modifier) {
  * because a code is a database value, not something to put in front of a person.
  */
 @Composable
-private fun LanguageChips(facets: List<Facet>) {
+private fun LanguageChips(
+    facets: List<Facet>,
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
         M3ESectionHeader("Languages")
         FlowRow(
@@ -342,7 +396,8 @@ private fun LanguageChips(facets: List<Facet>) {
             facets.forEach { facet ->
                 Surface(
                     shape = M3EShape.chip(),
-                    color = M3EColor.card()
+                    color = M3EColor.card(),
+                    onClick = { onOpenList(languageName(facet.name), facet.items, ListSubtitle.Progress) }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = M3ESpacing.inlineGap, vertical = M3ESpacing.tightGap),

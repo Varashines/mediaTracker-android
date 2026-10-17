@@ -63,7 +63,11 @@ import java.util.Locale
  * this is here to judge the layout, not the timekeeping.
  */
 @Composable
-fun M3ERoughCalendar(container: AppContainer, library: List<MediaItemEntity>) {
+fun M3ERoughCalendar(
+    container: AppContainer,
+    library: List<MediaItemEntity>,
+    onOpen: (MediaItemEntity) -> Unit = {}
+) {
     // Reading the app clock is what recomposes this as it ticks, so `today` re-derives rather
     // than being fixed at first composition. Keyed to the minute: no need to rebuild the grid
     // sixty times a minute to notice a date change once.
@@ -191,7 +195,11 @@ fun M3ERoughCalendar(container: AppContainer, library: List<MediaItemEntity>) {
                 } else {
                     val day = selectedDay.toString()
                     releases.forEach { item ->
-                        ReleaseRow(item, episodeByShowAndDay["${item.id}|$day"])
+                        ReleaseRow(
+                            item = item,
+                            episode = episodeByShowAndDay["${item.id}|$day"],
+                            onClick = { onOpen(item) }
+                        )
                     }
                 }
             }
@@ -299,8 +307,12 @@ private fun DayCell(
 
 /** One release on the selected day. */
 @Composable
-private fun ReleaseRow(item: MediaItemEntity, episode: EpisodeEntity?) {
-    M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+private fun ReleaseRow(
+    item: MediaItemEntity,
+    episode: EpisodeEntity?,
+    onClick: (() -> Unit)? = null
+) {
+    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
             verticalAlignment = Alignment.CenterVertically

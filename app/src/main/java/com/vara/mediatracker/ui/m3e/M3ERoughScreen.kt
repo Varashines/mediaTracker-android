@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
@@ -97,6 +98,7 @@ fun M3ERoughScreen(
     val library = core.items
     var section by rememberSaveable { mutableIntStateOf(0) }
     var open by remember { mutableStateOf<MediaItemEntity?>(null) }
+    var list by remember { mutableStateOf<SectionList?>(null) }
     var searching by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
     val haptics = rememberHaptics()
@@ -104,9 +106,10 @@ fun M3ERoughScreen(
     // System back closes the topmost overlay before it leaves the app. The real shell routes this
     // through its overlay dispatcher; the sketch does the same job directly, and the habit of
     // handling it is what matters when this replaces the real one.
-    BackHandler(enabled = open != null || searching || settings) {
+    BackHandler(enabled = open != null || list != null || searching || settings) {
         when {
             open != null -> open = null
+            list != null -> list = null
             searching -> searching = false
             else -> settings = false
         }
@@ -122,8 +125,15 @@ fun M3ERoughScreen(
         // thing feel like a demo.
         val holder = rememberSaveableStateHolder()
         val opened = open
+        val shownList = list
         when {
             opened != null -> M3ERoughDetail(item = opened, container = container, onBack = { open = null })
+            shownList != null -> M3ERoughList(
+                list = shownList,
+                home = home,
+                onOpen = { open = it },
+                onBack = { list = null }
+            )
             searching -> M3ERoughSearch(library = library, onBack = { searching = false })
             settings -> M3ERoughSettings(
                     container = container,
@@ -137,13 +147,23 @@ fun M3ERoughScreen(
                     core = core,
                     home = home,
                     onOpen = { open = it },
+                    onSeeAll = { title, items, kind -> list = SectionList(title, items, kind) },
                     onSearch = { searching = true },
                     onSettings = { settings = true }
                 )
-                1 -> M3ERoughHub(container = container, library = library)
-                2 -> M3ERoughCalendar(container = container, library = library)
+                1 -> M3ERoughHub(
+                    container = container,
+                    library = library,
+                    onOpen = { open = it },
+                    onOpenList = { title, items, kind -> list = SectionList(title, items, kind) }
+                )
+                2 -> M3ERoughCalendar(
+                    container = container,
+                    library = library,
+                    onOpen = { open = it }
+                )
                 3 -> LibrarySection(library = library, onOpen = { open = it })
-                else -> FinishedSection(library = library)
+                else -> FinishedSection(library = library, onOpen = { open = it })
                 }
             }
         }
@@ -169,6 +189,7 @@ private fun HomeSection(
     core: LibraryCore,
     home: HomeData,
     onOpen: (MediaItemEntity) -> Unit,
+    onSeeAll: (String, List<MediaItemEntity>, ListSubtitle) -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit
 ) {
@@ -212,7 +233,14 @@ private fun HomeSection(
         if (inProgress.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(M3ESpacing.tightGap))
-                M3ESectionHeader("Continue watching", trailing = { TextButton(onClick = {}) { Text("See all") } })
+                M3ESectionHeader(
+                    "Continue watching",
+                    trailing = {
+                        TextButton(onClick = { onSeeAll("Continue watching", inProgress, ListSubtitle.Progress) }) {
+                            Text("See all")
+                        }
+                    }
+                )
             }
             items(inProgress.take(6), key = { it.id }) { item ->
                 TitleRow(
@@ -226,12 +254,20 @@ private fun HomeSection(
         if (comingSoon.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(M3ESpacing.tightGap))
-                M3ESectionHeader("Coming soon", trailing = { TextButton(onClick = {}) { Text("See all") } })
+                M3ESectionHeader(
+                    "Coming soon",
+                    trailing = {
+                        TextButton(onClick = { onSeeAll("Coming soon", comingSoon, ListSubtitle.Arrival) }) {
+                            Text("See all")
+                        }
+                    }
+                )
             }
             items(comingSoon, key = { it.id }) { item ->
                 TitleRow(
                     item = item,
                     trailing = Icons.Default.Schedule,
+                    onClick = { onOpen(item) },
                     subtitle = comingSoonDay(item, home)?.let { "Arrives $it" }
                 )
             }
@@ -239,7 +275,14 @@ private fun HomeSection(
         if (recentlyAdded.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(M3ESpacing.tightGap))
-                M3ESectionHeader("Recently added", trailing = { TextButton(onClick = {}) { Text("See all") } })
+                M3ESectionHeader(
+                    "Recently added",
+                    trailing = {
+                        TextButton(onClick = { onSeeAll("Recently added", recentlyAdded, ListSubtitle.None) }) {
+                            Text("See all")
+                        }
+                    }
+                )
             }
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
@@ -289,7 +332,7 @@ private fun LibrarySection(library: List<MediaItemEntity>, onOpen: (MediaItemEnt
 }
 
 @Composable
-private fun FinishedSection(library: List<MediaItemEntity>) {
+private fun FinishedSection(library: List<MediaItemEntity>, onOpen: (MediaItemEntity) -> Unit) {
     val finished = remember(library) {
         library.filter { it.state.equals("Completed", true) }
             .sortedByDescending { it.lastStateChangeDate ?: it.lastInteractionDate ?: "" }
@@ -318,9 +361,71 @@ private fun FinishedSection(library: List<MediaItemEntity>) {
             }
         }
         items(finished, key = { it.id }) { item ->
-            TitleRow(item, trailing = Icons.Default.Check)
+            TitleRow(item, trailing = Icons.Default.Check, onClick = { onOpen(item) })
         }
         item { Spacer(Modifier.height(112.dp)) }
+    }
+}
+
+/** Which supporting line an opened list shows. Shared with the Hub, which pushes lists too. */
+internal enum class ListSubtitle { Progress, Arrival, None }
+
+/** A list pushed by a rail's "See all". The subtitle is derived on render, so it stays current. */
+private data class SectionList(
+    val title: String,
+    val items: List<MediaItemEntity>,
+    val subtitle: ListSubtitle
+)
+
+/**
+ * A "See all" list: the titles behind a rail, as a screen.
+ *
+ * A rail is a top-N view of a list that is usually longer, so "See all" pushes the whole thing
+ * rather than growing the rail on Home. The supporting line is whatever that rail was showing —
+ * progress for one, an arrival day for another — so the list reads as a continuation of it.
+ */
+@Composable
+private fun M3ERoughList(
+    list: SectionList,
+    home: HomeData,
+    onOpen: (MediaItemEntity) -> Unit,
+    onBack: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(M3EColor.page())
+            .statusBarsPadding()
+            .padding(horizontal = M3ESpacing.page),
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+    ) {
+        item {
+            Spacer(Modifier.height(M3ESpacing.tightGap))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = M3EColor.text()
+                    )
+                }
+            }
+            M3EScreenHeader(eyebrow = "${list.items.size} titles", title = list.title)
+        }
+        items(list.items, key = { it.id }) { item ->
+            val subtitle = when (list.subtitle) {
+                ListSubtitle.Progress -> progressSubtitle(item, home)
+                ListSubtitle.Arrival -> comingSoonDay(item, home)?.let { "Arrives $it" }
+                ListSubtitle.None -> null
+            }
+            TitleRow(
+                item = item,
+                trailing = Icons.Default.PlayArrow,
+                onClick = { onOpen(item) },
+                subtitle = subtitle
+            )
+        }
+        item { Spacer(Modifier.height(48.dp)) }
     }
 }
 
