@@ -2,6 +2,7 @@ package com.vara.mediatracker.ui.m3e
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -297,10 +299,13 @@ private fun WeekdayHeader() {
 /**
  * One day.
  *
- * Three states, told apart by colour and fill rather than by text: a day carrying releases is
- * tinted, the selected day is filled with the emphasis tone, and today is ringed so it is findable
- * in a month that is not the current one. Today and selected are deliberately different treatments
- * — "what is today" and "where am I looking" are different questions.
+ * Three states, told apart by shape rather than by text: a day carrying releases is tinted by how
+ * much lands on it, today carries a dot, and the selected day carries an inset ring.
+ *
+ * The ring is on-surface, not accent, and the selection is no longer a solid fill. Now that a busy
+ * day is itself filled with the accent, a solid accent cell could not be told from a heavy release
+ * day — and an accent ring over an accent fill would vanish. Shape and the on-surface colour keep
+ * "where am I looking" legible whatever the day's weight.
  */
 @Composable
 private fun DayCell(
@@ -327,15 +332,13 @@ private fun DayCell(
     val baseOpacity = if (onDark) 0.20f else 0.16f
     val maxExtra = if (onDark) 0.65f else 0.70f
     val fill = when {
-        isSelected -> MaterialTheme.colorScheme.primary
         hasReleases -> M3EColor.accent().copy(alpha = baseOpacity + intensity * maxExtra)
         else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
     val textColor = when {
-        isSelected -> MaterialTheme.colorScheme.onPrimary
         // Past this the fill is strong enough that the accent label stops reading against it.
         intensity > 0.4f -> Color.White
-        hasReleases -> M3EColor.accent()
+        hasReleases || isSelected -> M3EColor.accent()
         else -> M3EColor.textMuted()
     }
 
@@ -345,11 +348,6 @@ private fun DayCell(
             shape = M3EShape.chip(),
             color = fill,
             contentColor = textColor,
-            border = if (isToday && !isSelected) {
-                BorderStroke(1.dp, M3EColor.accent())
-            } else {
-                null
-            },
             modifier = Modifier.fillMaxSize()
         ) {
             Column(
@@ -363,7 +361,25 @@ private fun DayCell(
                     fontWeight = if (isSelected || isToday || hasReleases) FontWeight.SemiBold else FontWeight.Normal,
                     color = textColor
                 )
+                if (isToday) {
+                    Spacer(Modifier.height(3.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(4.dp)
+                            .clip(CircleShape)
+                            .background(if (intensity > 0.4f) Color.White else M3EColor.accent())
+                    )
+                }
             }
+        }
+        if (isSelected) {
+            // Inset so it reads as a ring around the day rather than as the cell's own edge.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(4.dp)
+                    .border(2.dp, M3EColor.text(), M3EShape.chip())
+            )
         }
     }
 }
