@@ -199,7 +199,11 @@ fun M3ERoughDetail(
         episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
     }
     val seasons = remember(ordered) { ordered.map { it.seasonNumber }.distinct().sorted() }
-    val currentSeason = season ?: seasons.firstOrNull() ?: 1
+    // The Mac's rule for which season to open on, so both land on the same one.
+    val openingSeason = remember(ordered) { openingSeasonFor(ordered) }
+    // Falls back if the chosen season has no episodes at all, which can happen when a show is
+    // re-fetched underneath it.
+    val currentSeason = season?.takeIf { chosen -> seasons.contains(chosen) } ?: openingSeason
     val seasonEpisodes = remember(ordered, currentSeason) {
         ordered.filter { it.seasonNumber == currentSeason }
     }
@@ -904,6 +908,26 @@ private fun indianDate(iso: String?): String? {
     val parts = raw.split("-")
     if (parts.size != 3) return raw
     return "${parts[2]}-${parts[1]}-${parts[0]}"
+}
+
+/**
+ * The season to open on, the Mac's rule exactly: the first season still holding an unwatched
+ * episode; if every season is finished, the last one. Specials only win when there is nothing else,
+ * because a show with real seasons is never opened on season 0.
+ *
+ * The two branches are one rule — a finished show has no season with an unwatched episode, so it
+ * falls through to the last — but they are written separately because that is how they read.
+ */
+private fun openingSeasonFor(episodes: List<EpisodeEntity>): Int {
+    val bySeason = episodes.groupBy { it.seasonNumber }
+    val active = bySeason.keys.filter { it > 0 }.sorted()
+    if (active.isEmpty()) return bySeason.keys.minOrNull() ?: 1
+
+    val allWatched = active.all { season -> bySeason[season].orEmpty().all { it.isWatched } }
+    if (allWatched) return active.last()
+
+    return active.firstOrNull { season -> bySeason[season].orEmpty().any { !it.isWatched } }
+        ?: active.last()
 }
 
 @Composable
