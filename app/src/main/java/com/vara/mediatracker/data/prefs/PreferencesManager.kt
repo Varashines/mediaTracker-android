@@ -134,19 +134,31 @@ class PreferencesManager(context: Context) {
     }
 
     /**
-     * Release reminders the user opted into, keyed "mediaId|yyyy-MM-dd". Persisted so
-     * a card that scrolls out of the lazy list (or the screen closes) keeps its state,
-     * and so the scheduler knows whether a reminder is live.
+     * Notifications are global, matching the Mac: a master switch, one channel per media type,
+     * and the time of day a release is announced. There is deliberately no per-title opt-in —
+     * the Mac has none either, and a per-release set grew without bound while duplicating
+     * information the app already holds.
+     *
+     * An unset master or channel reads as enabled. `getBoolean` returns the default for a key
+     * that was never written, which is the same trap the Mac's `isChannelEnabled` guards
+     * against: a user who has never opened the screen is not a user who turned it off.
      */
-    fun isReleaseAlertSet(mediaId: String, dateString: String): Boolean =
-        prefs.getStringSet(KEY_RELEASE_ALERTS, emptySet())?.contains("$mediaId|$dateString") == true
+    var notificationsEnabled: Boolean
+        get() = prefs.getBoolean("notifications_enabled", true)
+        set(value) = prefs.edit().putBoolean("notifications_enabled", value).apply()
 
-    fun setReleaseAlert(mediaId: String, dateString: String, set: Boolean) {
-        val key = "$mediaId|$dateString"
-        val current = prefs.getStringSet(KEY_RELEASE_ALERTS, emptySet())?.toMutableSet() ?: mutableSetOf()
-        if (set) current.add(key) else current.remove(key)
-        prefs.edit().putStringSet(KEY_RELEASE_ALERTS, current).apply()
-    }
+    var notificationsMovies: Boolean
+        get() = prefs.getBoolean("notifications_movies", true)
+        set(value) = prefs.edit().putBoolean("notifications_movies", value).apply()
+
+    var notificationsTv: Boolean
+        get() = prefs.getBoolean("notifications_tv", true)
+        set(value) = prefs.edit().putBoolean("notifications_tv", value).apply()
+
+    /** Delivery time as seconds past local midnight. 09:00, as on the Mac. */
+    var notificationsTime: Int
+        get() = prefs.getInt("notifications_time", 9 * 3600)
+        set(value) = prefs.edit().putInt("notifications_time", value).apply()
 
     /**
      * Persists every credential in a single atomic edit. Called on a debounce rather
@@ -166,7 +178,4 @@ class PreferencesManager(context: Context) {
             .apply()
     }
 
-    private companion object {
-        const val KEY_RELEASE_ALERTS = "release_alerts"
-    }
 }

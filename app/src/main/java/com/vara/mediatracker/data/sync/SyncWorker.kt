@@ -62,6 +62,10 @@ class SyncWorker(
 
         ReleaseNotifier(applicationContext, container).announceNewReleases()
 
+        // Fresh data means a different upcoming set; re-plan so new releases are scheduled and
+        // ones watched or removed in this pass stop reminding.
+        NotificationScheduler.syncAll(applicationContext, ReleaseReminderPlanner.plan(container))
+
         return Result.success(workDataOf(KEY_ITEMS to count, KEY_SKIPPED to false))
     }
 

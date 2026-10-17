@@ -46,6 +46,10 @@ class ReleaseNotifier(
     }
 
     suspend fun announceNewReleases() {
+        // Global prefs, not a per-title list: the master switch and the channel for this
+        // title's type decide whether it is worth interrupting the user for.
+        val notifications = container.preferences
+        if (!notifications.notificationsEnabled) return
         if (!hasPermission()) return
 
         val candidates = collectCandidates()
@@ -113,6 +117,7 @@ class ReleaseNotifier(
             ) == PackageManager.PERMISSION_GRANTED
 
     private suspend fun collectCandidates(): Map<String, MediaCandidate> {
+        val notifications = container.preferences
         val dao = container.mediaDao
         val media = dao.getAllActiveMedia().first()
         if (media.isEmpty()) return emptyMap()
@@ -124,6 +129,8 @@ class ReleaseNotifier(
         val out = LinkedHashMap<String, MediaCandidate>()
         for (item in media) {
             val isTv = item.type.contains("TV", ignoreCase = true)
+            if (isTv && !notifications.notificationsTv) continue
+            if (!isTv && !notifications.notificationsMovies) continue
             val showKey = if (isTv) MediaIds.tvShowKey(item.id) else null
             val badge: BadgeResult? = BadgeEngine.calculateBadge(
                 item,

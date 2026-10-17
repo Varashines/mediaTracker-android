@@ -1,5 +1,12 @@
 package com.vara.mediatracker.ui.m3e
 
+import android.Manifest
+import android.app.TimePickerDialog
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +32,9 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -41,6 +51,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,11 +63,16 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import com.vara.mediatracker.data.sync.NotificationScheduler
+import com.vara.mediatracker.data.sync.ReleaseReminderPlanner
 import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.ui.theme.ThemePresets
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.util.Locale
 
 /**
  * Settings, in the [M3E] vocabulary: one tonal card per group, one row per setting.
@@ -83,6 +99,25 @@ fun M3ERoughSettings(
     var preset by rememberSaveable { mutableIntStateOf(prefs.themePreset) }
     var backgroundSync by rememberSaveable { mutableStateOf(SyncScheduler.isEnabled(context)) }
     var networkLogo by rememberSaveable { mutableStateOf(prefs.detailNetworkLogo) }
+    var notificationsEnabled by rememberSaveable { mutableStateOf(prefs.notificationsEnabled) }
+    var notificationsMovies by rememberSaveable { mutableStateOf(prefs.notificationsMovies) }
+    var notificationsTv by rememberSaveable { mutableStateOf(prefs.notificationsTv) }
+    var deliverySeconds by rememberSaveable { mutableIntStateOf(prefs.notificationsTime) }
+
+    // The queue is derived from prefs, the library and the clock, so anything that changes one of
+    // those re-plans it rather than trusting what was scheduled earlier.
+    val scope = rememberCoroutineScope()
+    val reschedule: () -> Unit = {
+        scope.launch {
+            NotificationScheduler.syncAll(
+                context.applicationContext,
+                ReleaseReminderPlanner.plan(container)
+            )
+        }
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) reschedule() }
 
     // Credentials are staged locally and written on a debounce, so a key pasted or retyped commits
     // once instead of on every keystroke. Restarting the effect on each change is the debounce.
@@ -172,6 +207,89 @@ fun M3ERoughSettings(
                                 prefs.detailNetworkLogo = it
                             }
                         )
+                    }
+                }
+            }
+        }
+
+        // ── Notifications ─────────────────────────────────────────────────────────────────────
+        item {
+            Column {
+                M3ESectionHeader("Notifications")
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(M3ESpacing.cardGap),
+                        verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+                    ) {
+                        SettingSwitchRow(
+                            icon = Icons.Default.Notifications,
+                            title = "Enable notifications",
+                            supporting = "New episodes and releases in your library",
+                            checked = notificationsEnabled,
+                            onCheckedChange = { enabled ->
+                                haptics.toggle()
+                                notificationsEnabled = enabled
+                                prefs.notificationsEnabled = enabled
+                                if (enabled) {
+                                    if (hasNotificationPermission(context)) {
+                                        reschedule()
+                                    } else {
+                                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                } else {
+                                    NotificationScheduler.cancelAll(context.applicationContext)
+                                }
+                            }
+                        )
+
+                        if (notificationsEnabled) {
+                            SettingDivider()
+                            SettingSwitchRow(
+                                icon = Icons.Default.Movie,
+                                title = "Movies",
+                                supporting = "Announce a film on its release day",
+                                checked = notificationsMovies,
+                                onCheckedChange = { on ->
+                                    haptics.toggle()
+                                    notificationsMovies = on
+                                    prefs.notificationsMovies = on
+                                    reschedule()
+                                }
+                            )
+                            SettingSwitchRow(
+                                icon = Icons.Default.Tv,
+                                title = "TV shows",
+                                supporting = "Announce a new episode on its air day",
+                                checked = notificationsTv,
+                                onCheckedChange = { on ->
+                                    haptics.toggle()
+                                    notificationsTv = on
+                                    prefs.notificationsTv = on
+                                    reschedule()
+                                }
+                            )
+                            SettingDivider()
+                            SettingValueRow(
+                                title = "Delivery time",
+                                supporting = "When a release day's reminder arrives",
+                                value = deliveryLabel(deliverySeconds),
+                                onClick = {
+                                    TimePickerDialog(
+                                        context,
+                                        { _, hour, minute ->
+                                            val seconds = hour * 3600 + minute * 60
+                                            deliverySeconds = seconds
+                                            prefs.notificationsTime = seconds
+                                            reschedule()
+                                        },
+                                        deliverySeconds / 3600,
+                                        (deliverySeconds % 3600) / 60,
+                                        false
+                                    ).show()
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -442,6 +560,40 @@ private fun CredentialField(
         modifier = Modifier.fillMaxWidth()
     )
 }
+
+/** A setting whose value is edited elsewhere, by tapping the row. */
+@Composable
+private fun SettingValueRow(
+    title: String,
+    supporting: String,
+    value: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = M3ESpacing.rowGap),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = M3EType.rowTitle(), color = M3EColor.text())
+            Text(text = supporting, style = M3EType.rowSupporting(), color = M3EColor.textMuted())
+        }
+        Spacer(Modifier.width(M3ESpacing.tightGap))
+        Text(text = value, style = M3EType.rowTitle(), color = M3EColor.accent())
+    }
+}
+
+private fun hasNotificationPermission(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+
+private fun deliveryLabel(seconds: Int): String =
+    String.format(Locale.US, "%02d:%02d", seconds / 3600, (seconds % 3600) / 60)
 
 @Composable
 private fun SettingDivider() {

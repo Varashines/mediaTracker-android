@@ -8,7 +8,9 @@ import coil.memory.MemoryCache
 import com.vara.mediatracker.data.badge.BadgeComputer
 import com.vara.mediatracker.data.db.EpisodeKeyReconciler
 import com.vara.mediatracker.data.db.TasteCanonicalizer
+import com.vara.mediatracker.data.sync.NotificationScheduler
 import com.vara.mediatracker.data.sync.ReleaseNotifier
+import com.vara.mediatracker.data.sync.ReleaseReminderPlanner
 import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.di.AppContainer
 import kotlinx.coroutines.CoroutineScope
@@ -76,6 +78,10 @@ class MediaTrackerApp : Application(), ImageLoaderFactory {
             if (container.database.badgeDao().badgeCount() == 0) {
                 BadgeComputer.recompute(container.database)
             }
+
+            // Refresh the reminder queue on every start: preferences may have changed, and
+            // anything scheduled for a day already past has fired and is no longer in the plan.
+            NotificationScheduler.syncAll(this@MediaTrackerApp, ReleaseReminderPlanner.plan(container))
         }
     }
 }

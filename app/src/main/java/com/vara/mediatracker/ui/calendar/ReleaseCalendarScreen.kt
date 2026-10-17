@@ -55,7 +55,6 @@ import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.util.AirTimeResolver
 import com.vara.mediatracker.util.NetworkResolver
 import com.vara.mediatracker.data.prefs.PreferencesManager
-import com.vara.mediatracker.data.sync.ReleaseAlertScheduler
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -543,10 +542,6 @@ fun CalendarReleaseCard(
 ) {
     val item = event.mediaItem
     val context = LocalContext.current
-    val prefs = remember(context) { PreferencesManager(context.applicationContext) }
-    var isAlertSet by remember(item.id, event.dateString) {
-        mutableStateOf(prefs.isReleaseAlertSet(item.id, event.dateString))
-    }
     val netInfo = remember(item) { NetworkResolver.resolve(item) }
     val serviceHint = remember(item, netInfo.name) {
         AirTimeResolver.serviceHint(item.network ?: netInfo.name, item.studios, item.genres)
@@ -554,10 +549,6 @@ fun CalendarReleaseCard(
     val airTimeLabel = remember(event.airDate, event.airTime, event.airstamp, serviceHint, item.timezone) {
         resolveEventAirTimeLabel(event, serviceHint, item.timezone)
     }
-    val alertInstant = remember(event.airDate, event.airTime, event.airstamp, serviceHint, item.timezone) {
-        parseAirInstant(event.airDate ?: event.dateString, event.airTime, event.airstamp, item.timezone, serviceHint)
-    }
-    val canAlert = alertInstant != null && alertInstant.time > System.currentTimeMillis()
 
     ExpressiveCard(
         onClick = onClick,
@@ -673,45 +664,6 @@ fun CalendarReleaseCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Set Alert Pill Button — only for a release that has not aired yet.
-            if (canAlert) {
-                Button(
-                    onClick = {
-                        val next = !isAlertSet
-                        isAlertSet = next
-                        prefs.setReleaseAlert(item.id, event.dateString, next)
-                        if (next) {
-                            val subtitle = airTimeLabel?.let { "${event.contextLabel} • $it" }
-                                ?: event.contextLabel
-                            ReleaseAlertScheduler.schedule(
-                                context = context,
-                                mediaId = item.id,
-                                dateString = event.dateString,
-                                title = item.title,
-                                subtitle = subtitle,
-                                triggerAtMillis = alertInstant!!.time
-                            )
-                        } else {
-                            ReleaseAlertScheduler.cancel(context, item.id, event.dateString)
-                        }
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isAlertSet) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.primary,
-                        contentColor = if (isAlertSet) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onPrimary
-                    ),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = if (isAlertSet) "Alert Set" else "Set Alert",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
             }
         }
     }
