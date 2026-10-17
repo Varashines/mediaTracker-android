@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BrightnessAuto
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
@@ -57,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -143,7 +145,7 @@ fun M3ERoughSettings(
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = M3EColor.text())
                     }
                 }
                 M3EScreenHeader(eyebrow = "Preferences", title = "Settings")
@@ -461,13 +463,29 @@ private fun PaletteGrid(selected: Int, onSelect: (Int) -> Unit) {
                                 .border(
                                     width = if (isSelected) 3.dp else 1.dp,
                                     color = if (isSelected) {
-                                        M3EColor.accent()
+                                        M3EColor.text()
                                     } else {
                                         MaterialTheme.colorScheme.outlineVariant
                                     },
                                     shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    // Contrast against the swatch itself, not the page: the
+                                    // presets run from near-white to near-black.
+                                    tint = if (preset.accentColor.luminance() > 0.5f) {
+                                        Color.Black
+                                    } else {
+                                        Color.White
+                                    },
+                                    modifier = Modifier.size(20.dp)
                                 )
-                        )
+                            }
+                        }
                         Text(
                             text = preset.name,
                             style = M3EType.rowSupporting(),

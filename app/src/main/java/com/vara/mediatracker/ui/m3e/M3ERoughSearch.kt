@@ -69,7 +69,7 @@ fun M3ERoughSearch(library: List<MediaItemEntity>, onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = M3EColor.text())
             }
             TextField(
                 value = query,

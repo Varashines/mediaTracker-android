@@ -197,10 +197,10 @@ private fun HomeSection(
                 trailing = {
                     Row {
                         IconButton(onClick = onSearch) {
-                            Icon(Icons.Default.Search, contentDescription = "Search")
+                            Icon(Icons.Default.Search, contentDescription = "Search", tint = M3EColor.text())
                         }
                         IconButton(onClick = onSettings) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = M3EColor.text())
                         }
                     }
                 }

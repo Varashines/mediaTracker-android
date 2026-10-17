@@ -155,6 +155,17 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean("notifications_tv", true)
         set(value) = prefs.edit().putBoolean("notifications_tv", value).apply()
 
+    /**
+     * Removes the per-title alert set left behind by the previous model. Nothing reads it now;
+     * it is deleted rather than left to sit in prefs forever. Idempotent — removing an absent
+     * key is a no-op.
+     */
+    fun clearLegacyReleaseAlerts() {
+        if (prefs.contains(LEGACY_KEY_RELEASE_ALERTS)) {
+            prefs.edit().remove(LEGACY_KEY_RELEASE_ALERTS).apply()
+        }
+    }
+
     /** Delivery time as seconds past local midnight. 09:00, as on the Mac. */
     var notificationsTime: Int
         get() = prefs.getInt("notifications_time", 9 * 3600)
@@ -179,3 +190,5 @@ class PreferencesManager(context: Context) {
     }
 
 }
+
+private const val LEGACY_KEY_RELEASE_ALERTS = "release_alerts"

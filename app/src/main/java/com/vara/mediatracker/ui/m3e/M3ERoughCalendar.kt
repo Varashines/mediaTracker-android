@@ -127,10 +127,10 @@ fun M3ERoughCalendar(container: AppContainer, library: List<MediaItemEntity>) {
                 trailing = {
                     Row {
                         IconButton(onClick = { month = monthValue.minusMonths(1).toString() }) {
-                            Icon(Icons.Default.ChevronLeft, contentDescription = "Previous month")
+                            Icon(Icons.Default.ChevronLeft, contentDescription = "Previous month", tint = M3EColor.text())
                         }
                         IconButton(onClick = { month = monthValue.plusMonths(1).toString() }) {
-                            Icon(Icons.Default.ChevronRight, contentDescription = "Next month")
+                            Icon(Icons.Default.ChevronRight, contentDescription = "Next month", tint = M3EColor.text())
                         }
                     }
                 }

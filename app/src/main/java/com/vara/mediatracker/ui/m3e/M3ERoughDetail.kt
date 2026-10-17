@@ -89,7 +89,7 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
             Spacer(Modifier.height(M3ESpacing.tightGap))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = M3EColor.text())
                 }
                 Text(
                     text = item.type.uppercase(),

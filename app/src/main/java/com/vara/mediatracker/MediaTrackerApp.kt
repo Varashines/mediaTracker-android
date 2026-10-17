@@ -79,6 +79,10 @@ class MediaTrackerApp : Application(), ImageLoaderFactory {
                 BadgeComputer.recompute(container.database)
             }
 
+            // The per-title alert set is read by nothing now; drop it rather than leave a
+            // stale opt-in in prefs forever.
+            container.preferences.clearLegacyReleaseAlerts()
+
             // Refresh the reminder queue on every start: preferences may have changed, and
             // anything scheduled for a day already past has fired and is no longer in the plan.
             NotificationScheduler.syncAll(this@MediaTrackerApp, ReleaseReminderPlanner.plan(container))
