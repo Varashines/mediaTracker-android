@@ -34,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -52,6 +54,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.ln
 
 /**
  * Release Radar as a month, in the [M3E] vocabulary.
@@ -60,6 +63,10 @@ import java.util.Locale
  * weeks are busy, which are bare — and that is what a radar is for. Days carrying a release are
  * tinted, the selected day is filled with the emphasis tone, and the day's releases sit
  * underneath, so a tap always lands on something.
+ *
+ * Days are shaded by how much lands on them. The weight is episodes plus films, run through
+ * log1p against the busiest day of the month, so one busy Friday does not flatten every other day
+ * to nothing — the same scale the Mac's radar uses, including its opacity bounds.
  *
  * A release is a *resolved* date, not a stored one. The stored date is the show's first-air date —
  * years old for anything still running — so reading it left every month empty; resolving each
@@ -130,7 +137,25 @@ fun M3ERoughCalendar(
         }
     }
     val byDay: Map<LocalDate, List<CalendarEvent>> = remember(events) { events.groupBy { it.day } }
+
     val monthValue = remember(month) { YearMonth.parse(month) }
+    // Heat: weight is episodes + films, scaled by log1p against the busiest day of the month being
+    // shown — the Mac's rule, which keeps a single heavy day from flattening the rest.
+    val weights = remember(events) { events.groupingBy { it.day }.eachCount() }
+    val maxWeight = remember(weights, monthValue) {
+        var max = 0
+        for (dayOfMonth in 1..monthValue.lengthOfMonth()) {
+            val weight = weights[monthValue.atDay(dayOfMonth)] ?: 0
+            if (weight > max) max = weight
+        }
+        max
+    }
+    val logMax = if (maxWeight > 0) ln(1.0 + maxWeight) else 0.0
+    fun intensityOf(day: LocalDate): Float {
+        val weight = weights[day] ?: 0
+        if (weight == 0 || logMax == 0.0) return 0f
+        return (ln(1.0 + weight) / logMax).toFloat()
+    }
     val selectedDay = remember(selected) { LocalDate.parse(selected) }
     val cells = remember(monthValue) { monthCells(monthValue) }
     val releases = remember(byDay, selectedDay) { byDay[selectedDay].orEmpty() }
@@ -181,7 +206,7 @@ fun M3ERoughCalendar(
                                     day = day,
                                     today = today,
                                     selected = selectedDay,
-                                    count = day?.let { byDay[it]?.size ?: 0 } ?: 0,
+                                    intensity = day?.let { intensityOf(it) } ?: 0f,
                                     label = dayLabel,
                                     onSelect = { selected = it.toString() },
                                     modifier = Modifier.weight(1f)
@@ -282,7 +307,7 @@ private fun DayCell(
     day: LocalDate?,
     today: LocalDate,
     selected: LocalDate,
-    count: Int,
+    intensity: Float,
     label: DateTimeFormatter,
     onSelect: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
@@ -294,15 +319,22 @@ private fun DayCell(
 
     val isSelected = day == selected
     val isToday = day == today
-    val hasReleases = count > 0
+    val hasReleases = intensity > 0f
 
+    // The Mac's opacity bounds, chosen from the palette in use rather than the system setting so a
+    // forced light or dark theme still shades correctly.
+    val onDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val baseOpacity = if (onDark) 0.20f else 0.16f
+    val maxExtra = if (onDark) 0.65f else 0.70f
     val fill = when {
         isSelected -> MaterialTheme.colorScheme.primary
-        hasReleases -> M3EColor.accent().copy(alpha = 0.18f)
+        hasReleases -> M3EColor.accent().copy(alpha = baseOpacity + intensity * maxExtra)
         else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
     val textColor = when {
         isSelected -> MaterialTheme.colorScheme.onPrimary
+        // Past this the fill is strong enough that the accent label stops reading against it.
+        intensity > 0.4f -> Color.White
         hasReleases -> M3EColor.accent()
         else -> M3EColor.textMuted()
     }
