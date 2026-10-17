@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -322,7 +323,7 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
                         val genres = live.genres
                         val network = live.network
                         val released = live.releaseDate
-                        if (!genres.isNullOrBlank()) DetailRow("Genres", genres)
+                        if (!genres.isNullOrBlank()) DetailRow("Genres", genres, lines = 2)
                         if (!network.isNullOrBlank()) DetailRow("Network", network)
                         if (!released.isNullOrBlank()) DetailRow("Released", released.take(10))
                         DetailRow("Added", live.dateAdded?.take(10) ?: "—", divider = false)
@@ -488,9 +489,16 @@ private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Bool
     }
 }
 
-/** A label/value row inside a card, spaced by the rhythm rather than by padding literals. */
+/**
+ * A label/value row inside a card, spaced by the rhythm rather than by padding literals.
+ *
+ * Both sides carry a weight. With only the label weighted, a long value — a genre list is the
+ * obvious one — took whatever width it wanted and squeezed the label down to a single character
+ * per line. Sharing the width proportionally means the label holds its own and the value wraps
+ * within the remainder, and [lines] lets a genuinely long value use more than one.
+ */
 @Composable
-private fun DetailRow(label: String, value: String, divider: Boolean = true) {
+private fun DetailRow(label: String, value: String, divider: Boolean = true, lines: Int = 1) {
     Column {
         Row(
             modifier = Modifier
@@ -502,6 +510,7 @@ private fun DetailRow(label: String, value: String, divider: Boolean = true) {
                 text = label,
                 style = M3EType.rowSupporting(),
                 color = M3EColor.textMuted(),
+                maxLines = 1,
                 modifier = Modifier.weight(1f)
             )
             Text(
@@ -509,8 +518,10 @@ private fun DetailRow(label: String, value: String, divider: Boolean = true) {
                 style = M3EType.rowTitle(),
                 fontWeight = FontWeight.SemiBold,
                 color = M3EColor.text(),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                maxLines = lines,
+                textAlign = TextAlign.End,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(2f)
             )
         }
         if (divider) {
