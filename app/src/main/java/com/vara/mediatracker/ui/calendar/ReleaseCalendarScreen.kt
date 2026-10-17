@@ -212,7 +212,7 @@ fun ReleaseCalendarScreen(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "Release Radar",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.displayLarge,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
                 )

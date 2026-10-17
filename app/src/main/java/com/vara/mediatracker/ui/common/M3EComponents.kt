@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.ExpressiveShapes
 import com.vara.mediatracker.ui.theme.LocalMotion
+import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import java.util.Locale
 
 /**
@@ -123,12 +124,12 @@ fun StatusChip(
 ) {
     val (fg, bg) = when (tone) {
         ChipTone.Positive -> MaterialTheme.colorScheme.primary to MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-        ChipTone.Warning -> Color(0xFFFFB300) to Color(0xFFFFB300).copy(alpha = 0.16f)
+        ChipTone.Warning -> LocalSemanticColors.current.warning to LocalSemanticColors.current.warning.copy(alpha = 0.16f)
         ChipTone.Accent -> MaterialTheme.colorScheme.onPrimaryContainer to MaterialTheme.colorScheme.primaryContainer
         ChipTone.Muted -> MaterialTheme.colorScheme.onSurfaceVariant to MaterialTheme.colorScheme.surfaceContainerHighest
         ChipTone.Neutral -> MaterialTheme.colorScheme.onSurfaceVariant to MaterialTheme.colorScheme.surfaceContainerHigh
     }
-    Surface(shape = RoundedCornerShape(8.dp), color = bg, modifier = modifier) {
+    Surface(shape = MaterialTheme.shapes.small, color = bg, modifier = modifier) {
         Text(
             text = label.uppercase(Locale.US),
             style = AppTextStyles.MonoLabel,
@@ -199,13 +200,14 @@ fun NetworkBadgeTile(
 @Composable
 fun FlatCard(
     modifier: Modifier = Modifier,
-    shape: Shape = ExpressiveShapes.Card,
+    shape: Shape? = null,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    val border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+    // Default comes from the theme rather than a literal, so the shape scale is the single source.
+    val resolvedShape = shape ?: MaterialTheme.shapes.large
     if (onClick != null) {
         val interaction = remember { MutableInteractionSource() }
         val pressed by interaction.collectIsPressedAsState()
@@ -216,10 +218,9 @@ fun FlatCard(
             label = "flatCardScale"
         )
         Surface(
-            shape = shape,
+            shape = resolvedShape,
             color = containerColor,
-            border = border,
-            modifier = modifier
+                        modifier = modifier
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -234,7 +235,7 @@ fun FlatCard(
             content()
         }
     } else {
-        Surface(shape = shape, color = containerColor, border = border, modifier = modifier) {
+        Surface(shape = resolvedShape, color = containerColor, modifier = modifier) {
             content()
         }
     }

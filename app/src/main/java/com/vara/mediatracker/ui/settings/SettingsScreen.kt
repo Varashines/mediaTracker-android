@@ -206,7 +206,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "Settings",
-                    style = MaterialTheme.typography.headlineLarge,
+                    style = MaterialTheme.typography.displayLarge,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
                 )

@@ -876,8 +876,7 @@ private fun LibraryOptionSheet(
             )
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.ExtraBold,
+                style = MaterialTheme.typography.displayLarge,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             options.forEach { option ->

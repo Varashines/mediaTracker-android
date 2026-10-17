@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.clickable
@@ -97,7 +99,7 @@ import com.vara.mediatracker.ui.theme.LocalMotion
 fun ExpressiveCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(18.dp),
+    shape: Shape = CardDefaults.shape,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
     border: BorderStroke? = null,
@@ -105,30 +107,21 @@ fun ExpressiveCard(
     pressedScale: Float = 0.97f,
     content: @Composable () -> Unit
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val motion = LocalMotion.current
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) pressedScale else 1f,
-        animationSpec = motion.snappy,
-        label = "cardScale"
-    )
-
-    Surface(
+    // A Material card rather than a surfaced press-scale: the component owns the shape, the
+    // state layer and the interaction, which is the point of using it. `pressedScale` is kept
+    // so call sites compile unchanged.
+    Card(
         onClick = onClick,
-        interactionSource = interaction,
+        modifier = modifier,
         shape = shape,
-        color = containerColor,
-        contentColor = contentColor,
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor,
+            contentColor = contentColor
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = tonalElevation),
         border = border,
-        tonalElevation = tonalElevation,
-        modifier = modifier.graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        }
-    ) {
-        content()
-    }
+        content = { content() }
+    )
 }
 
 /**

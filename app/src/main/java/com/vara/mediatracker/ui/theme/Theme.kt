@@ -176,37 +176,37 @@ val AppTypography = Typography(
     bodyLarge = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Medium,
-        fontSize = 15.sp,
-        lineHeight = 22.sp
+        fontSize = 16.0.sp,
+        lineHeight = 24.0.sp
     ),
     bodyMedium = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Medium,
-        fontSize = 13.5.sp,
-        lineHeight = 20.sp
+        fontSize = 15.0.sp,
+        lineHeight = 21.0.sp
     ),
     bodySmall = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Normal,
-        fontSize = 12.sp,
-        lineHeight = 16.sp
+        fontSize = 13.0.sp,
+        lineHeight = 18.0.sp
     ),
     labelLarge = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.ExtraBold,
-        fontSize = 13.sp,
+        fontSize = 14.0.sp,
         letterSpacing = 0.2.sp
     ),
     labelMedium = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 12.sp,
+        fontSize = 13.0.sp,
         letterSpacing = 0.2.sp
     ),
     labelSmall = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.ExtraBold,
-        fontSize = 10.5.sp,
+        fontSize = 12.0.sp,
         letterSpacing = 0.5.sp
     )
 )
@@ -218,12 +218,27 @@ val AppTypography = Typography(
  * with a large radius reserved for containers that should read as floating surfaces.
  * Asymmetric shapes introduce tactile identity inspired by Material 3 Expressive.
  */
+/**
+ * The Material shape scale, expressed with this app's radii.
+ *
+ * Every Material component reads these — buttons, cards, sheets, dialogs, menus, chips — so the
+ * shape language reaches the whole UI from one place, which is how M3E intends shape to work.
+ * The `*Top` variants carry the large radii on the top edge only: that is the shape M3 uses for
+ * surfaces attached to an edge, like a bottom sheet or a docked toolbar.
+ */
 val AppShapes = Shapes(
-    extraSmall = RoundedCornerShape(6.dp),
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(22.dp),
-    extraLarge = RoundedCornerShape(28.dp)
+    // Base scale — generous, expressive corners.
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(20.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(36.dp),
+
+    // The M3 Expressive upper tiers. Components derive their own shapes from this scale —
+    // buttons, toggles and chips all read it — so raising these raises everything.
+    largeIncreased = RoundedCornerShape(32.dp),
+    extraLargeIncreased = RoundedCornerShape(40.dp),
+    extraExtraLarge = RoundedCornerShape(52.dp)
 )
 
 object ExpressiveShapes {
