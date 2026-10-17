@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,7 +62,10 @@ internal fun M3ERoughHub(
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit = { _, _, _ -> }
 ) {
     val library = core.items
-    var tab by remember { mutableIntStateOf(0) }
+    // Saveable, not plain remember. Opening a list or a title replaces this section in the shell's
+    // `when`, so the Hub leaves the composition — and a plain remember comes back as its default,
+    // which is why going back from anywhere landed on Smart.
+    var tab by rememberSaveable { mutableIntStateOf(0) }
 
     Column(
         modifier = Modifier
