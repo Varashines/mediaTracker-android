@@ -20,8 +20,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -30,13 +28,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,35 +45,144 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.vara.mediatracker.data.TrackingLogic
+import com.vara.mediatracker.data.WatchHistoryRecorder
 import com.vara.mediatracker.data.model.EpisodeEntity
+import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.di.AppContainer
-import com.vara.mediatracker.ui.theme.LocalSemanticColors
+import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.ui.theme.AppTextStyles
+import com.vara.mediatracker.ui.theme.LocalSemanticColors
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 
 /**
- * The detail screen, in the [M3E] vocabulary — now interactive.
+ * The detail screen, in the [M3E] vocabulary — wired to the real library.
  *
- * The controls are real Material components and they respond, but every change lives in this
- * screen's own state: nothing is written to the library or synced. That keeps the sketch truthful
- * — it shows the interaction, not a half-wired migration. When this replaces the real screen, the
- * same controls call the tracking logic that already exists.
+ * Every control writes through the same path the shipping screen uses: episodes and movies go
+ * through [TrackingLogic], which owns the watched/unwatched ledger and the state progression that
+ * follows from it; status and taste are a DAO update plus the matching cloud push. Status carries
+ * the watch-history bookkeeping too, because a status change bypasses the toggle and would
+ * otherwise leave the ledger describing a different library from the state column.
+ *
+ * The screen holds its own optimistic copy so a tap reads back immediately, but it never invents
+ * an outcome: the copy mirrors exactly what was written, and the episode list is a Room flow, so
+ * anything the tracker changes lands here regardless.
  */
 @Composable
 fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () -> Unit) {
-    val episodes by produceState(initialValue = emptyList<EpisodeEntity>(), item.id) {
-        // Episodes key their id as `tv_1399_s1_e1`, so the show's own id is the prefix.
-        value = runCatching {
-            container.database.mediaDao().getAllEpisodesList().filter { it.uniqueId.startsWith(item.id) }
-        }.getOrDefault(emptyList())
+    val db = container.database
+    val scope = rememberCoroutineScope()
+    val haptics = rememberHaptics()
+
+    val isTv = remember(item.id) { item.type.contains("TV", ignoreCase = true) }
+    val showKey = remember(item.id) { MediaIds.tvShowKey(item.id) }
+
+    // Optimistic copy: state and taste only, kept in step with what was just persisted.
+    var live by remember(item.id) { mutableStateOf(item) }
+    var season by remember(item.id) { mutableStateOf<Int?>(null) }
+
+    // A flow, not a one-shot read: the tracker rewrites the show's state and its episodes, and
+    // those changes have to appear without this screen knowing they happened.
+    val episodeFlow = remember(item.id) {
+        if (isTv) db.mediaDao().getEpisodesForShow(showKey) else flowOf(emptyList())
+    }
+    val episodes by episodeFlow.collectAsState(initial = emptyList())
+    val ordered = remember(episodes) {
+        episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+    }
+    val seasons = remember(ordered) { ordered.map { it.seasonNumber }.distinct().sorted() }
+    val currentSeason = season ?: seasons.firstOrNull() ?: 1
+    val seasonEpisodes = remember(ordered, currentSeason) {
+        ordered.filter { it.seasonNumber == currentSeason }
+    }
+    val nextEpisode = remember(ordered) { ordered.firstOrNull { !it.isWatched && it.seasonNumber > 0 } }
+
+    fun setStatus(next: String) {
+        val now = TrackingLogic.isoNow()
+        val wasCompleted = live.state.equals("Completed", ignoreCase = true)
+        val isCompleted = next.equals("Completed", ignoreCase = true)
+        haptics.toggle()
+        live = live.copy(state = next, lastStateChangeDate = now, lastInteractionDate = now)
+        scope.launch {
+            db.mediaDao().updateState(item.id, next, now)
+            container.syncManager().pushMediaUpdate(
+                mediaId = item.id,
+                type = item.type,
+                state = next,
+                taste = live.taste,
+                isStateChange = true,
+                dateAdded = item.dateAdded
+            )
+
+            // The ledger is not the state column, so a status change has to move it as well.
+            val historyDao = db.watchHistoryDao()
+            if (isCompleted && !wasCompleted) {
+                if (!isTv) {
+                    WatchHistoryRecorder.recordWatch(
+                        dao = historyDao,
+                        mediaId = item.id,
+                        kind = WatchHistoryRecorder.KIND_MOVIE,
+                        episodeId = null,
+                        watchedAt = now,
+                        runtimeMinutes = null
+                    )
+                }
+                WatchHistoryRecorder.completeCycle(historyDao, item.id, now)
+            } else if (!isCompleted && wasCompleted) {
+                if (!isTv) WatchHistoryRecorder.voidWatch(historyDao, item.id, null, now)
+                WatchHistoryRecorder.reopenCycle(historyDao, item.id, now)
+            }
+        }
     }
 
-    // UI-local interaction state.
-    var status by rememberSaveable(item.id) { mutableStateOf(item.state) }
-    var taste by rememberSaveable(item.id) { mutableStateOf(item.taste) }
-    val watched = remember(item.id) { mutableStateMapOf<String, Boolean>() }
-    val seasons = remember(episodes) { episodes.map { it.seasonNumber }.distinct().sorted() }
-    var season by remember(seasons) { mutableStateOf(seasons.firstOrNull() ?: 1) }
+    fun setTaste(next: String) {
+        val now = TrackingLogic.isoNow()
+        haptics.toggle()
+        live = live.copy(taste = next, lastInteractionDate = now)
+        scope.launch {
+            db.mediaDao().updateTaste(item.id, next, now)
+            container.syncManager().pushMediaUpdate(
+                mediaId = item.id,
+                type = item.type,
+                state = live.state,
+                taste = next,
+                // A taste change is not a state change; claiming otherwise would advance
+                // last_state_change_date in the cloud.
+                isStateChange = false,
+                dateAdded = item.dateAdded
+            )
+        }
+    }
+
+    fun setEpisodeWatched(episode: EpisodeEntity, watched: Boolean) {
+        haptics.tap()
+        scope.launch {
+            TrackingLogic.markEpisodeWatched(container, episode, watched) { updated -> live = updated }
+        }
+    }
+
+    fun setSeasonWatched(watched: Boolean) {
+        if (seasonEpisodes.isEmpty()) return
+        haptics.toggle()
+        scope.launch {
+            TrackingLogic.markSeasonWatched(
+                container = container,
+                showId = showKey,
+                seasonNumber = currentSeason,
+                seasonEpisodes = seasonEpisodes,
+                watched = watched
+            ) { updated -> live = updated }
+        }
+    }
+
+    fun toggleMovie() {
+        haptics.toggle()
+        scope.launch {
+            TrackingLogic.toggleMovieWatched(container, live) { updated -> live = updated }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -89,7 +196,11 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
             Spacer(Modifier.height(M3ESpacing.tightGap))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = M3EColor.text())
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = M3EColor.text()
+                    )
                 }
                 Text(
                     text = item.type.uppercase(),
@@ -101,7 +212,26 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
 
         item { Title(item) }
 
-        item { PrimaryAction(finished = status.equals("Completed", true)) { status = it } }
+        item {
+            if (isTv) {
+                PrimaryAction(
+                    label = nextEpisode
+                        ?.let { "Mark S${it.seasonNumber} · E${it.episodeNumber} watched" }
+                        ?: "Everything watched",
+                    icon = Icons.Default.Check,
+                    enabled = nextEpisode != null,
+                    onClick = { nextEpisode?.let { setEpisodeWatched(it, true) } }
+                )
+            } else {
+                val watched = live.state.equals("Completed", ignoreCase = true)
+                PrimaryAction(
+                    label = if (watched) "Watched" else "Mark watched",
+                    icon = if (watched) Icons.Default.Check else Icons.Default.Bookmark,
+                    enabled = true,
+                    onClick = { toggleMovie() }
+                )
+            }
+        }
 
         item {
             Column {
@@ -109,44 +239,54 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 ChoiceRow(
                     options = listOf("Wishlist", "Active", "On Hold", "Dropped", "Completed"),
-                    selected = status,
+                    selected = live.state,
                     tintFor = { statusTint(it) },
-                    onSelect = { status = it }
+                    onSelect = { if (!it.equals(live.state, true)) setStatus(it) }
                 )
                 Spacer(Modifier.height(M3ESpacing.cardGap))
                 M3ESectionHeader("Taste")
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 ChoiceRow(
                     options = listOf("None", "Dislike", "Like", "Love"),
-                    selected = taste,
+                    selected = live.taste,
                     tintFor = { tasteTint(it) },
-                    onSelect = { taste = it }
+                    onSelect = { if (!it.equals(live.taste, true)) setTaste(it) }
                 )
             }
         }
 
-        if (episodes.isNotEmpty()) {
+        if (seasons.isNotEmpty()) {
             item {
                 Column {
-                    M3ESectionHeader("Seasons")
+                    M3ESectionHeader(
+                        title = "Seasons",
+                        trailing = {
+                            val allWatched = seasonEpisodes.isNotEmpty() && seasonEpisodes.all { it.isWatched }
+                            TextButton(onClick = { setSeasonWatched(!allWatched) }) {
+                                Text(
+                                    text = if (allWatched) "Clear season" else "Watch season",
+                                    style = M3EType.action(),
+                                    color = M3EColor.accent()
+                                )
+                            }
+                        }
+                    )
                     Spacer(Modifier.height(M3ESpacing.tightGap))
                     ChoiceRow(
                         options = seasons.map { "Season $it" },
-                        selected = "Season $season",
+                        selected = "Season $currentSeason",
                         tintFor = { M3EColor.accent() },
-                        onSelect = { label -> season = label.substringAfter("Season ").toIntOrNull() ?: season }
+                        onSelect = { label ->
+                            label.substringAfter("Season ").toIntOrNull()?.let { season = it }
+                        }
                     )
                 }
             }
-            items(
-                episodes.filter { it.seasonNumber == season }
-                    .sortedBy { it.episodeNumber },
-                key = { it.uniqueId }
-            ) { episode ->
+            items(seasonEpisodes, key = { it.uniqueId }) { episode ->
                 EpisodeRow(
                     episode = episode,
-                    watched = watched[episode.uniqueId] ?: episode.isWatched,
-                    onToggle = { watched[episode.uniqueId] = it }
+                    watched = episode.isWatched,
+                    onToggle = { setEpisodeWatched(episode, it) }
                 )
             }
         }
@@ -171,11 +311,21 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(vertical = M3ESpacing.tightGap)) {
-                        DetailRow("Progress", progressLabel(episodes, watched))
-                        if (!item.genres.isNullOrBlank()) DetailRow("Genres", item.genres)
-                        if (!item.network.isNullOrBlank()) DetailRow("Network", item.network)
-                        if (!item.releaseDate.isNullOrBlank()) DetailRow("Released", item.releaseDate.take(10))
-                        DetailRow("Added", item.dateAdded?.take(10) ?: "—", divider = false)
+                        if (ordered.isNotEmpty()) {
+                            DetailRow(
+                                "Progress",
+                                "${ordered.count { it.isWatched }} / ${ordered.size} episodes"
+                            )
+                        }
+                        // Read once: `live` is a delegated property, so its fields cannot be
+                        // smart-cast after a null check.
+                        val genres = live.genres
+                        val network = live.network
+                        val released = live.releaseDate
+                        if (!genres.isNullOrBlank()) DetailRow("Genres", genres)
+                        if (!network.isNullOrBlank()) DetailRow("Network", network)
+                        if (!released.isNullOrBlank()) DetailRow("Released", released.take(10))
+                        DetailRow("Added", live.dateAdded?.take(10) ?: "—", divider = false)
                     }
                 }
             }
@@ -183,16 +333,6 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
 
         item { Spacer(Modifier.height(48.dp)) }
     }
-}
-
-/** How many of the known episodes count as watched, counting the local toggles. */
-private fun progressLabel(
-    episodes: List<EpisodeEntity>,
-    watched: Map<String, Boolean>
-): String {
-    if (episodes.isEmpty()) return "—"
-    val seen = episodes.count { watched[it.uniqueId] ?: it.isWatched }
-    return "$seen / ${episodes.size} episodes"
 }
 
 /** Poster, eyebrow and the editorial title — the display heading this app uses everywhere. */
@@ -233,23 +373,22 @@ private fun Title(item: MediaItemEntity) {
 
 /** One emphasised action, deliberately the largest element on the screen. */
 @Composable
-private fun PrimaryAction(finished: Boolean, onToggle: (String) -> Unit) {
+private fun PrimaryAction(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
     Button(
-        onClick = { onToggle(if (finished) "Active" else "Completed") },
+        onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
             .height(M3ESpacing.rowMinHeight)
     ) {
-        Icon(
-            imageVector = if (finished) Icons.Default.Check else Icons.Default.Bookmark,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp)
-        )
+        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(M3ESpacing.tightGap))
-        Text(
-            text = if (finished) "Watched" else "Mark watched",
-            style = M3EType.action()
-        )
+        Text(text = label, style = M3EType.action())
     }
 }
 
