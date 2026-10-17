@@ -134,7 +134,12 @@ fun M3ERoughScreen(
                 onOpen = { open = it },
                 onBack = { list = null }
             )
-            searching -> M3ERoughSearch(library = library, onBack = { searching = false })
+            searching -> M3ERoughSearch(
+                library = library,
+                container = container,
+                onOpen = { open = it },
+                onBack = { searching = false }
+            )
             settings -> M3ERoughSettings(
                     container = container,
                     onBack = { settings = false },

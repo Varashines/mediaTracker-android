@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,6 +83,13 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
 
     // Optimistic copy: state and taste only, kept in step with what was just persisted.
     var live by remember(item.id) { mutableStateOf(item) }
+
+    // Re-read once by id. The entity handed in can be a stub — a title just added from search is
+    // built from a TMDB result and carries no genres, network or runtime — and the library's copy
+    // is the one worth showing. Runs before any interaction, so it cannot race a write.
+    LaunchedEffect(item.id) {
+        db.mediaDao().getMediaById(item.id)?.let { live = it }
+    }
     var season by remember(item.id) { mutableStateOf<Int?>(null) }
 
     // A flow, not a one-shot read: the tracker rewrites the show's state and its episodes, and
