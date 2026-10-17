@@ -47,6 +47,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -81,7 +83,7 @@ fun M3ERoughScreen(container: AppContainer) {
     val library by produceState(initialValue = emptyList<MediaItemEntity>()) {
         value = runCatching { container.database.mediaDao().getAllMediaList() }.getOrDefault(emptyList())
     }
-    var section by remember { mutableIntStateOf(0) }
+    var section by rememberSaveable { mutableIntStateOf(0) }
     var open by remember { mutableStateOf<MediaItemEntity?>(null) }
     var searching by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
@@ -103,12 +105,17 @@ fun M3ERoughScreen(container: AppContainer) {
             .fillMaxSize()
             .background(M3EColor.page())
     ) {
+        // Each section keeps its own state — the calendar's month, the detail's season, a search
+        // query — because leaving a section and returning otherwise resets it and makes the whole
+        // thing feel like a demo.
+        val holder = rememberSaveableStateHolder()
         val opened = open
         when {
             opened != null -> M3ERoughDetail(item = opened, container = container, onBack = { open = null })
             searching -> M3ERoughSearch(library = library, onBack = { searching = false })
             settings -> M3ERoughSettings(onBack = { settings = false })
-            else -> when (section) {
+            else -> holder.SaveableStateProvider(section) {
+                when (section) {
                 0 -> HomeSection(
                     library = library,
                     onOpen = { open = it },
@@ -119,6 +126,7 @@ fun M3ERoughScreen(container: AppContainer) {
                 2 -> M3ERoughCalendar(container = container, library = library)
                 3 -> LibrarySection(library = library, onOpen = { open = it })
                 else -> FinishedSection(library = library)
+                }
             }
         }
 

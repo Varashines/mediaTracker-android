@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,8 +71,8 @@ fun M3ERoughDetail(item: MediaItemEntity, container: AppContainer, onBack: () ->
     }
 
     // UI-local interaction state.
-    var status by remember(item.id) { mutableStateOf(item.state) }
-    var taste by remember(item.id) { mutableStateOf(item.taste) }
+    var status by rememberSaveable(item.id) { mutableStateOf(item.state) }
+    var taste by rememberSaveable(item.id) { mutableStateOf(item.taste) }
     val watched = remember(item.id) { mutableStateMapOf<String, Boolean>() }
     val seasons = remember(episodes) { episodes.map { it.seasonNumber }.distinct().sorted() }
     var season by remember(seasons) { mutableStateOf(seasons.firstOrNull() ?: 1) }

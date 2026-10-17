@@ -1,5 +1,6 @@
 package com.vara.mediatracker.ui.m3e
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.model.EpisodeEntity
+import com.vara.mediatracker.ui.common.LocalNowMillis
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.di.AppContainer
 import java.time.LocalDate
@@ -61,9 +64,13 @@ import java.util.Locale
  */
 @Composable
 fun M3ERoughCalendar(container: AppContainer, library: List<MediaItemEntity>) {
-    val today = remember { LocalDate.now() }
-    var month by remember { mutableStateOf(YearMonth.from(today)) }
-    var selected by remember { mutableStateOf(today) }
+    // Reading the app clock is what recomposes this as it ticks, so `today` re-derives rather
+    // than being fixed at first composition. Keyed to the minute: no need to rebuild the grid
+    // sixty times a minute to notice a date change once.
+    val nowMillis = LocalNowMillis.current
+    val today = remember(nowMillis / 60_000) { LocalDate.now() }
+    var month by rememberSaveable { mutableStateOf(YearMonth.from(today).toString()) }
+    var selected by rememberSaveable { mutableStateOf(today.toString()) }
 
     val monthLabel = remember { DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US) }
     val dayLabel = remember { DateTimeFormatter.ofPattern("d", Locale.US) }
@@ -78,8 +85,10 @@ fun M3ERoughCalendar(container: AppContainer, library: List<MediaItemEntity>) {
         }
         map
     }
-    val cells = remember(month) { monthCells(month) }
-    val releases = remember(byDay, selected) { byDay[selected.toString()].orEmpty() }
+    val monthValue = remember(month) { YearMonth.parse(month) }
+    val selectedDay = remember(selected) { LocalDate.parse(selected) }
+    val cells = remember(monthValue) { monthCells(monthValue) }
+    val releases = remember(byDay, selectedDay) { byDay[selectedDay.toString()].orEmpty() }
     // A release row wants the episode and its air time, and only the episode rows carry those —
     // read asynchronously, since the DAO is suspend, then derived purely. Keyed by show and day,
     // because that is what a release is.
@@ -113,14 +122,14 @@ fun M3ERoughCalendar(container: AppContainer, library: List<MediaItemEntity>) {
         item {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
             M3EScreenHeader(
-                eyebrow = monthLabel.format(month),
+                eyebrow = monthLabel.format(monthValue),
                 title = "Calendar",
                 trailing = {
                     Row {
-                        IconButton(onClick = { month = month.minusMonths(1) }) {
+                        IconButton(onClick = { month = monthValue.minusMonths(1).toString() }) {
                             Icon(Icons.Default.ChevronLeft, contentDescription = "Previous month")
                         }
-                        IconButton(onClick = { month = month.plusMonths(1) }) {
+                        IconButton(onClick = { month = monthValue.plusMonths(1).toString() }) {
                             Icon(Icons.Default.ChevronRight, contentDescription = "Next month")
                         }
                     }
@@ -145,10 +154,10 @@ fun M3ERoughCalendar(container: AppContainer, library: List<MediaItemEntity>) {
                                 DayCell(
                                     day = day,
                                     today = today,
-                                    selected = selected,
+                                    selected = selectedDay,
                                     count = day?.let { byDay[it.toString()]?.size ?: 0 } ?: 0,
                                     label = dayLabel,
-                                    onSelect = { selected = it },
+                                    onSelect = { selected = it.toString() },
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -161,7 +170,7 @@ fun M3ERoughCalendar(container: AppContainer, library: List<MediaItemEntity>) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
                 M3ESectionHeader(
-                    title = fullLabel.format(selected),
+                    title = fullLabel.format(selectedDay),
                     trailing = {
                         Text(
                             text = "${releases.size} ${if (releases.size == 1) "release" else "releases"}",
@@ -180,7 +189,7 @@ fun M3ERoughCalendar(container: AppContainer, library: List<MediaItemEntity>) {
                         )
                     }
                 } else {
-                    val day = selected.toString()
+                    val day = selectedDay.toString()
                     releases.forEach { item ->
                         ReleaseRow(item, episodeByShowAndDay["${item.id}|$day"])
                     }
@@ -225,8 +234,9 @@ private fun WeekdayHeader() {
  * One day.
  *
  * Three states, told apart by colour and fill rather than by text: a day carrying releases is
- * tinted and counts them, the selected day is filled with the emphasis tone, and today keeps a
- * hairline so "today" is findable in a month that is not the current one.
+ * tinted, the selected day is filled with the emphasis tone, and today is ringed so it is findable
+ * in a month that is not the current one. Today and selected are deliberately different treatments
+ * — "what is today" and "where am I looking" are different questions.
  */
 @Composable
 private fun DayCell(
@@ -264,6 +274,11 @@ private fun DayCell(
             shape = M3EShape.chip(),
             color = fill,
             contentColor = textColor,
+            border = if (isToday && !isSelected) {
+                BorderStroke(1.dp, M3EColor.accent())
+            } else {
+                null
+            },
             modifier = Modifier.fillMaxSize()
         ) {
             Column(
@@ -274,24 +289,9 @@ private fun DayCell(
                 Text(
                     text = label.format(day),
                     style = M3EType.rowSupporting(),
-                    fontWeight = if (isSelected || hasReleases) FontWeight.SemiBold else FontWeight.Normal,
+                    fontWeight = if (isSelected || isToday || hasReleases) FontWeight.SemiBold else FontWeight.Normal,
                     color = textColor
                 )
-                if (hasReleases) {
-                    Text(
-                        text = "$count",
-                        style = M3EType.rowSupporting(),
-                        color = if (isSelected) textColor else M3EColor.textMuted()
-                    )
-                }
-                if (isToday && !hasReleases && !isSelected) {
-                    Box(
-                        modifier = Modifier
-                            .width(6.dp)
-                            .height(2.dp)
-                            .background(M3EColor.accent())
-                    )
-                }
             }
         }
     }
