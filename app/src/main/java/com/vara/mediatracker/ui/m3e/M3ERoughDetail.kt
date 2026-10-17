@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.TrackingLogic
 import com.vara.mediatracker.data.WatchHistoryRecorder
+import com.vara.mediatracker.data.api.TMDBCastMember
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBSearchItem
 import com.vara.mediatracker.data.model.EpisodeEntity
@@ -101,6 +103,9 @@ fun M3ERoughDetail(
     var statusPickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
     var tastePickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
     var related by remember(item.id) { mutableStateOf(emptyList<TMDBSearchItem>()) }
+    var cast by remember(item.id) { mutableStateOf(emptyList<TMDBCastMember>()) }
+    var directors by remember(item.id) { mutableStateOf(emptyList<String>()) }
+    var creators by remember(item.id) { mutableStateOf(emptyList<String>()) }
     var section by rememberSaveable(item.id) {
         mutableStateOf(if (isTv) DetailSection.Seasons else DetailSection.Overview)
     }
@@ -133,6 +138,22 @@ fun M3ERoughDetail(
                 db.mediaDao().upsertMedia(enriched)
                 live = enriched
             }
+        }
+
+        // A show is credited to its creators, a film to its director; TMDB keeps them in
+        // different places, which is why the byline under the title reads from both.
+        creators = details?.created_by?.mapNotNull { it.name }?.take(2).orEmpty()
+
+        val credits = runCatching {
+            if (isTv) client.getTVCredits(tmdbId) else client.getMovieCredits(tmdbId)
+        }.getOrNull()?.getOrNull()
+        if (credits != null) {
+            cast = credits.cast.sortedBy { it.order }.take(15)
+            directors = credits.crew
+                .filter { it.job == "Director" }
+                .mapNotNull { it.name }
+                .distinct()
+                .take(2)
         }
 
         related = runCatching {
@@ -311,7 +332,14 @@ fun M3ERoughDetail(
             }
         }
 
-        item { Title(live) }
+        item {
+            val byline = when {
+                isTv && creators.isNotEmpty() -> "Created by ${creators.joinToString(", ")}"
+                !isTv && directors.isNotEmpty() -> "Directed by ${directors.joinToString(", ")}"
+                else -> null
+            }
+            Title(live, byline)
+        }
 
         item {
             Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
@@ -454,6 +482,18 @@ fun M3ERoughDetail(
                                     DetailRow("Released", released.take(10))
                                 }
                                 DetailRow("Added", live.dateAdded?.take(10) ?: "—", divider = false)
+                            }
+                        }
+
+                        if (cast.isNotEmpty()) {
+                            M3ESectionHeader("Cast")
+                            M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.padding(vertical = M3ESpacing.tightGap)) {
+                                    val listed = cast.take(10)
+                                    listed.forEachIndexed { index, member ->
+                                        CastRow(member, divider = index < listed.lastIndex)
+                                    }
+                                }
                             }
                         }
                     }
@@ -602,7 +642,7 @@ private val TrackingStatuses = listOf(
 
 /** Poster, eyebrow and the editorial title — the display heading this app uses everywhere. */
 @Composable
-private fun Title(item: MediaItemEntity) {
+private fun Title(item: MediaItemEntity, byline: String? = null) {
     Row(verticalAlignment = Alignment.Bottom) {
         AsyncImage(
             model = item.posterUrl,
@@ -623,6 +663,16 @@ private fun Title(item: MediaItemEntity) {
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
+            if (byline != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = byline,
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.accent(),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Spacer(Modifier.height(M3ESpacing.tightGap))
             Text(
                 text = buildString {
@@ -800,6 +850,56 @@ private fun RelatedRow(result: TMDBSearchItem, onClick: () -> Unit) {
                     color = M3EColor.textMuted()
                 )
             }
+        }
+    }
+}
+
+/** One cast member: portrait, name, and the role they played. */
+@Composable
+private fun CastRow(member: TMDBCastMember, divider: Boolean) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.rowGap),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AsyncImage(
+                model = TMDBClient.buildProfileUrl(member.profile_path),
+                contentDescription = member.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            )
+            Spacer(Modifier.width(M3ESpacing.inlineGap))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = member.name,
+                    style = M3EType.rowTitle(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = M3EColor.text(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val character = member.character
+                if (!character.isNullOrBlank()) {
+                    Text(
+                        text = character,
+                        style = M3EType.rowSupporting(),
+                        color = M3EColor.textMuted(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+        if (divider) {
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = M3ESpacing.cardGap),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
         }
     }
 }
