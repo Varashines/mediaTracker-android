@@ -209,12 +209,12 @@ private fun DayCell(
     val hasReleases = count > 0
 
     val fill = when {
-        isSelected -> M3EColor.emphasis()
-        hasReleases -> M3EColor.accent().copy(alpha = 0.16f)
+        isSelected -> MaterialTheme.colorScheme.primary
+        hasReleases -> M3EColor.accent().copy(alpha = 0.18f)
         else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
     val textColor = when {
-        isSelected -> M3EColor.onEmphasis()
+        isSelected -> MaterialTheme.colorScheme.onPrimary
         hasReleases -> M3EColor.accent()
         else -> M3EColor.textMuted()
     }
@@ -241,8 +241,8 @@ private fun DayCell(
                 if (hasReleases) {
                     Text(
                         text = "$count",
-                        style = M3EType.action(),
-                        color = textColor
+                        style = M3EType.rowSupporting(),
+                        color = if (isSelected) textColor else M3EColor.textMuted()
                     )
                 }
                 if (isToday && !hasReleases && !isSelected) {
@@ -283,10 +283,7 @@ private fun ReleaseRow(item: MediaItemEntity) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = buildString {
-                        append(item.type)
-                        item.nextAiringInstant?.let { append(" · airs") } ?: append(" · releases")
-                    },
+                    text = item.type,
                     style = M3EType.rowSupporting(),
                     color = M3EColor.textMuted(),
                     maxLines = 1,
