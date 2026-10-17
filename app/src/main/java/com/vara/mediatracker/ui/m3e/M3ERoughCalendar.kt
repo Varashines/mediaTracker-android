@@ -259,6 +259,9 @@ fun M3ERoughCalendar(
     }
 }
 
+/** The width of the selection ring, and the inset that keeps the day clear of it. */
+private val RING_WIDTH = 2.dp
+
 /** One dated release: the title, the day it lands, its resolved local air time, and the episode. */
 private data class CalendarEvent(
     val item: MediaItemEntity,
@@ -299,13 +302,12 @@ private fun WeekdayHeader() {
 /**
  * One day.
  *
- * Three states, told apart by shape rather than by text: a day carrying releases is tinted by how
- * much lands on it, today carries a dot, and the selected day carries an inset ring.
+ * Three states, matching the Mac's radar cell: a day carrying releases is tinted by how much lands
+ * on it, today carries a dot beneath its number, and the selected day is ringed.
  *
- * The ring is on-surface, not accent, and the selection is no longer a solid fill. Now that a busy
- * day is itself filled with the accent, a solid accent cell could not be told from a heavy release
- * day — and an accent ring over an accent fill would vanish. Shape and the on-surface colour keep
- * "where am I looking" legible whatever the day's weight.
+ * The ring sits outside the cell rather than on its edge, which is what the Mac's negative padding
+ * does, and it is the accent: the fill underneath is the accent at varying opacity, but the ring is
+ * drawn clear of it, so the two do not merge.
  */
 @Composable
 private fun DayCell(
@@ -335,20 +337,23 @@ private fun DayCell(
         hasReleases -> M3EColor.accent().copy(alpha = baseOpacity + intensity * maxExtra)
         else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
-    val textColor = when {
-        // Past this the fill is strong enough that the accent label stops reading against it.
-        intensity > 0.4f -> Color.White
-        hasReleases || isSelected -> M3EColor.accent()
-        else -> M3EColor.textMuted()
+    // The Mac's label rule, matched: white on a heavy fill, otherwise on-surface held back so the
+    // number sits inside the colour rather than on top of it.
+    val textColor = if (intensity > 0.4f) {
+        Color.White.copy(alpha = 0.9f)
+    } else {
+        M3EColor.text().copy(alpha = 0.7f)
     }
 
-    Box(modifier = modifier.aspectRatio(0.9f)) {
+    Box(modifier = modifier.aspectRatio(0.9f), contentAlignment = Alignment.Center) {
         Surface(
             onClick = { onSelect(day) },
             shape = M3EShape.chip(),
             color = fill,
             contentColor = textColor,
-            modifier = Modifier.fillMaxSize()
+            // Held in by the ring's width so the ring can sit outside the day, the way the Mac's
+            // negative padding puts it. Applied always, so selecting a day does not resize it.
+            modifier = Modifier.fillMaxSize().padding(RING_WIDTH)
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -358,27 +363,27 @@ private fun DayCell(
                 Text(
                     text = label.format(day),
                     style = M3EType.rowSupporting(),
-                    fontWeight = if (isSelected || isToday || hasReleases) FontWeight.SemiBold else FontWeight.Normal,
+                    fontWeight = FontWeight.SemiBold,
                     color = textColor
                 )
                 if (isToday) {
-                    Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(2.dp))
                     Box(
                         modifier = Modifier
                             .size(4.dp)
                             .clip(CircleShape)
-                            .background(if (intensity > 0.4f) Color.White else M3EColor.accent())
+                            // White on a dark palette, black on a light one — the Mac's dot, and
+                            // the reason it reads on the page as well as on a filled day.
+                            .background(if (onDark) Color.White else Color.Black)
                     )
                 }
             }
         }
         if (isSelected) {
-            // Inset so it reads as a ring around the day rather than as the cell's own edge.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(4.dp)
-                    .border(2.dp, M3EColor.text(), M3EShape.chip())
+                    .border(RING_WIDTH, M3EColor.accent(), M3EShape.chip())
             )
         }
     }
