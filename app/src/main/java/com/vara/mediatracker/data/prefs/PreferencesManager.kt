@@ -172,6 +172,22 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putInt("notifications_time", value).apply()
 
     /**
+     * Weekly digest — the Mac's keys and its defaults too: off unless asked for, Sunday, 19:00.
+     * Weekdays are stored 1..7 Sunday-first, which is the Mac's convention, not java.time's.
+     */
+    var digestEnabled: Boolean
+        get() = prefs.getBoolean("weekly_digest_enabled", false)
+        set(value) = prefs.edit().putBoolean("weekly_digest_enabled", value).apply()
+
+    var digestWeekday: Int
+        get() = prefs.getInt("weekly_digest_weekday", 1)
+        set(value) = prefs.edit().putInt("weekly_digest_weekday", value).apply()
+
+    var digestTime: Int
+        get() = prefs.getInt("weekly_digest_time", 19 * 3600)
+        set(value) = prefs.edit().putInt("weekly_digest_time", value).apply()
+
+    /**
      * Persists every credential in a single atomic edit. Called on a debounce rather
      * than per keystroke, so four keys commit together instead of racing each other.
      */

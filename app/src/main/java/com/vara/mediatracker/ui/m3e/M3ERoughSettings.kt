@@ -35,10 +35,12 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,6 +49,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,6 +69,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.vara.mediatracker.data.sync.DigestScheduler
 import com.vara.mediatracker.data.sync.NotificationScheduler
 import com.vara.mediatracker.data.sync.ReleaseReminderPlanner
 import com.vara.mediatracker.data.sync.SyncScheduler
@@ -105,6 +109,10 @@ fun M3ERoughSettings(
     var notificationsMovies by rememberSaveable { mutableStateOf(prefs.notificationsMovies) }
     var notificationsTv by rememberSaveable { mutableStateOf(prefs.notificationsTv) }
     var deliverySeconds by rememberSaveable { mutableIntStateOf(prefs.notificationsTime) }
+    var digestEnabled by rememberSaveable { mutableStateOf(prefs.digestEnabled) }
+    var digestWeekday by rememberSaveable { mutableIntStateOf(prefs.digestWeekday) }
+    var digestTime by rememberSaveable { mutableIntStateOf(prefs.digestTime) }
+    var pickingWeekday by rememberSaveable { mutableStateOf(false) }
 
     // The queue is derived from prefs, the library and the clock, so anything that changes one of
     // those re-plans it rather than trusting what was scheduled earlier.
@@ -120,6 +128,18 @@ fun M3ERoughSettings(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> if (granted) reschedule() }
+
+    // The digest is periodic work, so a change re-registers it rather than re-planning a list.
+    // Values are passed in rather than read back from the state: a handler that has just changed
+    // one would otherwise re-register the old value it captured before the change.
+    fun applyDigest(enabled: Boolean, weekday: Int, time: Int) {
+        val appContext = context.applicationContext
+        if (enabled) {
+            DigestScheduler.schedule(appContext, weekday, time)
+        } else {
+            DigestScheduler.cancel(appContext)
+        }
+    }
 
     // Credentials are staged locally and written on a debounce, so a key pasted or retyped commits
     // once instead of on every keystroke. Restarting the effect on each change is the debounce.
@@ -291,6 +311,50 @@ fun M3ERoughSettings(
                                     ).show()
                                 }
                             )
+
+                            SettingDivider()
+                            SettingSwitchRow(
+                                icon = Icons.Default.Schedule,
+                                title = "Weekly digest",
+                                supporting = "Your shows and movies, every week",
+                                checked = digestEnabled,
+                                onCheckedChange = { on ->
+                                    haptics.toggle()
+                                    digestEnabled = on
+                                    prefs.digestEnabled = on
+                                    applyDigest(on, digestWeekday, digestTime)
+                                }
+                            )
+                            if (digestEnabled) {
+                                SettingValueRow(
+                                    title = "Digest day",
+                                    supporting = "Which day it arrives",
+                                    value = weekdayLabel(digestWeekday),
+                                    onClick = {
+                                        haptics.tap()
+                                        pickingWeekday = true
+                                    }
+                                )
+                                SettingValueRow(
+                                    title = "Digest time",
+                                    supporting = "When on that day",
+                                    value = deliveryLabel(digestTime),
+                                    onClick = {
+                                        TimePickerDialog(
+                                            context,
+                                            { _, hour, minute ->
+                                                val seconds = hour * 3600 + minute * 60
+                                                digestTime = seconds
+                                                prefs.digestTime = seconds
+                                                applyDigest(true, digestWeekday, seconds)
+                                            },
+                                            digestTime / 3600,
+                                            (digestTime % 3600) / 60,
+                                            false
+                                        ).show()
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -373,6 +437,41 @@ fun M3ERoughSettings(
         }
 
         item { Spacer(Modifier.height(M3ESpacing.pageVertical)) }
+    }
+
+    if (pickingWeekday) {
+        AlertDialog(
+            onDismissRequest = { pickingWeekday = false },
+            title = { Text("Digest day") },
+            text = {
+                Column {
+                    (1..7).forEach { day ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    haptics.tap()
+                                    digestWeekday = day
+                                    prefs.digestWeekday = day
+                                    applyDigest(true, day, digestTime)
+                                    pickingWeekday = false
+                                }
+                                .padding(vertical = M3ESpacing.rowGap),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = weekdayLabel(day),
+                                style = M3EType.rowTitle(),
+                                color = if (day == digestWeekday) M3EColor.accent() else M3EColor.text()
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { pickingWeekday = false }) { Text("Done") }
+            }
+        )
     }
 }
 
@@ -609,6 +708,14 @@ private fun hasNotificationPermission(context: Context): Boolean =
             context,
             Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED
+
+/** The Mac stores weekdays 1..7 starting at Sunday; this reads them in that order. */
+private val WEEKDAY_NAMES = listOf(
+    "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+)
+
+private fun weekdayLabel(macWeekday: Int): String =
+    WEEKDAY_NAMES.getOrElse(macWeekday - 1) { "Sunday" }
 
 private fun deliveryLabel(seconds: Int): String =
     String.format(Locale.US, "%02d:%02d", seconds / 3600, (seconds % 3600) / 60)

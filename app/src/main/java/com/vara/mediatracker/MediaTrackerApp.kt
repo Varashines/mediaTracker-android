@@ -8,6 +8,7 @@ import coil.memory.MemoryCache
 import com.vara.mediatracker.data.badge.BadgeComputer
 import com.vara.mediatracker.data.db.EpisodeKeyReconciler
 import com.vara.mediatracker.data.db.TasteCanonicalizer
+import com.vara.mediatracker.data.sync.DigestScheduler
 import com.vara.mediatracker.data.sync.NotificationScheduler
 import com.vara.mediatracker.data.sync.ReleaseNotifier
 import com.vara.mediatracker.data.sync.ReleaseReminderPlanner
@@ -86,6 +87,20 @@ class MediaTrackerApp : Application(), ImageLoaderFactory {
             // Refresh the reminder queue on every start: preferences may have changed, and
             // anything scheduled for a day already past has fired and is no longer in the plan.
             NotificationScheduler.syncAll(this@MediaTrackerApp, ReleaseReminderPlanner.plan(container))
+
+            // The digest is periodic work, so a restart re-registers it rather than re-planning a
+            // list: this keeps its day and time in step after a preference change and cancels it
+            // outright if it was switched off.
+            val preferences = container.preferences
+            if (preferences.digestEnabled) {
+                DigestScheduler.schedule(
+                    this@MediaTrackerApp,
+                    preferences.digestWeekday,
+                    preferences.digestTime
+                )
+            } else {
+                DigestScheduler.cancel(this@MediaTrackerApp)
+            }
         }
     }
 }
