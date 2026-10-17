@@ -1,5 +1,6 @@
 package com.vara.mediatracker.ui.m3e
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -97,7 +98,8 @@ fun M3ERoughDetail(
 
     var live by remember(item.id) { mutableStateOf(item) }
     var season by remember(item.id) { mutableStateOf<Int?>(null) }
-    var pickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
+    var statusPickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
+    var tastePickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
     var related by remember(item.id) { mutableStateOf(emptyList<TMDBSearchItem>()) }
     var section by rememberSaveable(item.id) {
         mutableStateOf(if (isTv) DetailSection.Seasons else DetailSection.Overview)
@@ -331,7 +333,25 @@ fun M3ERoughDetail(
                         onClick = { toggleMovie() }
                     )
                 }
-                StatusTasteButton(live) { pickerOpen = true }
+                // Two pills, each its own popup: they are two decisions, not one, and a pill
+                // that opens exactly what it names is quicker than a shared sheet you then have
+                // to read.
+                Row(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
+                    PickerPill(
+                        label = "Status",
+                        value = live.state,
+                        tint = statusTint(live.state),
+                        modifier = Modifier.weight(1f),
+                        onClick = { statusPickerOpen = true }
+                    )
+                    PickerPill(
+                        label = "Taste",
+                        value = live.taste,
+                        tint = tasteTint(live.taste),
+                        modifier = Modifier.weight(1f),
+                        onClick = { tastePickerOpen = true }
+                    )
+                }
             }
         }
 
@@ -466,13 +486,25 @@ fun M3ERoughDetail(
         item { Spacer(Modifier.height(48.dp)) }
     }
 
-    if (pickerOpen) {
-        StatusTastePicker(
-            status = live.state,
-            taste = live.taste,
-            onStatus = { if (!it.equals(live.state, true)) setStatus(it) },
-            onTaste = { if (!it.equals(live.taste, true)) setTaste(it) },
-            onDismiss = { pickerOpen = false }
+    if (statusPickerOpen) {
+        ChoicePicker(
+            title = "Status",
+            options = TrackingStatuses,
+            selected = live.state,
+            tintFor = { statusTint(it) },
+            onSelect = { if (!it.equals(live.state, true)) setStatus(it) },
+            onDismiss = { statusPickerOpen = false }
+        )
+    }
+
+    if (tastePickerOpen) {
+        ChoicePicker(
+            title = "Taste",
+            options = listOf("None", "Dislike", "Like", "Love"),
+            selected = live.taste,
+            tintFor = { tasteTint(it) },
+            onSelect = { if (!it.equals(live.taste, true)) setTaste(it) },
+            onDismiss = { tastePickerOpen = false }
         )
     }
 }
@@ -485,75 +517,77 @@ private enum class DetailSection(val label: String) {
 }
 
 /**
- * The status and taste, shown together behind one control.
+ * A labelled pill showing the current value, in the colour that value means.
  *
- * Both answer "how do I feel about this", and both are set in the same moment, so they share a
- * popup rather than occupying two permanent sections of the screen.
+ * The tint does the work: a Completed title's pill is green, a Dropped one is red, a loved one
+ * carries the taste colour — so the state is legible before the word is read.
  */
 @Composable
-private fun StatusTasteButton(item: MediaItemEntity, onClick: () -> Unit) {
-    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
-            verticalAlignment = Alignment.CenterVertically
+private fun PickerPill(
+    label: String,
+    value: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = M3EShape.chip(),
+        color = tint.copy(alpha = 0.18f),
+        border = BorderStroke(1.dp, tint.copy(alpha = 0.5f)),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = M3ESpacing.inlineGap, vertical = M3ESpacing.tightGap)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = M3EType.rowSupporting(),
+                color = M3EColor.textMuted(),
+                maxLines = 1
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Status · Taste",
-                    style = M3EType.rowSupporting(),
-                    color = M3EColor.textMuted()
-                )
-                Text(
-                    text = "${item.state} · ${item.taste}",
+                    text = value,
                     style = M3EType.rowTitle(),
                     fontWeight = FontWeight.SemiBold,
-                    color = M3EColor.text(),
+                    color = tint,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = tint
                 )
             }
-            Icon(
-                imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = M3EColor.textMuted()
-            )
         }
     }
 }
 
-/** The popup itself: a status row and a taste row, applied as they are chosen. */
+/** One popup for one decision: a row of chips, applied as it is chosen. */
 @Composable
-private fun StatusTastePicker(
-    status: String,
-    taste: String,
-    onStatus: (String) -> Unit,
-    onTaste: (String) -> Unit,
+private fun ChoicePicker(
+    title: String,
+    options: List<String>,
+    selected: String,
+    tintFor: @Composable (String) -> Color,
+    onSelect: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Status & taste") },
+        title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
-                    Text("Status", style = M3EType.rowTitle(), color = M3EColor.text())
-                    ChoiceRow(
-                        options = TrackingStatuses,
-                        selected = status,
-                        tintFor = { statusTint(it) },
-                        onSelect = onStatus
-                    )
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
-                    Text("Taste", style = M3EType.rowTitle(), color = M3EColor.text())
-                    ChoiceRow(
-                        options = listOf("None", "Dislike", "Like", "Love"),
-                        selected = taste,
-                        tintFor = { tasteTint(it) },
-                        onSelect = onTaste
-                    )
-                }
-            }
+            ChoiceRow(
+                options = options,
+                selected = selected,
+                tintFor = tintFor,
+                onSelect = onSelect
+            )
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Done") }
