@@ -318,7 +318,15 @@ private fun HomeSection(
 private fun LibrarySection(core: LibraryCore, onOpen: (MediaItemEntity) -> Unit) {
     // Real filtering and sorting: LibraryQuery is the same pure routine the shipping Library uses,
     // including its sort orders, rather than a second set invented for this screen.
-    var filters by remember { mutableStateOf(LibraryFilters()) }
+    // Held as the two plain values rather than as a LibraryFilters, so they can be saveable: the
+    // filter set is a data class of sets and has no saver, and these are the only two the screen
+    // offers. Same reason as the Hub's tab — a plain remember is lost the moment the section leaves
+    // the composition, which opening any title does.
+    var filterType by rememberSaveable { mutableStateOf(LibraryFilters.TYPE_ALL) }
+    var filterSort by rememberSaveable { mutableStateOf(LibraryFilters.SORT_RECENT) }
+    val filters = remember(filterType, filterSort) {
+        LibraryFilters(type = filterType, sort = filterSort)
+    }
     val badgeLabels = remember(core) { core.badges.mapValues { it.value.badge.label } }
     val library = remember(core, filters) {
         LibraryQuery.apply(core.items, "", filters, badgeLabels)
@@ -342,14 +350,14 @@ private fun LibrarySection(core: LibraryCore, onOpen: (MediaItemEntity) -> Unit)
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 ChipRow(
                     options = listOf(LibraryFilters.TYPE_ALL, "Movies", "TV Shows"),
-                    selected = filters.type,
-                    onSelect = { filters = filters.copy(type = it) }
+                    selected = filterType,
+                    onSelect = { filterType = it }
                 )
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 ChipRow(
                     options = LibraryFilters.SORTS,
-                    selected = filters.sort,
-                    onSelect = { filters = filters.copy(sort = it) }
+                    selected = filterSort,
+                    onSelect = { filterSort = it }
                 )
                 Spacer(Modifier.height(M3ESpacing.cardGap))
             }
