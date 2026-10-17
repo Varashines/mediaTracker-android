@@ -471,7 +471,7 @@ private fun M3ERoughList(
                 subtitle = subtitle
             )
         }
-        item { Spacer(Modifier.height(48.dp)) }
+        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
     }
 }
 

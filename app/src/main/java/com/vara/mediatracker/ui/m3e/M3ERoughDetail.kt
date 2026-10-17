@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -487,12 +488,12 @@ fun M3ERoughDetail(
 
                         if (cast.isNotEmpty()) {
                             M3ESectionHeader("Cast")
-                            M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                                Column(modifier = Modifier.padding(vertical = M3ESpacing.tightGap)) {
-                                    val listed = cast.take(10)
-                                    listed.forEachIndexed { index, member ->
-                                        CastRow(member, divider = index < listed.lastIndex)
-                                    }
+                            // A strip, because a cast is browsed sideways: you are looking for a
+                            // face, not reading a list, and a horizontal run shows far more of them
+                            // in the same height.
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+                                items(cast.take(15), key = { it.id }) { member ->
+                                    CastCard(member)
                                 }
                             }
                         }
@@ -516,14 +517,34 @@ fun M3ERoughDetail(
                         }
                     }
                 } else {
-                    items(related, key = { "${it.media_type}_${it.id}" }) { result ->
-                        RelatedRow(result) { openRelated(result) }
+                    item {
+                        // Poster cards, as the Library shows titles. A suggestion is judged by its
+                        // artwork, and a row of text gives you nothing to recognise it by.
+                        Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+                            related.chunked(3).forEach { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap)
+                                ) {
+                                    row.forEach { result ->
+                                        RelatedCard(
+                                            result = result,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { openRelated(result) }
+                                        )
+                                    }
+                                    // Keeps a short last row from stretching its cards.
+                                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
-        item { Spacer(Modifier.height(48.dp)) }
+        // Clears the floating navigation bar: at 48 the last row sat underneath it.
+        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
     }
 
     if (statusPickerOpen) {
@@ -811,94 +832,67 @@ private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Bool
     }
 }
 
-/** One suggested title: poster, name, year, and whether it is already yours. */
+/** One suggestion, as the Library shows a title: poster over name. */
 @Composable
-private fun RelatedRow(result: TMDBSearchItem, onClick: () -> Unit) {
+private fun RelatedCard(result: TMDBSearchItem, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val title = result.title ?: result.name ?: "Untitled"
-    val year = (result.release_date ?: result.first_air_date)?.take(4)
-    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AsyncImage(
-                model = TMDBClient.buildPosterUrl(result.poster_path),
-                contentDescription = title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .width(44.dp)
-                    .height(66.dp)
-                    .clip(M3EShape.chip())
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-            )
-            Spacer(Modifier.width(M3ESpacing.inlineGap))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
-                    color = M3EColor.text(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = listOfNotNull(
-                        if (result.media_type == "tv") "TV Show" else "Movie",
-                        year
-                    ).joinToString(" · "),
-                    style = M3EType.rowSupporting(),
-                    color = M3EColor.textMuted()
-                )
-            }
-        }
+    Column(modifier = modifier.clickable(onClick = onClick)) {
+        AsyncImage(
+            model = TMDBClient.buildPosterUrl(result.poster_path),
+            contentDescription = title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .clip(M3EShape.chip())
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+        )
+        Spacer(Modifier.height(M3ESpacing.tightGap))
+        Text(
+            text = title,
+            style = M3EType.rowSupporting(),
+            color = M3EColor.text(),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
-/** One cast member: portrait, name, and the role they played. */
+/** One cast member in the strip: portrait, name, and the role they played. */
 @Composable
-private fun CastRow(member: TMDBCastMember, divider: Boolean) {
-    Column {
-        Row(
+private fun CastCard(member: TMDBCastMember) {
+    Column(
+        modifier = Modifier.width(84.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        AsyncImage(
+            model = TMDBClient.buildProfileUrl(member.profile_path),
+            contentDescription = member.name,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.rowGap),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AsyncImage(
-                model = TMDBClient.buildProfileUrl(member.profile_path),
-                contentDescription = member.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-            )
-            Spacer(Modifier.width(M3ESpacing.inlineGap))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = member.name,
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
-                    color = M3EColor.text(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                val character = member.character
-                if (!character.isNullOrBlank()) {
-                    Text(
-                        text = character,
-                        style = M3EType.rowSupporting(),
-                        color = M3EColor.textMuted(),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-        if (divider) {
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = M3ESpacing.cardGap),
-                color = MaterialTheme.colorScheme.outlineVariant
+                .size(72.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+        )
+        Spacer(Modifier.height(M3ESpacing.tightGap))
+        Text(
+            text = member.name,
+            style = M3EType.rowSupporting(),
+            fontWeight = FontWeight.SemiBold,
+            color = M3EColor.text(),
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        val character = member.character
+        if (!character.isNullOrBlank()) {
+            Text(
+                text = character,
+                style = M3EType.rowSupporting(),
+                color = M3EColor.textMuted(),
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

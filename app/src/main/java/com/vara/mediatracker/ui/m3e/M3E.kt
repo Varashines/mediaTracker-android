@@ -57,6 +57,12 @@ object M3ESpacing {
     /** Vertical space above the first element and below the last. */
     val pageVertical = 24.dp
 
+    /**
+     * Trailing space at the end of a scroll, so the floating navigation bar does not sit on the
+     * last row. Sized to the bar plus its bottom padding, with a little to spare.
+     */
+    val bottomInset = 112.dp
+
     /** Space between two cards in a list. */
     val cardGap = 16.dp
 
