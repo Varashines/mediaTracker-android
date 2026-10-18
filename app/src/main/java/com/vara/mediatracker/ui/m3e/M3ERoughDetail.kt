@@ -1,5 +1,7 @@
 package com.vara.mediatracker.ui.m3e
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -59,10 +61,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,6 +110,8 @@ import kotlinx.coroutines.launch
 fun M3ERoughDetail(
     item: MediaItemEntity,
     container: AppContainer,
+    /** Where the poster that opened this was, when it came from one. See [HeroOrigin]. */
+    heroFrom: Rect? = null,
     onOpenMedia: (MediaItemEntity) -> Unit = {}
 ) {
     val db = container.database
@@ -394,7 +402,7 @@ fun M3ERoughDetail(
             // All of it beside the poster. In the controls row, status takes 70% of the width,
             // taste 25%, and the last 5% is left as space: a reaction is a glyph and does not need
             // the room a state does, but the tenth that was reserved for nothing read as a gap.
-            Title(live, byline) {
+            Title(live, byline, heroFrom) {
                 Row(
                     modifier = Modifier.height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
@@ -779,8 +787,26 @@ private val TrackingStatuses = listOf(
 private fun Title(
     item: MediaItemEntity,
     byline: String? = null,
+    heroFrom: Rect? = null,
     below: @Composable (() -> Unit)? = null
 ) {
+    // The poster grows from where the tapped tile was. Not a shared element — the tile is already
+    // gone by the time this composes — so the geometry is carried across instead, and the poster is
+    // drawn at the old rectangle and animated to its own.
+    //
+    // Both rectangles are in root coordinates, so the difference between them is exactly the offset
+    // and scale to start from. Where the target is not known yet (first frame) or the origin is not
+    // this title's, the animation is skipped and the poster simply appears.
+    var target by remember { mutableStateOf(Rect.Zero) }
+    val grow = remember { Animatable(if (heroFrom == null) 1f else 0f) }
+    LaunchedEffect(heroFrom, target) {
+        if (heroFrom != null && target != Rect.Zero && target.width > 0f) {
+            grow.snapTo(0f)
+            grow.animateTo(1f, tween(durationMillis = 320))
+        } else {
+            grow.snapTo(1f)
+        }
+    }
     // Everything is beside the poster: the heading, and the row of controls under it.
     Row(verticalAlignment = Alignment.Top) {
         AsyncImage(
@@ -790,6 +816,18 @@ private fun Title(
             modifier = Modifier
                 .width(132.dp)
                 .aspectRatio(2f / 3f)
+                .onGloballyPositioned { target = it.boundsInRoot() }
+                .graphicsLayer {
+                    val origin = heroFrom
+                    val p = grow.value
+                    if (origin != null && p < 1f && target.width > 0f) {
+                        // Read in the draw phase, so the animation redraws without recomposing.
+                        scaleX = 1f + (origin.width / target.width - 1f) * (1f - p)
+                        scaleY = 1f + (origin.height / target.height - 1f) * (1f - p)
+                        translationX = (origin.left - target.left) * (1f - p)
+                        translationY = (origin.top - target.top) * (1f - p)
+                    }
+                }
                 .clip(M3EShape.card())
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
         )

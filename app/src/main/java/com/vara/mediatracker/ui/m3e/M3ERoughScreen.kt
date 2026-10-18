@@ -85,7 +85,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.flow.collect
@@ -187,6 +190,7 @@ fun M3ERoughScreen(
     // bar's own height are both known, and the three together are the room a list must leave at its
     // foot. A single constant was right under gesture navigation and short by a system bar's worth
     // under three-button navigation, which put the last row under the bar.
+    val heroOrigin = remember { HeroOrigin() }
     var navHeight by remember { mutableStateOf(0.dp) }
     val navClearance = navHeight + M3ESpacing.navGap +
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -233,7 +237,10 @@ fun M3ERoughScreen(
         // the Hub out of the composition and its tab came back as Smart — the state had nowhere to
         // be kept. Keyed by depth, so each step remembers its own.
         val overlayHolder = rememberSaveableStateHolder()
-        CompositionLocalProvider(LocalNavClearance provides navClearance) {
+        CompositionLocalProvider(
+            LocalNavClearance provides navClearance,
+            LocalHeroOrigin provides heroOrigin
+        ) {
         FadeIn(
             key = overlay,
             rise = if (overlay is Overlay.Search) 28.dp else 0.dp,
@@ -250,6 +257,10 @@ fun M3ERoughScreen(
             is Overlay.Detail -> M3ERoughDetail(
                 item = current.item,
                 container = container,
+                // Only if this detail was opened from that title's poster. Read here rather than
+                // passed through every tap handler: the push is what makes it relevant, and the id
+                // makes a stale rectangle harmless.
+                heroFrom = if (heroOrigin.itemId == current.item.id) heroOrigin.rect else null,
                 onOpenMedia = { stack = stack + Overlay.Detail(it) }
             )
             is Overlay.Titles -> M3ERoughList(
@@ -876,7 +887,22 @@ private fun TitleRow(
 
 @Composable
 private fun PosterCard(item: MediaItemEntity, width: Dp, onClick: (() -> Unit)? = null) {
-    M3EArtworkCard(title = item.title, modifier = Modifier.width(width), onClick = onClick) {
+    // Where this tile is, kept locally and only handed over when it is the one tapped. Recording on
+    // every layout instead would write to shared state on every scroll frame.
+    val origin = LocalHeroOrigin.current
+    var bounds by remember { mutableStateOf(Rect.Zero) }
+    M3EArtworkCard(
+        title = item.title,
+        modifier = Modifier
+            .width(width)
+            .onGloballyPositioned { bounds = it.boundsInRoot() },
+        onClick = if (onClick == null) null else {
+            {
+                origin.record(item.id, bounds)
+                onClick()
+            }
+        }
+    ) {
         Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
     }
 }

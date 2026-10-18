@@ -4,6 +4,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
@@ -103,6 +104,31 @@ object M3ESpacing {
  * first frame, before there is anything to measure.
  */
 val LocalNavClearance = compositionLocalOf { M3ESpacing.bottomInset }
+
+/**
+ * Where the poster that opened the current detail was, so the detail's poster can start there and
+ * grow into place.
+ *
+ * Carries the title's id as well as its rectangle, because the rectangle is only meaningful for the
+ * title it came from. Details are also opened from places with no poster — a related title, a search
+ * result — and without the id those would animate in from wherever the last poster happened to be,
+ * which is worse than not animating at all.
+ *
+ * The alternative is a shared-element transition, which does this properly and needs the outgoing
+ * screen to stay composed through the animation. The shell composes one screen at a time on purpose,
+ * so this carries the geometry across the gap instead of the view itself.
+ */
+class HeroOrigin {
+    var itemId: String? = null
+    var rect: Rect? = null
+
+    fun record(id: String, bounds: Rect) {
+        itemId = id
+        rect = bounds
+    }
+}
+
+val LocalHeroOrigin = compositionLocalOf { HeroOrigin() }
 
 /**
  * Type roles, read through the theme so a single change to `AppTypography` moves the whole app.
