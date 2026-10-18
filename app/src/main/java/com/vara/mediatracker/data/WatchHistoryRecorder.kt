@@ -1,6 +1,7 @@
 package com.vara.mediatracker.data
 
 import com.vara.mediatracker.data.db.WatchHistoryDao
+import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.WatchCycleEntity
 import com.vara.mediatracker.data.model.WatchEventEntity
 import java.util.UUID
@@ -35,7 +36,14 @@ object WatchHistoryRecorder {
         source: String = "manual"
     ): WatchEventEntity {
         val cycle = ensureOpenCycle(dao, mediaId, kind, watchedAt)
-        dao.getActiveEvent(mediaId, episodeId)?.let { return it }
+        // Canonical, not literal. The same episode arrives spelled two ways — the Mac's
+        // `{show}_{season}_{episode}` and this device's `tv_{show}_s{season}_e{episode}` — so a
+        // literal lookup sees two episodes where there is one and records the watch twice. Null
+        // (a movie) compares equal to null, which is what keeps the movie path working.
+        val wanted = MediaIds.canonicalEpisodeIdOrNull(episodeId)
+        dao.getLiveEvents(mediaId).firstOrNull {
+            MediaIds.canonicalEpisodeIdOrNull(it.episodeId) == wanted
+        }?.let { return it }
 
         val event = WatchEventEntity(
             id = UUID.randomUUID().toString(),
@@ -55,7 +63,11 @@ object WatchHistoryRecorder {
 
     /** Un-watches: voids the live event (history is append-only, so sync can propagate it). */
     suspend fun voidWatch(dao: WatchHistoryDao, mediaId: String, episodeId: String?, at: String) {
-        val existing = dao.getActiveEvent(mediaId, episodeId) ?: return
+        // Canonical here too, or un-watching would silently do nothing to an event the Mac wrote.
+        val wanted = MediaIds.canonicalEpisodeIdOrNull(episodeId)
+        val existing = dao.getLiveEvents(mediaId).firstOrNull {
+            MediaIds.canonicalEpisodeIdOrNull(it.episodeId) == wanted
+        } ?: return
         dao.upsertEvents(listOf(existing.copy(voidedAt = at, updatedAt = at)))
     }
 

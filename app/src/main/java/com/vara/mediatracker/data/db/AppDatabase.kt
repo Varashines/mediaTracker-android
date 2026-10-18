@@ -263,9 +263,16 @@ interface WatchHistoryDao {
     @Query("SELECT * FROM watch_cycles WHERE mediaId = :mediaId AND state != 'completed' ORDER BY startedAt DESC LIMIT 1")
     suspend fun getOpenCycle(mediaId: String): WatchCycleEntity?
 
-    /** The live event for one episode (or the movie itself when [episodeId] is null). */
-    @Query("SELECT * FROM watch_events WHERE mediaId = :mediaId AND episodeId IS :episodeId AND voidedAt IS NULL LIMIT 1")
-    suspend fun getActiveEvent(mediaId: String, episodeId: String?): WatchEventEntity?
+    /**
+     * Every live event for a title.
+     *
+     * Exists so the episode id can be compared canonically in Kotlin. SQL compares it literally,
+     * and the two clients spell the same episode differently — the Mac's
+     * `{show}_{season}_{episode}` against this device's `tv_{show}_s{season}_e{episode}` — so a
+     * literal lookup sees two episodes where there is one and the same watch is recorded twice.
+     */
+    @Query("SELECT * FROM watch_events WHERE mediaId = :mediaId AND voidedAt IS NULL")
+    suspend fun getLiveEvents(mediaId: String): List<WatchEventEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCycles(cycles: List<WatchCycleEntity>)
