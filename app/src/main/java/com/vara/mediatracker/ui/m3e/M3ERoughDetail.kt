@@ -987,17 +987,25 @@ private fun UpcomingNotice(
                 .fillMaxWidth()
                 .padding(M3ESpacing.cardGap),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap)
+            // Centred as a group, and built the same way as the action it replaces: same glyph size,
+            // same gap, same type role. The two are the same element in different states, so they
+            // should not sit differently — the button only looked right because a Button centres its
+            // own content for free.
+            horizontalArrangement = Arrangement.Center
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = M3EColor.accent())
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = M3EColor.accent(),
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(M3ESpacing.tightGap))
             Text(
                 text = text,
-                style = M3EType.rowTitle(),
-                fontWeight = FontWeight.SemiBold,
+                style = M3EType.action(),
                 color = M3EColor.text(),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
