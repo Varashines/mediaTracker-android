@@ -720,37 +720,47 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
         ) {
             items.forEachIndexed { index, (label, icon) ->
                 val active = index == selected
-                // Icons only, and a fixed size for every item.
+                // Icon and name, on every item, at an equal width.
                 //
-                // The label used to expand out of the selected item and collapse behind it, which
-                // changed that item's width — so every other item in the row shifted with it, on
-                // every tap. That reflow was the jitter. Nothing here changes size, so the only
-                // thing that moves is the colour, which animates.
+                // Removing the name was the wrong fix for the jitter: the label was not the problem,
+                // the label *appearing and disappearing* was — it changed one item's width and
+                // shifted the other four. Every item is weighted equally and always carries its
+                // name, so nothing changes shape and nothing moves except the colour.
                 val pillColor by animateColorAsState(
                     targetValue = if (active) M3EColor.accent() else Color.Transparent,
                     animationSpec = tween(durationMillis = 200),
                     label = "navPill"
                 )
-                val iconTint by animateColorAsState(
+                val contentColor by animateColorAsState(
                     targetValue = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted(),
                     animationSpec = tween(durationMillis = 200),
-                    label = "navIcon"
+                    label = "navContent"
                 )
                 Surface(
                     onClick = { onSelect(index) },
                     shape = RoundedCornerShape(50),
                     color = pillColor,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = M3ESpacing.tightGap),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Icon(
                             imageVector = icon,
                             contentDescription = label,
-                            tint = iconTint,
-                            modifier = Modifier.size(22.dp)
+                            tint = contentColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = label,
+                            style = M3EType.rowSupporting(),
+                            color = contentColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
