@@ -49,6 +49,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
@@ -113,6 +114,13 @@ import com.vara.mediatracker.di.AppContainer
  * Flip [M3ERoughPreview] to false to get the existing UI back.
  */
 const val M3ERoughPreview = true
+
+/** Section indices, so the bar can name the three it shows and the three it hides. */
+private const val HOME = 0
+private const val HUB = 1
+private const val CALENDAR = 2
+private const val LIBRARY = 3
+private const val FINISHED = 4
 
 
 @Composable
@@ -249,6 +257,15 @@ fun M3ERoughScreen(
                 if (target != section) haptics.tap()
                 section = target
             },
+            onSearch = {
+                haptics.tap()
+                searching = true
+            },
+            onSettings = {
+                haptics.tap()
+                settings = true
+            },
+            searching = searching,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -288,20 +305,10 @@ private fun HomeSection(
         item {
             Column {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
-            M3EScreenHeader(
-                eyebrow = "Explore",
-                title = "MediaTracker",
-                trailing = {
-                    Row {
-                        IconButton(onClick = onSearch) {
-                            Icon(Icons.Default.Search, contentDescription = "Search", tint = M3EColor.text())
-                        }
-                        IconButton(onClick = onSettings) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = M3EColor.text())
-                        }
-                    }
-                }
-            )
+            // No search or settings icon here any more: both are on the bar, where a thumb can
+            // reach them, and a second entry point at the top of the screen was only ever a
+            // duplicate in the worst place.
+            M3EScreenHeader(eyebrow = "Explore", title = "MediaTracker")
             }
         }
         item { EmphasisBanner(count = inProgress.size) }
@@ -734,63 +741,167 @@ private fun Poster(item: MediaItemEntity, modifier: Modifier = Modifier) {
  * pill with a stroke; the rest are bare icons.
  */
 @Composable
-private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val items: List<Pair<String, ImageVector>> = listOf(
-        "Home" to Icons.Default.Home,
-        "Hub" to Icons.Default.AutoAwesome,
-        "Calendar" to Icons.Default.Schedule,
-        "Library" to Icons.Default.VideoLibrary,
-        "Finished" to Icons.Default.Check
-    )
+private fun FloatingNav(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    onSearch: () -> Unit,
+    onSettings: () -> Unit,
+    searching: Boolean,
+    modifier: Modifier = Modifier
+) {
+    var moreOpen by remember { mutableStateOf(false) }
 
-    Surface(
+    // Back closes the popup before it reaches the shell's overlay handler, so the popup is not
+    // something you can be stuck inside.
+    BackHandler(enabled = moreOpen) { moreOpen = false }
+
+    Column(
         modifier = modifier,
-        shape = RoundedCornerShape(50),
-        color = M3EColor.card(),
-        shadowElevation = 12.dp
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // The destinations that are not sections: Finished, Settings, and the Hub. They float
+        // above the bar rather than replacing it, so opening them does not move anything you were
+        // about to tap.
+        if (moreOpen) {
+            Surface(
+                shape = RoundedCornerShape(28),
+                color = M3EColor.card(),
+                shadowElevation = 12.dp,
+                modifier = Modifier.padding(bottom = M3ESpacing.tightGap)
+            ) {
+                Column(modifier = Modifier.padding(M3ESpacing.tightGap)) {
+                    MoreItem(Icons.Default.Check, "Finished") {
+                        moreOpen = false
+                        onSelect(FINISHED)
+                    }
+                    MoreItem(Icons.Default.AutoAwesome, "Hub") {
+                        moreOpen = false
+                        onSelect(HUB)
+                    }
+                    MoreItem(Icons.Default.Settings, "Settings") {
+                        moreOpen = false
+                        onSettings()
+                    }
+                }
+            }
+        }
+
         Row(
-            modifier = Modifier.padding(M3ESpacing.tightGap),
             horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            items.forEachIndexed { index, (label, icon) ->
-                val active = index == selected
-                // Filled means chosen, the same as the calendar's selected day: a solid accent
-                // pill, so the current section is obvious at a glance rather than by a hairline.
-                Surface(
-                    onClick = { onSelect(index) },
-                    shape = RoundedCornerShape(50),
-                    color = if (active) M3EColor.accent() else M3EColor.card()
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = M3EColor.card(),
+                shadowElevation = 12.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(M3ESpacing.tightGap),
+                    horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(
-                            horizontal = if (active) 16.dp else 12.dp,
-                            vertical = 10.dp
-                        ),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+                    NavPill(Icons.Default.Home, "Home", selected == HOME) { onSelect(HOME) }
+                    NavPill(Icons.Default.Schedule, "Calendar", selected == CALENDAR) {
+                        onSelect(CALENDAR)
+                    }
+                    NavPill(Icons.Default.VideoLibrary, "Library", selected == LIBRARY) {
+                        onSelect(LIBRARY)
+                    }
+
+                    // The centre button. Accent-filled and lit while one of its three is open, so
+                    // "one of mine" is legible without the bar having to show a section that is not
+                    // in it.
+                    val mine = selected == FINISHED || selected == HUB
+                    Surface(
+                        onClick = { moreOpen = !moreOpen },
+                        shape = RoundedCornerShape(50),
+                        color = if (moreOpen || mine) M3EColor.accent() else M3EColor.card(),
+                        modifier = Modifier.size(40.dp)
                     ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = label,
-                            tint = if (active) {
-                                MaterialTheme.colorScheme.onPrimary
-                            } else {
-                                M3EColor.textMuted()
-                            }
-                        )
-                        if (active) {
-                            Text(
-                                text = label,
-                                style = M3EType.action(),
-                                color = MaterialTheme.colorScheme.onPrimary
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.MoreHoriz,
+                                contentDescription = "More",
+                                tint = if (moreOpen || mine) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    M3EColor.textMuted()
+                                }
                             )
                         }
                     }
                 }
             }
+
+            // Search, on its own. It is an action rather than a place you stay, so it is not one of
+            // the sections — and it lights up while the overlay is open, because then it is the only
+            // thing on screen saying where you are.
+            Surface(
+                onClick = onSearch,
+                shape = RoundedCornerShape(50),
+                color = if (searching) M3EColor.accent() else M3EColor.card(),
+                shadowElevation = 12.dp,
+                modifier = Modifier.size(56.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search",
+                        tint = if (searching) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
+                    )
+                }
+            }
         }
+    }
+}
+
+/** One section in the bar: icon always, name only when it is the current one. */
+@Composable
+private fun NavPill(icon: ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = if (active) M3EColor.accent() else M3EColor.card()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = if (active) 14.dp else 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
+            )
+            if (active) {
+                Text(
+                    text = label,
+                    style = M3EType.action(),
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            }
+        }
+    }
+}
+
+/** One row inside the centre button's popup. */
+@Composable
+private fun MoreItem(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .clickable { onClick() }
+            .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.rowGap),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = M3EColor.textMuted(),
+            modifier = Modifier.size(20.dp)
+        )
+        Text(text = label, style = M3EType.rowTitle(), color = M3EColor.text())
     }
 }
 
