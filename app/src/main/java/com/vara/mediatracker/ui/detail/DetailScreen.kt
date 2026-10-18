@@ -53,7 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBDetailsResponse
 import com.vara.mediatracker.data.api.TMDBSearchItem

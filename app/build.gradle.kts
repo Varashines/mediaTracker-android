@@ -81,6 +81,15 @@ kotlin {
     }
 }
 
+configurations.all {
+    resolutionStrategy {
+        // Coil 3.6.x asks for kotlin-stdlib 2.4.x, and this project's compiler is 2.2.x, which reads
+        // metadata up to 2.3. The stdlib is the thing that has to agree with the compiler, so it is
+        // pinned to the Kotlin version actually in use rather than whatever a dependency prefers.
+        force("org.jetbrains.kotlin:kotlin-stdlib:${libs.versions.kotlin.get()}")
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -106,6 +115,8 @@ dependencies {
 
     // Coil Images
     implementation(libs.coil.compose)
+    // Coil 3 keeps the network layer out of the core artifact; without this nothing loads.
+    implementation(libs.coil.network.okhttp)
 
     // Networking
     implementation(libs.ktor.client.core)

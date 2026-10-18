@@ -48,7 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.vara.mediatracker.data.db.EpisodeKeyReconciler
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.common.LocalNowMillis

@@ -47,7 +47,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.vara.mediatracker.data.badge.BadgeEngine
 import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.badge.SmartBadge

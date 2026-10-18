@@ -1,10 +1,14 @@
 package com.vara.mediatracker
 
 import android.app.Application
-import coil.ImageLoader
-import coil.ImageLoaderFactory
-import coil.disk.DiskCache
-import coil.memory.MemoryCache
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.disk.DiskCache
+import coil3.memory.MemoryCache
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.crossfade
+import okio.Path.Companion.toOkioPath
 import com.vara.mediatracker.data.badge.BadgeComputer
 import com.vara.mediatracker.data.db.EpisodeKeyReconciler
 import com.vara.mediatracker.data.db.TasteCanonicalizer
@@ -19,7 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-class MediaTrackerApp : Application(), ImageLoaderFactory {
+class MediaTrackerApp : Application(), SingletonImageLoader.Factory {
 
     val container: AppContainer by lazy { AppContainer(this) }
 
@@ -30,14 +34,15 @@ class MediaTrackerApp : Application(), ImageLoaderFactory {
      * scrolling back over a rail re-uses decoded bitmaps instead of re-downloading.
      * Crossfade is off — it made every rail look like it was reloading on tab switches.
      */
-    override fun newImageLoader(): ImageLoader =
-        ImageLoader.Builder(this)
+    override fun newImageLoader(context: PlatformContext): ImageLoader =
+        ImageLoader.Builder(context)
+            .components { add(OkHttpNetworkFetcherFactory()) }
             .crossfade(false)
-            .respectCacheHeaders(false)
-            .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
+            .memoryCache { MemoryCache.Builder().maxSizePercent(context, 0.25).build() }
             .diskCache {
                 DiskCache.Builder()
-                    .directory(cacheDir.resolve("image_cache"))
+                    // Coil 3 addresses the cache through okio rather than java.io.File.
+                    .directory(cacheDir.resolve("image_cache").toOkioPath())
                     .maxSizeBytes(100L * 1024 * 1024)
                     .build()
             }

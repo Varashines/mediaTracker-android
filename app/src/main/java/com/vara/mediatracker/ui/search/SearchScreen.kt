@@ -55,7 +55,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.api.TMDBSearchItem
 import com.vara.mediatracker.data.model.MediaItemEntity
