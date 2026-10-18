@@ -131,6 +131,14 @@ class HeroOrigin {
 val LocalHeroOrigin = compositionLocalOf { HeroOrigin() }
 
 /**
+ * How long a detail takes to arrive: the sheet rising, and the poster travelling into it.
+ *
+ * One number for both, because they are one motion. Tuned apart they read as two things happening at
+ * once — which is exactly what a 1000ms poster against a 180ms screen fade looked like.
+ */
+const val M3E_DETAIL_ARRIVAL_MILLIS = 200
+
+/**
  * Type roles, read through the theme so a single change to `AppTypography` moves the whole app.
  *
  * Exposed as functions because a `@Composable` getter cannot be a plain `val` here.

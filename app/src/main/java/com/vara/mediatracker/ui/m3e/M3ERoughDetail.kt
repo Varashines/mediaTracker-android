@@ -93,14 +93,21 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 /**
- * How long the poster takes to grow into place.
+ * How long the sheet takes to fill in, once the poster has landed.
  *
- * Matched to the shell's own fade — `FadeIn` brings the whole overlay in over 180ms — so the poster
- * and the screen around it arrive together. That match is the point: at 320ms against a 180ms fade
- * the poster was still travelling after everything else had landed, which read as the screen waiting
- * on one image.
+ * The poster's own travel is [M3E_DETAIL_ARRIVAL_MILLIS], shared with the shell's sheet rise; this
+ * runs after it, so the order reads as: the sheet arrives carrying the poster, and then the rest of
+ * the title fills in behind it.
  */
-private const val HERO_GROW_MILLIS = 200
+private const val REVEAL_MILLIS = 380
+
+/**
+ * One stage of the reveal: 0 before [from], 1 after [to], linear between.
+ *
+ * Stages rather than four animations, so they cannot drift apart — one clock, four windows.
+ */
+private fun revealStage(progress: Float, from: Float, to: Float): Float =
+    ((progress - from) / (to - from)).coerceIn(0f, 1f)
 
 
 /**
@@ -136,6 +143,18 @@ fun M3ERoughDetail(
     var season by remember(item.id) { mutableStateOf<Int?>(null) }
     var statusPickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
     var tastePickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
+    // The sheet fills in rather than arriving complete: the poster lands, then the title, then the
+    // controls, then the content. Only when arriving from a tile — a detail pushed on top of another
+    // has nothing to fill in after.
+    val reveal = remember(item.id) { Animatable(if (heroFrom == null) 1f else 0f) }
+    LaunchedEffect(item.id, heroFrom) {
+        if (heroFrom == null) {
+            reveal.snapTo(1f)
+        } else {
+            reveal.snapTo(0f)
+            reveal.animateTo(1f, tween(durationMillis = REVEAL_MILLIS, delayMillis = 100))
+        }
+    }
     var related by remember(item.id) { mutableStateOf(emptyList<TMDBSearchItem>()) }
     var cast by remember(item.id) { mutableStateOf(emptyList<TMDBCastMember>()) }
     var directors by remember(item.id) { mutableStateOf(emptyList<String>()) }
@@ -413,7 +432,7 @@ fun M3ERoughDetail(
             // All of it beside the poster. In the controls row, status takes 70% of the width,
             // taste 25%, and the last 5% is left as space: a reaction is a glyph and does not need
             // the room a state does, but the tenth that was reserved for nothing read as a gap.
-            Title(live, byline, heroFrom) {
+            Title(live, byline, heroFrom, reveal) {
                 Row(
                     modifier = Modifier.height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
@@ -435,6 +454,7 @@ fun M3ERoughDetail(
             }
             Spacer(Modifier.height(M3ESpacing.cardGap))
 
+            Box(modifier = Modifier.graphicsLayer { alpha = revealStage(reveal.value, 0.4f, 0.85f) }) {
             if (isTv) {
                 PrimaryAction(
                     label = nextEpisode
@@ -468,12 +488,18 @@ fun M3ERoughDetail(
                     )
                 }
             }
+            }
         }
 
         // Only this slides. A grid per page, because Related is a grid of posters and a column
         // cannot hold one without a fixed height; everything that is not a poster spans every
         // column, so a section reads the same as it did.
-        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .weight(1f)
+                .graphicsLayer { alpha = revealStage(reveal.value, 0.5f, 1f) }
+        ) { page ->
             val section = sections.getOrElse(page) { sections.first() }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
@@ -799,6 +825,7 @@ private fun Title(
     item: MediaItemEntity,
     byline: String? = null,
     heroFrom: Rect? = null,
+    reveal: Animatable<Float, *>? = null,
     below: @Composable (() -> Unit)? = null
 ) {
     // The poster grows from where the tapped tile was. Not a shared element — the tile is already
@@ -813,7 +840,7 @@ private fun Title(
     LaunchedEffect(heroFrom, target) {
         if (heroFrom != null && target != Rect.Zero && target.width > 0f) {
             grow.snapTo(0f)
-            grow.animateTo(1f, tween(durationMillis = HERO_GROW_MILLIS))
+            grow.animateTo(1f, tween(durationMillis = M3E_DETAIL_ARRIVAL_MILLIS))
         } else {
             grow.snapTo(1f)
         }
@@ -843,7 +870,13 @@ private fun Title(
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
         )
         Spacer(Modifier.width(M3ESpacing.cardGap))
-        Column(modifier = Modifier.weight(1f)) {
+        // The poster above is exempt on purpose: it is the thing travelling, so it has to be there
+        // from the start. Everything beside and below it fills in.
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .graphicsLayer { alpha = revealStage(reveal?.value ?: 1f, 0f, 0.45f) }
+        ) {
             Text(
                 text = item.title,
                 style = M3EType.screenTitle(),
@@ -872,7 +905,9 @@ private fun Title(
             )
             if (below != null) {
                 Spacer(Modifier.height(M3ESpacing.cardGap))
-                below()
+                Box(modifier = Modifier.graphicsLayer { alpha = revealStage(reveal?.value ?: 1f, 0.25f, 0.7f) }) {
+                    below()
+                }
             }
         }
     }

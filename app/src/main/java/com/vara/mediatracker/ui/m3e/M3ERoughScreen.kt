@@ -17,6 +17,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -82,6 +83,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -223,47 +226,16 @@ fun M3ERoughScreen(
             LocalNavClearance provides navClearance,
             LocalHeroOrigin provides heroOrigin
         ) {
-        FadeIn(key = overlay, rise = if (overlay is Overlay.Search) 28.dp else 0.dp) {
-        overlayHolder.SaveableStateProvider(if (stack.isEmpty()) -1 else stack.lastIndex) {
-        when (val current = overlay) {
-            is Overlay.Detail -> M3ERoughDetail(
-                item = current.item,
-                container = container,
-                // Only if this detail was opened from that title's poster. Read here rather than
-                // passed through every tap handler: the push is what makes it relevant, and the id
-                // makes a stale rectangle harmless.
-                heroFrom = if (heroOrigin.itemId == current.item.id) heroOrigin.rect else null,
-                onOpenMedia = { stack = stack + Overlay.Detail(it) }
-            )
-            is Overlay.Titles -> M3ERoughList(
-                list = SectionList(current.title, current.items, current.subtitle, current.layout),
-                core = core,
-                onOpen = { stack = stack + Overlay.Detail(it) },
-                onBack = { stack = stack.dropLast(1) }
-            )
-            Overlay.Hub -> M3ERoughHub(
-                container = container,
-                core = core,
-                onOpen = { stack = stack + Overlay.Detail(it) },
-                onOpenList = { title, items, kind, layout ->
-                    stack = stack + Overlay.Titles(title, items, kind, layout)
-                }
-            )
-            Overlay.Finished -> FinishedSection(
-                library = library,
-                onOpen = { stack = stack + Overlay.Detail(it) }
-            )
-            Overlay.Search -> M3ERoughSearch(
-                library = library,
-                container = container,
-                onOpen = { stack = stack + Overlay.Detail(it) },
-                onBack = { stack = stack.dropLast(1) }
-            )
-            // No transition. Animating between sections means composing two of them at once, and
-            // each is a whole screen of derivation — so the animation spent its time racing the work
-            // it was covering, which is what "weird" was. A bottom nav switches instantly on
+        // The detail is the one overlay that is a sheet, and a sheet slides *over* the screen rather
+        // than replacing it — so there has to be a screen for it to slide over, and the section stays
+        // composed while it is up. Every other overlay still replaces, which is what they are.
+        val detail = overlay as? Overlay.Detail
+        if (overlay == null || detail != null) {
+            // No transition between sections. Animating between two means composing two of them at
+            // once, and each is a whole screen of derivation — so the animation spent its time racing
+            // the work it was covering, which is what "weird" was. A bottom nav switches instantly on
             // Android, and instantly is what this does now.
-            null -> FadeIn(key = section) {
+            FadeIn(key = section) {
             holder.SaveableStateProvider(section) {
                 when (section) {
                 0 -> HomeSection(
@@ -291,7 +263,56 @@ fun M3ERoughScreen(
             }
             }
         }
-        }
+
+        if (detail != null) {
+            DetailSheet(onDismiss = { stack = stack.dropLast(1) }) {
+                // The overlay holder still wraps it: pushing a related title on top takes this one
+                // out of the composition, and without somewhere to keep its season and pickers they
+                // would reset on the way back.
+                overlayHolder.SaveableStateProvider(stack.lastIndex) {
+                    M3ERoughDetail(
+                        item = detail.item,
+                        container = container,
+                        // Only if this detail was opened from that title's poster. Read here rather
+                        // than passed through every tap handler: the push is what makes it relevant,
+                        // and the id makes a stale rectangle harmless.
+                        heroFrom = if (heroOrigin.itemId == detail.item.id) heroOrigin.rect else null,
+                        onOpenMedia = { stack = stack + Overlay.Detail(it) }
+                    )
+                }
+            }
+        } else if (overlay != null) {
+            FadeIn(key = overlay, rise = if (overlay is Overlay.Search) 28.dp else 0.dp) {
+            overlayHolder.SaveableStateProvider(stack.lastIndex) {
+            when (val current = overlay) {
+                is Overlay.Titles -> M3ERoughList(
+                    list = SectionList(current.title, current.items, current.subtitle, current.layout),
+                    core = core,
+                    onOpen = { stack = stack + Overlay.Detail(it) },
+                    onBack = { stack = stack.dropLast(1) }
+                )
+                Overlay.Hub -> M3ERoughHub(
+                    container = container,
+                    core = core,
+                    onOpen = { stack = stack + Overlay.Detail(it) },
+                    onOpenList = { title, items, kind, layout ->
+                        stack = stack + Overlay.Titles(title, items, kind, layout)
+                    }
+                )
+                Overlay.Finished -> FinishedSection(
+                    library = library,
+                    onOpen = { stack = stack + Overlay.Detail(it) }
+                )
+                Overlay.Search -> M3ERoughSearch(
+                    library = library,
+                    container = container,
+                    onOpen = { stack = stack + Overlay.Detail(it) },
+                    onBack = { stack = stack.dropLast(1) }
+                )
+                else -> Unit
+            }
+            }
+            }
         }
         }
 
@@ -342,6 +363,53 @@ fun M3ERoughScreen(
                 .padding(bottom = M3ESpacing.navGap)
                 .onSizeChanged { navHeight = with(density) { it.height.toDp() } }
         )
+    }
+}
+
+/**
+ * The detail, arriving as a sheet from the bottom.
+ *
+ * The scrim is not decoration: it is what consumes taps. The section is still composed underneath —
+ * that is the whole point of a sheet — so without something taking the touch, taps would fall through
+ * to the grid behind it.
+ *
+ * The corners round while the sheet is travelling and flatten as it lands, because a full-height
+ * sheet with rounded corners would show the scrim through them at rest. Both are set in the draw
+ * phase, so the rise never recomposes the detail it is carrying.
+ */
+@Composable
+private fun DetailSheet(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    var landed by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { landed = true }
+    val rise by animateFloatAsState(
+        targetValue = if (landed) 1f else 0f,
+        animationSpec = tween(durationMillis = M3E_DETAIL_ARRIVAL_MILLIS),
+        label = "sheetRise"
+    )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.scrim)
+                .graphicsLayer { alpha = 0.45f * rise }
+                .pointerInput(Unit) { detectTapGestures { onDismiss() } }
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationY = (1f - rise) * size.height
+                    if (rise < 1f) {
+                        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+                        clip = true
+                    }
+                }
+                .background(M3EColor.page())
+                // Consumes taps on blank space. Without it a tap between two buttons falls through
+                // to the scrim below, which dismisses the sheet — the detail would close whenever
+                // you touched nothing in particular.
+                .pointerInput(Unit) { detectTapGestures { } }
+        ) { content() }
     }
 }
 
