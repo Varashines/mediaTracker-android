@@ -488,18 +488,22 @@ fun M3ERoughDetail(
                 it.isAfter(LocalDate.now()) && !live.state.equals("Completed", ignoreCase = true)
             }
             if (upcoming != null) {
+                // One line, and no "Upcoming": the clock says when, which is the whole message. The
+                // word only repeated what the glyph and the position already had.
                 UpcomingNotice(
                     icon = Icons.Default.Schedule,
-                    label = "Upcoming · S${upcoming.seasonNumber} E${upcoming.episodeNumber}",
-                    date = landingLabel(upcoming.airDate ?: upcoming.airstamp, upcomingAt)
+                    text = listOfNotNull(
+                        "S${upcoming.seasonNumber} E${upcoming.episodeNumber}",
+                        landingLabel(upcoming.airDate ?: upcoming.airstamp, upcomingAt)
+                    ).joinToString(" · ")
                 )
             } else if (unreleased != null) {
+                // Same shape for a film, and for a show with no episodes at all — where the first
+                // air date is the date that matters. No time is known for either, so it is just the
+                // day.
                 UpcomingNotice(
-                    icon = Icons.Default.CalendarMonth,
-                    // A film is "not out yet"; a show with no episodes at all is simply upcoming,
-                    // and its first air date is the date that matters.
-                    label = if (isTv) "Upcoming" else "Not out yet",
-                    date = landingLabel(live.releaseDate, null)
+                    icon = Icons.Default.Schedule,
+                    text = landingLabel(live.releaseDate, null).orEmpty()
                 )
             } else if (isTv) {
                 PrimaryAction(
@@ -975,8 +979,7 @@ private fun Title(
 @Composable
 private fun UpcomingNotice(
     icon: ImageVector,
-    label: String,
-    date: String?
+    text: String
 ) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -987,23 +990,15 @@ private fun UpcomingNotice(
             horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap)
         ) {
             Icon(imageVector = icon, contentDescription = null, tint = M3EColor.accent())
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = label,
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
-                    color = M3EColor.text(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (date != null) {
-                    Text(
-                        text = date,
-                        style = M3EType.rowSupporting(),
-                        color = M3EColor.textMuted()
-                    )
-                }
-            }
+            Text(
+                text = text,
+                style = M3EType.rowTitle(),
+                fontWeight = FontWeight.SemiBold,
+                color = M3EColor.text(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
