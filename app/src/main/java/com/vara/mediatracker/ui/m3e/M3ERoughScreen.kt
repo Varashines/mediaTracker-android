@@ -742,21 +742,27 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
                     MaterialTheme.colorScheme.onPrimary,
                     progress
                 )
+                // The active item is wider and the others give up the room, and the *weight* is
+                // what animates. An instant width change is what jittered; a width that grows over
+                // 200ms is the motion, so the label has somewhere to appear rather than shoving its
+                // neighbours aside. The name fades in at the halfway point, once there is room.
+                val weight by animateFloatAsState(
+                    targetValue = if (active) 1.9f else 1f,
+                    animationSpec = tween(durationMillis = 200),
+                    label = "navWeight"
+                )
                 Surface(
                     onClick = { onSelect(index) },
                     shape = RoundedCornerShape(50),
                     color = pillColor,
-                    // Fixed width and fixed height. The label only appears on the active item, so
-                    // the box it appears in must not be the thing that grows — otherwise the other
-                    // four shift sideways, which is the jitter this started with.
                     modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
+                        .weight(weight)
+                        .height(44.dp)
                 ) {
-                    Column(
+                    Row(
                         modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = icon,
@@ -764,14 +770,14 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
                             tint = contentColor,
                             modifier = Modifier.size(20.dp)
                         )
-                        if (active) {
+                        if (progress > 0.5f) {
+                            Spacer(Modifier.width(6.dp))
                             Text(
                                 text = label,
                                 style = M3EType.rowSupporting(),
                                 color = contentColor,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 4.dp)
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
