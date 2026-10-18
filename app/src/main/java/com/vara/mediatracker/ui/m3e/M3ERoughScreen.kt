@@ -123,6 +123,27 @@ private const val LIBRARY = 3
 private const val FINISHED = 4
 
 
+/**
+ * What is open over the sections, or nothing.
+ *
+ * One slot rather than four booleans. With four, "which is on top" had to be decided by a priority
+ * order written out twice — in the render and in the back handler — and nothing cleared the others
+ * when one was set. So tapping Settings while Search was open set a flag and changed nothing on
+ * screen, because Search outranked it. With one slot there is no order to keep in step: opening
+ * replaces, and back closes.
+ */
+private sealed interface Overlay {
+    data class Detail(val item: MediaItemEntity) : Overlay
+    data class Titles(
+        val title: String,
+        val items: List<MediaItemEntity>,
+        val subtitle: ListSubtitle,
+        val layout: ListLayout
+    ) : Overlay
+    data object Search : Overlay
+    data object Settings : Overlay
+}
+
 @Composable
 fun M3ERoughScreen(
     container: AppContainer,
@@ -138,23 +159,12 @@ fun M3ERoughScreen(
     val home by libraryVm.home.collectAsState()
     val library = core.items
     var section by rememberSaveable { mutableIntStateOf(0) }
-    var open by remember { mutableStateOf<MediaItemEntity?>(null) }
-    var list by remember { mutableStateOf<SectionList?>(null) }
-    var searching by remember { mutableStateOf(false) }
-    var settings by remember { mutableStateOf(false) }
+    var overlay by remember { mutableStateOf<Overlay?>(null) }
     val haptics = rememberHaptics()
 
-    // System back closes the topmost overlay before it leaves the app. The real shell routes this
-    // through its overlay dispatcher; the sketch does the same job directly, and the habit of
-    // handling it is what matters when this replaces the real one.
-    BackHandler(enabled = open != null || list != null || searching || settings) {
-        when {
-            open != null -> open = null
-            list != null -> list = null
-            searching -> searching = false
-            else -> settings = false
-        }
-    }
+    // Back closes whatever is open, and that is the whole of it — there is no order to get wrong
+    // and no flag left set behind another.
+    BackHandler(enabled = overlay != null) { overlay = null }
 
     Box(
         modifier = Modifier
@@ -165,30 +175,28 @@ fun M3ERoughScreen(
         // query — because leaving a section and returning otherwise resets it and makes the whole
         // thing feel like a demo.
         val holder = rememberSaveableStateHolder()
-        val opened = open
-        val shownList = list
         FadeIn {
-        when {
-            opened != null -> M3ERoughDetail(
-                item = opened,
+        when (val current = overlay) {
+            is Overlay.Detail -> M3ERoughDetail(
+                item = current.item,
                 container = container,
-                onOpenMedia = { open = it }
+                onOpenMedia = { overlay = Overlay.Detail(it) }
             )
-            shownList != null -> M3ERoughList(
-                list = shownList,
+            is Overlay.Titles -> M3ERoughList(
+                list = SectionList(current.title, current.items, current.subtitle, current.layout),
                 core = core,
-                onOpen = { open = it },
-                onBack = { list = null }
+                onOpen = { overlay = Overlay.Detail(it) },
+                onBack = { overlay = null }
             )
-            searching -> M3ERoughSearch(
+            Overlay.Search -> M3ERoughSearch(
                 library = library,
                 container = container,
-                onOpen = { open = it },
-                onBack = { searching = false }
+                onOpen = { overlay = Overlay.Detail(it) },
+                onBack = { overlay = null }
             )
-            settings -> M3ERoughSettings(
+            Overlay.Settings -> M3ERoughSettings(
                     container = container,
-                    onBack = { settings = false },
+                    onBack = { overlay = null },
                     onThemePresetChanged = onThemePresetChanged,
                     onThemeModeChanged = onThemeModeChanged
                 )
@@ -196,28 +204,30 @@ fun M3ERoughScreen(
             // each is a whole screen of derivation — so the animation spent its time racing the work
             // it was covering, which is what "weird" was. A bottom nav switches instantly on
             // Android, and instantly is what this does now.
-            else -> FadeIn {
+            null -> FadeIn {
             holder.SaveableStateProvider(section) {
                 when (section) {
                 0 -> HomeSection(
                     core = core,
                     home = home,
-                    onOpen = { open = it },
-                    onSeeAll = { title, items, kind -> list = SectionList(title, items, kind) },
-                    onSearch = { searching = true },
-                    onSettings = { settings = true }
+                    onOpen = { overlay = Overlay.Detail(it) },
+                    onSeeAll = { title, items, kind ->
+                        overlay = Overlay.Titles(title, items, kind, ListLayout.Rows)
+                    },
+                    onSearch = { overlay = Overlay.Search },
+                    onSettings = { overlay = Overlay.Settings }
                 )
                 1 -> M3ERoughHub(
                     container = container,
                     core = core,
-                    onOpen = { open = it },
+                    onOpen = { overlay = Overlay.Detail(it) },
                     onOpenList = { title, items, kind, layout ->
-                        list = SectionList(title, items, kind, layout)
+                        overlay = Overlay.Titles(title, items, kind, layout)
                     }
                 )
-                2 -> M3ERoughCalendar(core = core, onOpen = { open = it })
-                3 -> LibrarySection(core = core, onOpen = { open = it })
-                else -> FinishedSection(library = library, onOpen = { open = it })
+                2 -> M3ERoughCalendar(core = core, onOpen = { overlay = Overlay.Detail(it) })
+                3 -> LibrarySection(core = core, onOpen = { overlay = Overlay.Detail(it) })
+                else -> FinishedSection(library = library, onOpen = { overlay = Overlay.Detail(it) })
                 }
             }
             }
@@ -232,13 +242,13 @@ fun M3ERoughScreen(
             },
             onSearch = {
                 haptics.tap()
-                searching = true
+                overlay = Overlay.Search
             },
             onSettings = {
                 haptics.tap()
-                settings = true
+                overlay = Overlay.Settings
             },
-            searching = searching,
+            searching = overlay is Overlay.Search,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
