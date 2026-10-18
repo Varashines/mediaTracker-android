@@ -172,6 +172,15 @@ fun M3ERoughSearch(
                 .padding(horizontal = M3ESpacing.tightGap, vertical = M3ESpacing.tightGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // The bar is hidden while searching, so the gesture is not the only way out: this is
+            // the close, in the corner a thumb reaches without moving.
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close search",
+                    tint = M3EColor.textMuted()
+                )
+            }
             TextField(
                 value = query,
                 onValueChange = { query = it },

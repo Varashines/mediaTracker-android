@@ -245,8 +245,11 @@ fun M3ERoughScreen(
         }
         }
 
+        // While an overlay is open no section is current — Settings was being lit *alongside* Home,
+        // which made it look like a child of whichever section you happened to be in.
+        if (overlay !is Overlay.Search) {
         FloatingNav(
-            selected = section,
+            selected = if (overlay == null) section else -1,
             onSelect = { target ->
                 if (target != section) haptics.tap()
                 section = target
@@ -266,6 +269,7 @@ fun M3ERoughScreen(
                 .navigationBarsPadding()
                 .padding(bottom = 24.dp)
         )
+        }
     }
 }
 
