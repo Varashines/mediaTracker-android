@@ -1,0 +1,20 @@
+# Startup profile — hand-authored, and deliberately small.
+#
+# This is a placeholder, and it should be replaced. A generated profile, produced by running the app
+# under a :baselineprofile macrobenchmark, is the real thing; hand-authoring cannot know which
+# methods actually dominate startup.
+#
+# The AndroidX and Compose libraries ship baseline profiles of their own, and AGP merges them into
+# this one — the merged profile is thousands of lines before anything here is added. So this file
+# only needs to contribute what those libraries cannot know about: the app's own entry path.
+#
+# Class rules take no flags — H/S/P apply to method rules. A class rule says the whole class is used.
+# The names are source names on purpose: with R8 on, AGP rewrites this against the obfuscated output.
+
+Lcom/vara/mediatracker/MediaTrackerApp;
+HSPLcom/vara/mediatracker/MediaTrackerApp;->onCreate()V
+Lcom/vara/mediatracker/MainActivity;
+HSPLcom/vara/mediatracker/MainActivity;->onCreate(Landroid/os/Bundle;)V
+Lcom/vara/mediatracker/di/AppContainer;
+Lcom/vara/mediatracker/data/db/AppDatabase;
+Lcom/vara/mediatracker/ui/m3e/M3ERoughScreenKt;

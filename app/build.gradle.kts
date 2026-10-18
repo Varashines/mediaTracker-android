@@ -89,6 +89,9 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
 
+    // Installs the baseline profile in the APK. Required below API 31, where nothing else will.
+    implementation(libs.androidx.profileinstaller)
+
     // Room Database
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
