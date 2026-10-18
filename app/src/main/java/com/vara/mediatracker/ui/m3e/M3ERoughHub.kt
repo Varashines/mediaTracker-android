@@ -2,6 +2,7 @@ package com.vara.mediatracker.ui.m3e
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,9 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
@@ -28,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -35,12 +40,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.LibraryCore
+import kotlinx.coroutines.launch
 
 /**
  * The Hub: Smart, Discover and Collections in one place, in the [M3E] vocabulary.
@@ -62,10 +71,11 @@ internal fun M3ERoughHub(
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit = { _, _, _ -> }
 ) {
     val library = core.items
-    // Saveable, not plain remember. Opening a list or a title replaces this section in the shell's
-    // `when`, so the Hub leaves the composition — and a plain remember comes back as its default,
-    // which is why going back from anywhere landed on Smart.
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    // The pager owns the tab, and it is saveable, which is what makes the Hub come back to the tab
+    // you left — opening a list or a title replaces this section in the shell's `when`, and a plain
+    // remember would return as its default.
+    val pagerState = rememberPagerState(pageCount = { HubTabs.size })
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -82,11 +92,10 @@ internal fun M3ERoughHub(
             M3EScreenHeader(eyebrow = "Curated", title = "Hub")
             Spacer(Modifier.height(M3ESpacing.cardGap))
             Row(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
-                val tabs = listOf("Smart", "Discover", "Collections")
-                tabs.forEachIndexed { index, label ->
+                HubTabs.forEachIndexed { index, label ->
                     FilterChip(
-                        selected = tab == index,
-                        onClick = { tab = index },
+                        selected = pagerState.currentPage == index,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
                         label = { Text(label, style = M3EType.action()) },
                         shape = M3EShape.chip()
                     )
@@ -95,18 +104,24 @@ internal fun M3ERoughHub(
             Spacer(Modifier.height(M3ESpacing.cardGap))
         }
 
-        when (tab) {
-            0 -> SmartTab(library, onOpenList)
-            1 -> DiscoverTab(library, onOpenList)
-            else -> M3ERoughCollections(
-                container = container,
-                core = core,
-                onOpenList = onOpenList,
-                showHeader = false
-            )
+        // Swipeable as well as tappable: the three are peers, so moving between them sideways is
+        // what the hand expects, and the chips stay as the labels for where you are.
+        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
+            when (page) {
+                0 -> SmartTab(library, onOpenList)
+                1 -> DiscoverTab(library, core.logos, onOpenList)
+                else -> M3ERoughCollections(
+                    container = container,
+                    core = core,
+                    onOpenList = onOpenList,
+                    showHeader = false
+                )
+            }
         }
     }
 }
+
+private val HubTabs = listOf("Smart", "Discover", "Collections")
 
 // MARK: - Smart
 
@@ -234,6 +249,7 @@ private data class Facet(
 @Composable
 private fun DiscoverTab(
     library: List<MediaItemEntity>,
+    logos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
 ) {
     val genres = remember(library) { facets(library) { it.genres }.take(8) }
@@ -261,7 +277,7 @@ private fun DiscoverTab(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
                 if (genres.isNotEmpty()) GenreGrid(genres, onOpenList)
-                if (networks.isNotEmpty()) FacetGroup("Networks", networks, onOpenList)
+                if (networks.isNotEmpty()) FacetGroup("Networks", networks, logos, onOpenList)
                 if (languages.isNotEmpty()) LanguageChips(languages, onOpenList)
             }
         }
@@ -273,13 +289,19 @@ private fun DiscoverTab(
 private fun FacetGroup(
     title: String,
     facets: List<Facet>,
+    logos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
 ) {
     if (facets.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
         M3ESectionHeader(title)
         facets.forEach { facet ->
-            FacetLine(facet) { onOpenList(facet.name, facet.items, ListSubtitle.Episode) }
+            FacetLine(
+                facet = facet,
+                // A network is a mark before it is a word: the logo is what you recognise in a
+                // list of them, and the name is the fallback for one TMDB has no logo for.
+                logoUrl = TMDBClient.buildLogoUrl(logos[facet.name.lowercase(java.util.Locale.US)])
+            ) { onOpenList(facet.name, facet.items, ListSubtitle.Episode) }
         }
     }
 }
@@ -306,21 +328,34 @@ private fun facets(
 }
 
 @Composable
-private fun FacetLine(facet: Facet, onClick: () -> Unit) {
+private fun FacetLine(facet: Facet, logoUrl: String?, onClick: () -> Unit) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = facet.name,
-                style = M3EType.rowTitle(),
-                fontWeight = FontWeight.SemiBold,
-                color = M3EColor.text(),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                if (logoUrl != null) {
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = facet.name,
+                        // Fit, not Crop: a network logo is a mark on transparency, and cropping it
+                        // to fill would cut the mark rather than show it.
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.height(26.dp).widthIn(max = 150.dp)
+                    )
+                } else {
+                    Text(
+                        text = facet.name,
+                        style = M3EType.rowTitle(),
+                        fontWeight = FontWeight.SemiBold,
+                        color = M3EColor.text(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(Modifier.width(M3ESpacing.inlineGap))
             Text(
                 text = "${facet.count} titles",
                 style = M3EType.rowSupporting(),
@@ -433,22 +468,22 @@ private fun LanguageChips(
 }
 
 /**
- * A language code as its English name.
+ * A language code as the name that language gives itself.
  *
- * Anything Locale cannot resolve — a stored full name, an unknown tag — falls back to the raw
- * value rather than rendering "Unknown language", which is what Locale returns for a tag it does
- * not recognise.
+ * Not the English name. A language list is read by someone who speaks one of them, and a Japanese
+ * reader looks for "日本語", not "Japanese" — the English name is the one they are least likely to
+ * scan for. The English name is also what `Locale` returns for a tag it does not know, which is
+ * treated as a failure here rather than shown.
  */
 private fun languageName(code: String): String {
     val tag = code.trim()
     if (tag.isEmpty()) return tag
-    val resolved = java.util.Locale.forLanguageTag(tag).getDisplayLanguage(java.util.Locale.ENGLISH)
-    val unusable = resolved.isBlank() ||
-        resolved.equals(tag, ignoreCase = true) ||
-        resolved.contains("Unknown", ignoreCase = true)
-    return if (unusable) {
-        tag.replaceFirstChar { it.uppercase(java.util.Locale.US) }
-    } else {
-        resolved.replaceFirstChar { it.uppercase(java.util.Locale.US) }
-    }
+    val locale = java.util.Locale.forLanguageTag(tag)
+    val native = locale.getDisplayLanguage(locale)
+    val unusable = native.isBlank() ||
+        native.equals(tag, ignoreCase = true) ||
+        native.contains("Unknown", ignoreCase = true)
+    // No re-casing: "Deutsch" and "Español" already arrive capitalised, and scripts without case
+    // are unaffected by it either way.
+    return if (unusable) tag else native
 }
