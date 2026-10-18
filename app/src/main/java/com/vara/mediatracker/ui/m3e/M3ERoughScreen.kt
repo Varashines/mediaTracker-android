@@ -176,19 +176,12 @@ fun M3ERoughScreen(
                     onThemePresetChanged = onThemePresetChanged,
                     onThemeModeChanged = onThemeModeChanged
                 )
-            else -> AnimatedContent(
-                targetState = section,
-                transitionSpec = {
-                    // A short slide with a fade, in the direction you moved. The swipe was meant to
-                    // give this; it turns out the gesture was the expensive part, not the motion.
-                    val forward = targetState > initialState
-                    (slideInHorizontally { if (forward) it / 8 else -it / 8 } + fadeIn(tween(180))) togetherWith
-                        (slideOutHorizontally { if (forward) -it / 8 else it / 8 } + fadeOut(tween(120)))
-                },
-                modifier = Modifier.fillMaxSize()
-            ) { current ->
-            holder.SaveableStateProvider(current) {
-                when (current) {
+            // No transition. Animating between sections means composing two of them at once, and
+            // each is a whole screen of derivation — so the animation spent its time racing the work
+            // it was covering, which is what "weird" was. A bottom nav switches instantly on
+            // Android, and instantly is what this does now.
+            else -> holder.SaveableStateProvider(section) {
+                when (section) {
                 0 -> HomeSection(
                     core = core,
                     home = home,
@@ -209,7 +202,6 @@ fun M3ERoughScreen(
                 3 -> LibrarySection(core = core, onOpen = { open = it })
                 else -> FinishedSection(library = library, onOpen = { open = it })
                 }
-            }
             }
         }
 
