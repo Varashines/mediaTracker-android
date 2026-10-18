@@ -511,7 +511,12 @@ private fun LibrarySection(
             }
         }
         items(library, key = { it.id }) { item ->
-            M3EArtworkCard(title = item.title, onClick = { onOpen(item) }) {
+            val hero = rememberTileOrigin(item.id)
+            M3EArtworkCard(
+                title = item.title,
+                modifier = hero.modifier,
+                onClick = { hero.record(); onOpen(item) }
+            ) {
                 Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
             }
         }
@@ -626,7 +631,12 @@ private fun GridList(list: SectionList, onOpen: (MediaItemEntity) -> Unit, onBac
             }
         }
         items(list.items, key = { it.id }) { item ->
-            M3EArtworkCard(title = item.title, onClick = { onOpen(item) }) {
+            val hero = rememberTileOrigin(item.id)
+            M3EArtworkCard(
+                title = item.title,
+                modifier = hero.modifier,
+                onClick = { hero.record(); onOpen(item) }
+            ) {
                 Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
             }
         }
@@ -822,7 +832,11 @@ private fun TitleRow(
     onClick: (() -> Unit)? = null,
     subtitle: String? = null
 ) {
-    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+    val hero = rememberTileOrigin(item.id)
+    M3ETonalCard(
+        modifier = Modifier.fillMaxWidth().then(hero.modifier),
+        onClick = if (onClick == null) null else { { hero.record(); onClick() } }
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
             verticalAlignment = Alignment.CenterVertically
@@ -854,21 +868,11 @@ private fun TitleRow(
 
 @Composable
 private fun PosterCard(item: MediaItemEntity, width: Dp, onClick: (() -> Unit)? = null) {
-    // Where this tile is, kept locally and only handed over when it is the one tapped. Recording on
-    // every layout instead would write to shared state on every scroll frame.
-    val origin = LocalHeroOrigin.current
-    var bounds by remember { mutableStateOf(Rect.Zero) }
+    val hero = rememberTileOrigin(item.id)
     M3EArtworkCard(
         title = item.title,
-        modifier = Modifier
-            .width(width)
-            .onGloballyPositioned { bounds = it.boundsInRoot() },
-        onClick = if (onClick == null) null else {
-            {
-                origin.record(item.id, bounds)
-                onClick()
-            }
-        }
+        modifier = Modifier.width(width).then(hero.modifier),
+        onClick = if (onClick == null) null else { { hero.record(); onClick() } }
     ) {
         Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
     }

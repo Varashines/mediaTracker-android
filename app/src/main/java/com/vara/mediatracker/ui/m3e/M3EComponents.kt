@@ -21,6 +21,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -198,4 +201,28 @@ fun M3EArtworkCard(
             }
         }
     }
+}
+
+/**
+ * A poster tile's place on screen, and the tap that hands it to [LocalHeroOrigin].
+ *
+ * Every tappable poster has to go through this. The first version recorded the origin inside one
+ * tile, so the detail's poster grew out of the right place from Home's Recently added rail and out of
+ * nowhere from everywhere else — Library's grid, the pushed lists, and every `TitleRow`, which
+ * carries Continue watching, Coming soon and Finished. A transition that works from one list and not
+ * five others is worse than one that never worked, because it looks like a bug rather than a choice.
+ *
+ * The bounds are captured per tile, on layout, and only handed over when that tile is the one tapped:
+ * recording into shared state on every layout would write on every scroll frame.
+ */
+class TileOrigin(val modifier: Modifier, val record: () -> Unit)
+
+@Composable
+fun rememberTileOrigin(itemId: String): TileOrigin {
+    val origin = LocalHeroOrigin.current
+    var bounds by remember { mutableStateOf(Rect.Zero) }
+    return TileOrigin(
+        modifier = Modifier.onGloballyPositioned { bounds = it.boundsInRoot() },
+        record = { origin.record(itemId, bounds) }
+    )
 }

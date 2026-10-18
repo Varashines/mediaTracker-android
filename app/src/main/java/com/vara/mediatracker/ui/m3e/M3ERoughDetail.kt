@@ -95,12 +95,12 @@ import kotlinx.coroutines.launch
 /**
  * How long the poster takes to grow into place.
  *
- * Far slower than the platform's own ~300ms for this kind of move, and slow on purpose: at 320ms the
- * motion was over before it could be judged at all. This is the number to bring down once it has been
- * watched — 320ms is roughly where a transition like this normally sits, and anything past about
- * 400ms will start to feel like waiting rather than arriving.
+ * Matched to the shell's own fade — `FadeIn` brings the whole overlay in over 180ms — so the poster
+ * and the screen around it arrive together. That match is the point: at 320ms against a 180ms fade
+ * the poster was still travelling after everything else had landed, which read as the screen waiting
+ * on one image.
  */
-private const val HERO_GROW_MILLIS = 1_000
+private const val HERO_GROW_MILLIS = 200
 
 
 /**
