@@ -1,15 +1,11 @@
 package com.vara.mediatracker.ui.m3e
 
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -86,12 +82,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.LocalDate
@@ -198,25 +192,13 @@ fun M3ERoughScreen(
     // Back unwinds one step at a time: a title opened from Finished returns to Finished, and
     // Finished returns to Library.
     //
-    // Predictive, so the gesture carries the screen with it instead of the screen waiting until the
-    // finger lifts. This replaces the plain BackHandler rather than joining it: both register an
-    // OnBackPressedCallback, and the dispatcher only ever runs the most recently added one, so two
-    // of them is a race decided by composition order.
-    //
-    // The progress is what the finger has travelled. It drives a small scale and fade, so the
-    // overlay recedes as you pull — the same idea as the system's own gesture, though it cannot
-    // reveal the screen underneath: only one screen is composed at a time here, deliberately.
-    val backProgress = remember { Animatable(0f) }
-    PredictiveBackHandler(enabled = stack.isNotEmpty()) { progress ->
-        try {
-            progress.collect { event -> backProgress.snapTo(event.progress) }
-            backProgress.animateTo(1f, tween(120))
-            stack = stack.dropLast(1)
-        } finally {
-            // Completed or abandoned — either way the overlay goes back to rest.
-            backProgress.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
-        }
-    }
+    // A plain handler, deliberately. The predictive version — the gesture driving a scale and fade —
+    // was tried and removed: its payoff was never going to arrive, because a predictive back peek
+    // shows the screen underneath and this shell composes one screen at a time, so there is nothing
+    // to show. What it did instead was leave the screen shrunk. The system-level animation is still
+    // on (the manifest flag is unchanged); this is only the in-app half, and it is not worth code
+    // that misbehaves for an effect with no audience.
+    BackHandler(enabled = stack.isNotEmpty()) { stack = stack.dropLast(1) }
 
     // With nothing open, back from a section that is not Home goes Home rather than leaving the app
     // — what a bottom bar sets the expectation of everywhere else. Back at Home still exits.
@@ -241,17 +223,7 @@ fun M3ERoughScreen(
             LocalNavClearance provides navClearance,
             LocalHeroOrigin provides heroOrigin
         ) {
-        FadeIn(
-            key = overlay,
-            rise = if (overlay is Overlay.Search) 28.dp else 0.dp,
-            modifier = Modifier.graphicsLayer {
-                val pulled = backProgress.value
-                val scale = 1f - 0.12f * pulled
-                scaleX = scale
-                scaleY = scale
-                alpha = 1f - 0.55f * pulled
-            }
-        ) {
+        FadeIn(key = overlay, rise = if (overlay is Overlay.Search) 28.dp else 0.dp) {
         overlayHolder.SaveableStateProvider(if (stack.isEmpty()) -1 else stack.lastIndex) {
         when (val current = overlay) {
             is Overlay.Detail -> M3ERoughDetail(
@@ -764,12 +736,7 @@ private fun ChipRow(options: List<String>, selected: String, onSelect: (String) 
  * own alpha up. Same effect, one tree alive at a time.
  */
 @Composable
-private fun FadeIn(
-    key: Any?,
-    rise: Dp = 0.dp,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) {
+private fun FadeIn(key: Any?, rise: Dp = 0.dp, content: @Composable () -> Unit) {
     // Keyed, and that is the whole point of the parameter: unkeyed, this ran once on first
     // composition and never again, so changing what is inside it animated nothing. The fade
     // appeared to work only because it was never watched twice.
@@ -781,7 +748,7 @@ private fun FadeIn(
         label = "sectionFade"
     )
     Box(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .alpha(progress)
             // A rise, when one is asked for: search comes up from the pill that opened it rather
