@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 android {
@@ -53,6 +54,12 @@ android {
         compose = true
         buildConfig = true
     }
+}
+
+baselineProfile {
+    // Keep the generated profile in the source set, so it is reviewable in a diff and survives a
+    // clean build instead of being regenerated from nothing.
+    saveInSrc = true
 }
 
 ksp {
