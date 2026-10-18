@@ -168,6 +168,13 @@ fun M3ERoughScreen(
     // and no flag left set behind another.
     BackHandler(enabled = overlay != null) { overlay = null }
 
+    // Then, from a section that is not Home, back goes Home rather than leaving the app — what a
+    // bottom bar sets the expectation of everywhere else. Back at Home still exits.
+    //
+    // Gated on the overlay being closed, so the two never both claim the gesture: at any moment
+    // exactly one of these is enabled.
+    BackHandler(enabled = overlay == null && section != HOME) { section = HOME }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
