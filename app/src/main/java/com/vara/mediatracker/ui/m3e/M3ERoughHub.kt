@@ -263,7 +263,14 @@ private fun DiscoverTab(
     // them and why it has a Networks/Studios switch.
     var brand by rememberSaveable { mutableStateOf(BrandTab.Networks) }
     val brands = remember(library, brand) {
-        facets(library) { if (brand == BrandTab.Networks) it.network else it.studios }.take(12)
+        // A network airs a show, a studio makes a film — so the two tabs read different titles, not
+        // just different fields of the same ones. A show's studio and a film's network are both
+        // populated by TMDB and neither belongs here.
+        val source = when (brand) {
+            BrandTab.Networks -> library.filter { it.type.contains("TV", ignoreCase = true) }
+            BrandTab.Studios -> library.filter { it.type.contains("Movie", ignoreCase = true) }
+        }
+        facets(source) { if (brand == BrandTab.Networks) it.network else it.studios }.take(12)
     }
     val genres = remember(library) { facets(library) { it.genres }.take(8) }
     val languages = remember(library) { facets(library) { it.language }.take(6) }
