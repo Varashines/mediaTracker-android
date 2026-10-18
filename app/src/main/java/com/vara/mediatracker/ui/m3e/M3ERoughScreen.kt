@@ -140,6 +140,8 @@ private sealed interface Overlay {
         val subtitle: ListSubtitle,
         val layout: ListLayout
     ) : Overlay
+    data object Hub : Overlay
+    data object Finished : Overlay
     data object Search : Overlay
     data object Settings : Overlay
 }
@@ -188,6 +190,18 @@ fun M3ERoughScreen(
                 onOpen = { overlay = Overlay.Detail(it) },
                 onBack = { overlay = null }
             )
+            Overlay.Hub -> M3ERoughHub(
+                container = container,
+                core = core,
+                onOpen = { overlay = Overlay.Detail(it) },
+                onOpenList = { title, items, kind, layout ->
+                    overlay = Overlay.Titles(title, items, kind, layout)
+                }
+            )
+            Overlay.Finished -> FinishedSection(
+                library = library,
+                onOpen = { overlay = Overlay.Detail(it) }
+            )
             Overlay.Search -> M3ERoughSearch(
                 library = library,
                 container = container,
@@ -217,17 +231,13 @@ fun M3ERoughScreen(
                     onSearch = { overlay = Overlay.Search },
                     onSettings = { overlay = Overlay.Settings }
                 )
-                1 -> M3ERoughHub(
-                    container = container,
+                2 -> M3ERoughCalendar(core = core, onOpen = { overlay = Overlay.Detail(it) })
+                else -> LibrarySection(
                     core = core,
                     onOpen = { overlay = Overlay.Detail(it) },
-                    onOpenList = { title, items, kind, layout ->
-                        overlay = Overlay.Titles(title, items, kind, layout)
-                    }
+                    onHub = { overlay = Overlay.Hub },
+                    onFinished = { overlay = Overlay.Finished }
                 )
-                2 -> M3ERoughCalendar(core = core, onOpen = { overlay = Overlay.Detail(it) })
-                3 -> LibrarySection(core = core, onOpen = { overlay = Overlay.Detail(it) })
-                else -> FinishedSection(library = library, onOpen = { overlay = Overlay.Detail(it) })
                 }
             }
             }
@@ -249,6 +259,7 @@ fun M3ERoughScreen(
                 overlay = Overlay.Settings
             },
             searching = overlay is Overlay.Search,
+            settingsOpen = overlay is Overlay.Settings,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -364,7 +375,12 @@ private fun HomeSection(
 }
 
 @Composable
-private fun LibrarySection(core: LibraryCore, onOpen: (MediaItemEntity) -> Unit) {
+private fun LibrarySection(
+    core: LibraryCore,
+    onOpen: (MediaItemEntity) -> Unit,
+    onHub: () -> Unit,
+    onFinished: () -> Unit
+) {
     // Real filtering and sorting: LibraryQuery is the same pure routine the shipping Library uses,
     // including its sort orders, rather than a second set invented for this screen.
     // Held as the two plain values rather than as a LibraryFilters, so they can be saveable: the
@@ -396,6 +412,14 @@ private fun LibrarySection(core: LibraryCore, onOpen: (MediaItemEntity) -> Unit)
             Column {
                 Spacer(Modifier.height(M3ESpacing.pageVertical))
                 M3EScreenHeader(eyebrow = "${library.size} titles", title = "Library")
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                // The two views that are not sections. They live here because Library is where you
+                // are when you want either of them, and because a screen you open is a screen back
+                // can leave — which is what a section could never do.
+                Row(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
+                    LibraryShortcut(Icons.Default.AutoAwesome, "Hub", onHub)
+                    LibraryShortcut(Icons.Default.Check, "Finished", onFinished)
+                }
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 ChipRow(
                     options = listOf(LibraryFilters.TYPE_ALL, "Movies", "TV Shows"),
@@ -582,6 +606,31 @@ private fun RowList(
     }
 }
 
+/** One of the Library's two ways into a view that is not a section. */
+@Composable
+private fun LibraryShortcut(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = M3EShape.chip(),
+        color = M3EColor.card(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.tightGap),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = M3EColor.textMuted(),
+                modifier = Modifier.size(18.dp)
+            )
+            Text(text = label, style = M3EType.action(), color = M3EColor.text())
+        }
+    }
+}
+
 /** A wrapping row of single-select chips, for the Library's type and sort controls. */
 @Composable
 private fun ChipRow(options: List<String>, selected: String, onSelect: (String) -> Unit) {
@@ -753,109 +802,53 @@ private fun FloatingNav(
     onSearch: () -> Unit,
     onSettings: () -> Unit,
     searching: Boolean,
+    settingsOpen: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var moreOpen by remember { mutableStateOf(false) }
-
-    // Back closes the popup before it reaches the shell's overlay handler, so the popup is not
-    // something you can be stuck inside.
-    BackHandler(enabled = moreOpen) { moreOpen = false }
-
-    Column(
+    Row(
         modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // The destinations that are not sections: Finished, Settings, and the Hub. They float
-        // above the bar rather than replacing it, so opening them does not move anything you were
-        // about to tap.
-        if (moreOpen) {
-            Surface(
-                shape = RoundedCornerShape(28),
-                color = M3EColor.card(),
-                shadowElevation = 12.dp,
-                modifier = Modifier.padding(bottom = M3ESpacing.tightGap)
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = M3EColor.card(),
+            shadowElevation = 12.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(M3ESpacing.tightGap),
+                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.padding(M3ESpacing.tightGap)) {
-                    MoreItem(Icons.Default.Check, "Finished") {
-                        moreOpen = false
-                        onSelect(FINISHED)
-                    }
-                    MoreItem(Icons.Default.AutoAwesome, "Hub") {
-                        moreOpen = false
-                        onSelect(HUB)
-                    }
-                    MoreItem(Icons.Default.Settings, "Settings") {
-                        moreOpen = false
-                        onSettings()
-                    }
+                NavPill(Icons.Default.Home, "Home", selected == HOME) { onSelect(HOME) }
+                NavPill(Icons.Default.Schedule, "Calendar", selected == CALENDAR) {
+                    onSelect(CALENDAR)
                 }
+                NavPill(Icons.Default.VideoLibrary, "Library", selected == LIBRARY) {
+                    onSelect(LIBRARY)
+                }
+                // Settings keeps the slot the centre button had. It is a destination you go to and
+                // come back from, which is exactly what the bar is for — and the two that are not
+                // (Hub and Finished) are opened from Library instead, where back can leave them.
+                NavPill(Icons.Default.Settings, "Settings", settingsOpen) { onSettings() }
             }
         }
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
-            verticalAlignment = Alignment.CenterVertically
+        // Search, on its own: an action rather than a place you stay. Lit while the overlay is
+        // open, because then it is the only thing on screen saying where you are.
+        Surface(
+            onClick = onSearch,
+            shape = RoundedCornerShape(50),
+            color = if (searching) M3EColor.accent() else M3EColor.card(),
+            shadowElevation = 12.dp,
+            modifier = Modifier.size(56.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = M3EColor.card(),
-                shadowElevation = 12.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(M3ESpacing.tightGap),
-                    horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    NavPill(Icons.Default.Home, "Home", selected == HOME) { onSelect(HOME) }
-                    NavPill(Icons.Default.Schedule, "Calendar", selected == CALENDAR) {
-                        onSelect(CALENDAR)
-                    }
-                    NavPill(Icons.Default.VideoLibrary, "Library", selected == LIBRARY) {
-                        onSelect(LIBRARY)
-                    }
-
-                    // The centre button. Accent-filled and lit while one of its three is open, so
-                    // "one of mine" is legible without the bar having to show a section that is not
-                    // in it.
-                    val mine = selected == FINISHED || selected == HUB
-                    Surface(
-                        onClick = { moreOpen = !moreOpen },
-                        shape = RoundedCornerShape(50),
-                        color = if (moreOpen || mine) M3EColor.accent() else M3EColor.card(),
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = "More",
-                                tint = if (moreOpen || mine) {
-                                    MaterialTheme.colorScheme.onPrimary
-                                } else {
-                                    M3EColor.textMuted()
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Search, on its own. It is an action rather than a place you stay, so it is not one of
-            // the sections — and it lights up while the overlay is open, because then it is the only
-            // thing on screen saying where you are.
-            Surface(
-                onClick = onSearch,
-                shape = RoundedCornerShape(50),
-                color = if (searching) M3EColor.accent() else M3EColor.card(),
-                shadowElevation = 12.dp,
-                modifier = Modifier.size(56.dp)
-            ) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = if (searching) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
-                    )
-                }
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search",
+                    tint = if (searching) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
+                )
             }
         }
     }
