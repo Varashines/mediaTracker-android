@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -76,6 +77,7 @@ import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -718,50 +720,38 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
         ) {
             items.forEachIndexed { index, (label, icon) ->
                 val active = index == selected
-                // Animated, because the section can change by swipe now as well as by tap: a pill
-                // that snapped between two states made the swipe feel like it had landed on a
-                // different control rather than moved along one.
+                // Icons only, and a fixed size for every item.
+                //
+                // The label used to expand out of the selected item and collapse behind it, which
+                // changed that item's width — so every other item in the row shifted with it, on
+                // every tap. That reflow was the jitter. Nothing here changes size, so the only
+                // thing that moves is the colour, which animates.
                 val pillColor by animateColorAsState(
-                    targetValue = if (active) M3EColor.accent() else M3EColor.card(),
-                    animationSpec = tween(durationMillis = 220),
+                    targetValue = if (active) M3EColor.accent() else Color.Transparent,
+                    animationSpec = tween(durationMillis = 200),
                     label = "navPill"
                 )
                 val iconTint by animateColorAsState(
                     targetValue = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted(),
-                    animationSpec = tween(durationMillis = 220),
+                    animationSpec = tween(durationMillis = 200),
                     label = "navIcon"
                 )
-                val horizontal by animateDpAsState(
-                    targetValue = if (active) 16.dp else 12.dp,
-                    animationSpec = tween(durationMillis = 220),
-                    label = "navPadding"
-                )
-                // Filled means chosen, the same as the calendar's selected day: a solid accent
-                // pill, so the current section is obvious at a glance rather than by a hairline.
                 Surface(
                     onClick = { onSelect(index) },
                     shape = RoundedCornerShape(50),
-                    color = pillColor
+                    color = pillColor,
+                    modifier = Modifier.size(44.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = horizontal, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(imageVector = icon, contentDescription = label, tint = iconTint)
-                        AnimatedVisibility(
-                            visible = active,
-                            enter = fadeIn(tween(durationMillis = 200)) +
-                                expandHorizontally(tween(durationMillis = 240)),
-                            exit = fadeOut(tween(durationMillis = 120)) +
-                                shrinkHorizontally(tween(durationMillis = 180))
-                        ) {
-                            Text(
-                                text = label,
-                                style = M3EType.action(),
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        }
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = label,
+                            tint = iconTint,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                 }
             }
