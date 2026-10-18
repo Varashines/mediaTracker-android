@@ -49,6 +49,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -72,6 +73,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -130,6 +132,9 @@ fun M3ERoughDetail(
     container: AppContainer,
     /** Where the poster that opened this was, when it came from one. See [HeroOrigin]. */
     heroFrom: Rect? = null,
+    /** The sheet's rise, 0..1, and the height it is travelling from. See [Title]. */
+    sheetRise: State<Float>? = null,
+    sheetHeight: Dp = 0.dp,
     onOpenMedia: (MediaItemEntity) -> Unit = {}
 ) {
     val db = container.database
@@ -432,7 +437,7 @@ fun M3ERoughDetail(
             // All of it beside the poster. In the controls row, status takes 70% of the width,
             // taste 25%, and the last 5% is left as space: a reaction is a glyph and does not need
             // the room a state does, but the tenth that was reserved for nothing read as a gap.
-            Title(live, byline, heroFrom, reveal) {
+            Title(live, byline, heroFrom, reveal, sheetRise, sheetHeight) {
                 Row(
                     modifier = Modifier.height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
@@ -454,7 +459,10 @@ fun M3ERoughDetail(
             }
             Spacer(Modifier.height(M3ESpacing.cardGap))
 
-            Box(modifier = Modifier.graphicsLayer { alpha = revealStage(reveal.value, 0.4f, 0.85f) }) {
+            // A Column, not a Box: this is a spacer, an action and a row of chips, and a Box draws
+            // its children at the same offset — which is what put the watch button on top of the
+            // section chips.
+            Column(modifier = Modifier.graphicsLayer { alpha = revealStage(reveal.value, 0.4f, 0.85f) }) {
             if (isTv) {
                 PrimaryAction(
                     label = nextEpisode
@@ -826,6 +834,8 @@ private fun Title(
     byline: String? = null,
     heroFrom: Rect? = null,
     reveal: Animatable<Float, *>? = null,
+    sheetRise: State<Float>? = null,
+    sheetHeight: Dp = 0.dp,
     below: @Composable (() -> Unit)? = null
 ) {
     // The poster grows from where the tapped tile was. Not a shared element — the tile is already
@@ -863,7 +873,11 @@ private fun Title(
                         scaleX = 1f + (origin.width / target.width - 1f) * (1f - p)
                         scaleY = 1f + (origin.height / target.height - 1f) * (1f - p)
                         translationX = (origin.left - target.left) * (1f - p)
-                        translationY = (origin.top - target.top) * (1f - p)
+                        // The sheet's travel is cancelled out of the flight, so the poster moves in
+                        // screen coordinates and the sheet rises to meet it — rather than the poster
+                        // being carried down a screen and flying back up.
+                        translationY = (origin.top - target.top) * (1f - p) -
+                            (1f - (sheetRise?.value ?: 1f)) * sheetHeight.toPx()
                     }
                 }
                 .clip(M3EShape.card())

@@ -73,6 +73,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -265,7 +266,7 @@ fun M3ERoughScreen(
         }
 
         if (detail != null) {
-            DetailSheet(onDismiss = { stack = stack.dropLast(1) }) {
+            DetailSheet(onDismiss = { stack = stack.dropLast(1) }) { rise, sheetHeight ->
                 // The overlay holder still wraps it: pushing a related title on top takes this one
                 // out of the composition, and without somewhere to keep its season and pickers they
                 // would reset on the way back.
@@ -277,6 +278,8 @@ fun M3ERoughScreen(
                         // than passed through every tap handler: the push is what makes it relevant,
                         // and the id makes a stale rectangle harmless.
                         heroFrom = if (heroOrigin.itemId == detail.item.id) heroOrigin.rect else null,
+                        sheetRise = rise,
+                        sheetHeight = sheetHeight,
                         onOpenMedia = { stack = stack + Overlay.Detail(it) }
                     )
                 }
@@ -378,28 +381,40 @@ fun M3ERoughScreen(
  * phase, so the rise never recomposes the detail it is carrying.
  */
 @Composable
-private fun DetailSheet(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+private fun DetailSheet(
+    onDismiss: () -> Unit,
+    content: @Composable (rise: State<Float>, height: Dp) -> Unit
+) {
     var landed by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { landed = true }
-    val rise by animateFloatAsState(
+    val rise = animateFloatAsState(
         targetValue = if (landed) 1f else 0f,
         animationSpec = tween(durationMillis = M3E_DETAIL_ARRIVAL_MILLIS),
         label = "sheetRise"
     )
-    Box(modifier = Modifier.fillMaxSize()) {
+    val density = LocalDensity.current
+    // The height the sheet is travelling from. Handed to the detail so the poster can cancel it out:
+    // the poster's flight is in screen coordinates, and the sheet's own travel would otherwise be
+    // added on top of it — which put the poster a full screen below the tile it came from.
+    var height by remember { mutableStateOf(0.dp) }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { height = with(density) { it.height.toDp() } }
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.scrim)
-                .graphicsLayer { alpha = 0.45f * rise }
+                .graphicsLayer { alpha = 0.45f * rise.value }
                 .pointerInput(Unit) { detectTapGestures { onDismiss() } }
         )
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    translationY = (1f - rise) * size.height
-                    if (rise < 1f) {
+                    translationY = (1f - rise.value) * size.height
+                    if (rise.value < 1f) {
                         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
                         clip = true
                     }
@@ -409,7 +424,7 @@ private fun DetailSheet(onDismiss: () -> Unit, content: @Composable () -> Unit) 
                 // to the scrim below, which dismisses the sheet — the detail would close whenever
                 // you touched nothing in particular.
                 .pointerInput(Unit) { detectTapGestures { } }
-        ) { content() }
+        ) { content(rise, height) }
     }
 }
 
