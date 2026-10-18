@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
@@ -280,16 +281,23 @@ fun M3ERoughScreen(
             // Named from the entry *below* the top, so a title opened from Finished says
             // "Back to Finished" and Finished says "Back to Library" — the real step, not the
             // section everything happens to sit in.
-            parentLabel = if (overlay != null && overlay !is Overlay.Search) {
-                when (val below = stack.getOrNull(stack.size - 2)) {
+            // Search is the one screen whose way out is a close rather than a step back — there is
+            // nothing behind it that you were looking at.
+            parentLabel = when {
+                overlay is Overlay.Search -> "Close"
+                overlay != null -> when (val below = stack.getOrNull(stack.size - 2)) {
                     is Overlay.Detail -> below.item.title
                     is Overlay.Titles -> below.title
                     Overlay.Hub -> "Hub"
                     Overlay.Finished -> "Finished"
                     else -> sectionLabel(section)
                 }
+                else -> null
+            },
+            parentIcon = if (overlay is Overlay.Search) {
+                Icons.Default.Close
             } else {
-                null
+                Icons.AutoMirrored.Filled.ArrowBack
             },
             onBackToParent = { stack = stack.dropLast(1) },
             modifier = Modifier
@@ -844,6 +852,7 @@ private fun FloatingNav(
     searching: Boolean,
     /** Where the back pill goes, when what is on screen is not one of the four. */
     parentLabel: String? = null,
+    parentIcon: ImageVector = Icons.AutoMirrored.Filled.ArrowBack,
     onBackToParent: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -869,8 +878,8 @@ private fun FloatingNav(
                     // Not one of the four: a title, Hub, Finished or a pushed list. The bar says
                     // where it goes instead of offering four places that are behind the screen.
                     NavPill(
-                        icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        label = "Back to $parentLabel",
+                        icon = parentIcon,
+                        label = if (parentLabel == "Close") "Close" else "Back to $parentLabel",
                         active = true,
                         onClick = onBackToParent
                     )

@@ -173,15 +173,6 @@ fun M3ERoughSearch(
                 .padding(horizontal = M3ESpacing.tightGap, vertical = M3ESpacing.tightGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // The bar is hidden while searching, so the gesture is not the only way out: this is
-            // the close, in the corner a thumb reaches without moving.
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Close search",
-                    tint = M3EColor.textMuted()
-                )
-            }
             TextField(
                 value = query,
                 onValueChange = { query = it },
@@ -191,9 +182,13 @@ fun M3ERoughSearch(
                     // A hairline, so the bar reads as a field rather than as a gap in the page. The
                     // fill alone was invisible against a dark background.
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, M3EShape.chip()),
-                placeholder = { Text("Search titles", style = M3EType.rowSupporting()) },
+                placeholder = {
+                    Text("Search titles, or add something new", style = M3EType.rowSupporting())
+                },
                 leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = M3EColor.textMuted())
+                    // The accent, because the field is the one thing on this screen worth looking
+                    // at and the icon is what says so.
+                    Icon(Icons.Default.Search, contentDescription = null, tint = M3EColor.accent())
                 },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
