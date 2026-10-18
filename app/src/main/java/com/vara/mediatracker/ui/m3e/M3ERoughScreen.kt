@@ -118,10 +118,9 @@ const val M3ERoughPreview = true
 
 /** Section indices, so the bar can name the three it shows and the three it hides. */
 private const val HOME = 0
-private const val HUB = 1
-private const val CALENDAR = 2
-private const val LIBRARY = 3
-private const val FINISHED = 4
+private const val CALENDAR = 1
+private const val LIBRARY = 2
+private const val SETTINGS = 3
 
 
 /**
@@ -144,7 +143,6 @@ private sealed interface Overlay {
     data object Hub : Overlay
     data object Finished : Overlay
     data object Search : Overlay
-    data object Settings : Overlay
 }
 
 @Composable
@@ -209,12 +207,6 @@ fun M3ERoughScreen(
                 onOpen = { overlay = Overlay.Detail(it) },
                 onBack = { overlay = null }
             )
-            Overlay.Settings -> M3ERoughSettings(
-                    container = container,
-                    onBack = { overlay = null },
-                    onThemePresetChanged = onThemePresetChanged,
-                    onThemeModeChanged = onThemeModeChanged
-                )
             // No transition. Animating between sections means composing two of them at once, and
             // each is a whole screen of derivation — so the animation spent its time racing the work
             // it was covering, which is what "weird" was. A bottom nav switches instantly on
@@ -231,11 +223,17 @@ fun M3ERoughScreen(
                     }
                 )
                 2 -> M3ERoughCalendar(core = core, onOpen = { overlay = Overlay.Detail(it) })
-                else -> LibrarySection(
+                2 -> LibrarySection(
                     core = core,
                     onOpen = { overlay = Overlay.Detail(it) },
                     onHub = { overlay = Overlay.Hub },
                     onFinished = { overlay = Overlay.Finished }
+                )
+                else -> M3ERoughSettings(
+                    container = container,
+                    onBack = { },
+                    onThemePresetChanged = onThemePresetChanged,
+                    onThemeModeChanged = onThemeModeChanged
                 )
                 }
             }
@@ -245,7 +243,6 @@ fun M3ERoughScreen(
 
         // While an overlay is open no section is current — Settings was being lit *alongside* Home,
         // which made it look like a child of whichever section you happened to be in.
-        if (overlay !is Overlay.Search) {
         FloatingNav(
             selected = if (overlay == null) section else -1,
             onSelect = { target ->
@@ -256,18 +253,12 @@ fun M3ERoughScreen(
                 haptics.tap()
                 overlay = Overlay.Search
             },
-            onSettings = {
-                haptics.tap()
-                overlay = Overlay.Settings
-            },
             searching = overlay is Overlay.Search,
-            settingsOpen = overlay is Overlay.Settings,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(bottom = 24.dp)
         )
-        }
     }
 }
 
@@ -801,9 +792,7 @@ private fun FloatingNav(
     selected: Int,
     onSelect: (Int) -> Unit,
     onSearch: () -> Unit,
-    onSettings: () -> Unit,
     searching: Boolean,
-    settingsOpen: Boolean,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -828,10 +817,12 @@ private fun FloatingNav(
                 NavPill(Icons.Default.VideoLibrary, "Library", selected == LIBRARY) {
                     onSelect(LIBRARY)
                 }
-                // Settings keeps the slot the centre button had. It is a destination you go to and
-                // come back from, which is exactly what the bar is for — and the two that are not
-                // (Hub and Finished) are opened from Library instead, where back can leave them.
-                NavPill(Icons.Default.Settings, "Settings", settingsOpen) { onSettings() }
+                // Settings is a section like the other three, not an overlay. It was the fourth
+                // button but behaved differently — no lit pill, and back closed it — which is what
+                // made it feel like it belonged to whichever section you came from.
+                NavPill(Icons.Default.Settings, "Settings", selected == SETTINGS) {
+                    onSelect(SETTINGS)
+                }
             }
         }
 
