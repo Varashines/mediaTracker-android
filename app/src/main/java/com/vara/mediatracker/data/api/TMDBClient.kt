@@ -103,6 +103,8 @@ data class TMDBProductionCompany(
 data class TMDBDetailsResponse(
     val title: String? = null,
     val name: String? = null,
+    /** The title as it airs, which is what TVMaze indexes a regional show under. */
+    val original_name: String? = null,
     val overview: String? = null,
     val poster_path: String? = null,
     val backdrop_path: String? = null,

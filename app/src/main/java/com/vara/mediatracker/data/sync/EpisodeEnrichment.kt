@@ -38,7 +38,11 @@ object EpisodeEnrichment {
         if (tmdbId <= 0) return false
         val showId = MediaIds.tvShowKey(show.id)
 
-        val tvMazeId = resolveTvMazeId(tmdb, tvmaze, tmdbId, show.title)
+        // Fetched before the TVMaze id is resolved, not after: the resolution needs the original
+        // title, and it was already being fetched here anyway — just one step too late to use.
+        val details = tmdb.getTVDetails(tmdbId).getOrNull() ?: return false
+
+        val tvMazeId = resolveTvMazeId(tmdb, tvmaze, tmdbId, show.title, details.original_name)
         var showInfo: com.vara.mediatracker.data.api.TVMazeShowInfo? = null
         val mazeByKey = HashMap<String, com.vara.mediatracker.data.api.TVMazeEpisodeRef>()
         if (tvMazeId != null && tvMazeId > 0) {
@@ -50,7 +54,6 @@ object EpisodeEnrichment {
             }
         }
 
-        val details = tmdb.getTVDetails(tmdbId).getOrNull() ?: return false
         val existing = db.mediaDao().getEpisodesListForShow(showId).associateBy {
             "${it.seasonNumber}_${it.episodeNumber}"
         }
@@ -137,9 +140,29 @@ object EpisodeEnrichment {
         tmdb: TMDBClient,
         tvmaze: TVMazeClient,
         tmdbId: Int,
-        title: String
-    ): Int? =
-        tmdb.getTVExternalIds(tmdbId).getOrNull()?.tvdb_id
-            ?.let { tvmaze.lookupByTvDbId(it).getOrNull() }
-            ?: tvmaze.searchShowByTitle(title).getOrNull()
+        title: String,
+        originalTitle: String?
+    ): Int? {
+        // 1. The TVDB id, when TMDB has one. Exact, and the usual path.
+        tmdb.getTVExternalIds(tmdbId).getOrNull()?.tvdb_id?.let { id ->
+            tvmaze.lookupByTvDbId(id).getOrNull()?.let { return it }
+        }
+
+        // 2. The title as this app knows it.
+        tvmaze.searchShowByTitle(title).getOrNull()?.let { return it }
+
+        // 3. The title as it airs.
+        //
+        // A regional show is often indexed by TVMaze under its own name and not the English one, so
+        // the search above finds nothing and the show ends up with no id — which means no airstamp,
+        // no airtime and no timezone, and an episode that lands at the wrong time. Juliet & Juliet
+        // is Thai and drifted from the Mac for exactly this reason: the Mac resolved its id, this
+        // device did not.
+        val original = originalTitle?.trim()
+        if (!original.isNullOrBlank() && !original.equals(title, ignoreCase = true)) {
+            tvmaze.searchShowByTitle(original).getOrNull()?.let { return it }
+        }
+        return null
+    }
+
 }
