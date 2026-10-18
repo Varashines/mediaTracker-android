@@ -114,7 +114,7 @@ internal fun M3ERoughHub(
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
             when (page) {
                 0 -> SmartTab(library, onOpenList)
-                1 -> DiscoverTab(library, core.logos, onOpenList)
+                1 -> DiscoverTab(library, core.logos, core.providerLogos, onOpenList)
                 else -> M3ERoughCollections(
                     container = container,
                     core = core,
@@ -255,6 +255,7 @@ private data class Facet(
 private fun DiscoverTab(
     library: List<MediaItemEntity>,
     logos: Map<String, String>,
+    providerLogos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     // Networks and studios are different things — one airs a show, one makes it — so they sit
@@ -301,10 +302,12 @@ private fun DiscoverTab(
                     title = brand.label,
                     facets = brands,
                     logos = logos,
+                    providerLogos = providerLogos,
+                    preferProviders = brand == BrandTab.Networks,
                     onOpenList = onOpenList
                 )
                 if (genres.isNotEmpty()) GenreGrid(genres, onOpenList)
-                if (languages.isNotEmpty()) LanguageChips(languages, onOpenList)
+                if (languages.isNotEmpty()) LanguageGrid(languages, onOpenList)
             }
         }
         item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
@@ -339,6 +342,8 @@ private fun BrandGrid(
     title: String,
     facets: List<Facet>,
     logos: Map<String, String>,
+    providerLogos: Map<String, String>,
+    preferProviders: Boolean,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     M3ESectionHeader(title)
@@ -350,17 +355,24 @@ private fun BrandGrid(
         )
         return
     }
+    // Three to a row rather than two: these are marks, not posters, and a phone does not need a
+    // 96dp card to recognise one. Smaller is also more of them on screen, which is the point of a
+    // browse grid.
     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-        facets.chunked(2).forEach { pair ->
+        facets.chunked(3).forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
             ) {
-                pair.forEach { facet ->
+                row.forEach { facet ->
+                    val key = facet.name.lowercase(java.util.Locale.US)
                     BrandTile(
                         facet = facet,
+                        // A streaming service is both a network and a watch provider, and TMDB's
+                        // provider mark is the wordmark — which is the one the Mac shows for Netflix
+                        // and Apple TV+. Prefer it, and fall back to the network's own logo.
                         logoUrl = TMDBClient.buildLogoUrl(
-                            logos[facet.name.lowercase(java.util.Locale.US)]
+                            if (preferProviders) providerLogos[key] ?: logos[key] else logos[key]
                         ),
                         modifier = Modifier.weight(1f),
                         onClick = {
@@ -368,7 +380,7 @@ private fun BrandGrid(
                         }
                     )
                 }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -394,12 +406,12 @@ private fun BrandTile(
             1.dp,
             if (known) brand.badgeColor.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant
         ),
-        modifier = modifier.height(96.dp)
+        modifier = modifier.height(76.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(M3ESpacing.inlineGap),
+                .padding(M3ESpacing.tightGap),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -414,7 +426,7 @@ private fun BrandTile(
             } else {
                 Text(
                     text = facet.name,
-                    style = M3EType.rowTitle(),
+                    style = M3EType.rowSupporting(),
                     fontWeight = FontWeight.Bold,
                     color = if (known) brand.textColor else M3EColor.text(),
                     textAlign = TextAlign.Center,
@@ -425,7 +437,7 @@ private fun BrandTile(
             }
             Spacer(Modifier.height(M3ESpacing.tightGap))
             Text(
-                text = "${facet.count} titles",
+                text = "${facet.count}",
                 style = M3EType.rowSupporting(),
                 color = M3EColor.textMuted()
             )
@@ -510,40 +522,54 @@ private fun GenreTile(
  * are small enough to sit inline. Codes are shown as the language they name — "en" is "English",
  * because a code is a database value, not something to put in front of a person.
  */
+/**
+ * Languages as tiles rather than chips.
+ *
+ * The name is the whole point of this facet and a chip gives it a label's size — the endonym is
+ * what a reader scans for, so it gets the tile's headline. Two to a row, because a language name is
+ * a word and a word needs room.
+ */
 @Composable
-private fun LanguageChips(
+private fun LanguageGrid(
     facets: List<Facet>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
+    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
         M3ESectionHeader("Languages")
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
-            verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
-        ) {
-            facets.forEach { facet ->
-                Surface(
-                    shape = M3EShape.chip(),
-                    color = M3EColor.card(),
-                    onClick = { onOpenList(languageName(facet.name), facet.items, ListSubtitle.Episode, ListLayout.Grid) }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = M3ESpacing.inlineGap, vertical = M3ESpacing.tightGap),
-                        verticalAlignment = Alignment.CenterVertically
+        facets.chunked(2).forEach { pair ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+            ) {
+                pair.forEach { facet ->
+                    M3ETonalCard(
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            onOpenList(
+                                languageName(facet.name),
+                                facet.items,
+                                ListSubtitle.Episode,
+                                ListLayout.Grid
+                            )
+                        }
                     ) {
-                        Text(
-                            text = languageName(facet.name),
-                            style = M3EType.action(),
-                            color = M3EColor.text()
-                        )
-                        Spacer(Modifier.width(M3ESpacing.tightGap))
-                        Text(
-                            text = "${facet.count}",
-                            style = M3EType.rowSupporting(),
-                            color = M3EColor.textMuted()
-                        )
+                        Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
+                            Text(
+                                text = languageName(facet.name),
+                                style = M3EType.sectionTitle(),
+                                color = M3EColor.text(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${facet.count} titles",
+                                style = M3EType.rowSupporting(),
+                                color = M3EColor.textMuted()
+                            )
+                        }
                     }
                 }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }

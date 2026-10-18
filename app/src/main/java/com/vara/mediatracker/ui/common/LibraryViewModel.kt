@@ -51,7 +51,16 @@ data class LibraryCore(
     val badges: Map<String, BadgeResult> = emptyMap(),
     val badgeRows: List<MediaBadgeEntity> = emptyList(),
     /** lowercased facet name -> TMDB logo path (networks, studios, providers). */
-    val logos: Map<String, String> = emptyMap()
+    val logos: Map<String, String> = emptyMap(),
+    /**
+     * The same, for watch providers only.
+     *
+     * Kept apart because a name can be both: Netflix and Apple TV+ are networks *and* providers,
+     * and TMDB carries a different mark for each — the provider one is the wordmark. Merged into
+     * `logos`, whichever row the DAO happened to return last won, so the brand could show a square
+     * icon where the Mac shows the wordmark.
+     */
+    val providerLogos: Map<String, String> = emptyMap()
 )
 
 /** Home-specific derivations (Continue Watching, Coming Soon, hero) off the UI thread. */
@@ -106,7 +115,10 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
                     )
                 },
                 badgeRows = raw.badgeRows,
-                logos = raw.logoRows.associate { it.name.lowercase(Locale.US) to it.logoPath }
+                logos = raw.logoRows.associate { it.name.lowercase(Locale.US) to it.logoPath },
+                providerLogos = raw.logoRows
+                    .filter { it.facet == "provider" }
+                    .associate { it.name.lowercase(Locale.US) to it.logoPath }
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryCore())

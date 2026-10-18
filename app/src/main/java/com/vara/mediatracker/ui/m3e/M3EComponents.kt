@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -46,7 +47,15 @@ fun M3EScreenHeader(
     title: String,
     modifier: Modifier = Modifier,
     eyebrow: String? = null,
-    trailing: @Composable (() -> Unit)? = null
+    trailing: @Composable (() -> Unit)? = null,
+    /**
+     * A smaller title that stays on one line.
+     *
+     * For a pushed list, where the title can be a word in another script: at display size a single
+     * long word is laid out as two lines, because a script without spaces still offers break
+     * opportunities inside a word. Smaller and single-line keeps "हिन्दी" as one word.
+     */
+    compact: Boolean = false
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -63,8 +72,10 @@ fun M3EScreenHeader(
             }
             Text(
                 text = title,
-                style = M3EType.screenTitle(),
-                color = M3EColor.text()
+                style = if (compact) M3EType.sectionTitle() else M3EType.screenTitle(),
+                color = M3EColor.text(),
+                maxLines = if (compact) 1 else 2,
+                overflow = TextOverflow.Ellipsis
             )
         }
         if (trailing != null) {

@@ -478,7 +478,14 @@ private fun GridList(list: SectionList, onOpen: (MediaItemEntity) -> Unit, onBac
                         )
                     }
                 }
-                M3EScreenHeader(eyebrow = "${list.items.size} titles", title = list.title)
+                M3EScreenHeader(
+                    eyebrow = "${list.items.size} titles",
+                    title = list.title,
+                    // A pushed title can be a word in another script, and at display size a single
+                    // word is laid out as two lines — Devanagari offers break opportunities inside
+                    // a word, so "हिन्दी" split. Smaller and single-line keeps it one word.
+                    compact = true
+                )
             }
         }
         items(list.items, key = { it.id }) { item ->
@@ -519,7 +526,14 @@ private fun RowList(
                         )
                     }
                 }
-                M3EScreenHeader(eyebrow = "${list.items.size} titles", title = list.title)
+                M3EScreenHeader(
+                    eyebrow = "${list.items.size} titles",
+                    title = list.title,
+                    // A pushed title can be a word in another script, and at display size a single
+                    // word is laid out as two lines — Devanagari offers break opportunities inside
+                    // a word, so "हिन्दी" split. Smaller and single-line keeps it one word.
+                    compact = true
+                )
             }
         }
         items(list.items, key = { it.id }) { item ->
