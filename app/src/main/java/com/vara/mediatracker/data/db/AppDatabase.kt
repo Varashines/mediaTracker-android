@@ -147,6 +147,21 @@ interface MediaDao {
 
     @Query("DELETE FROM tv_episodes WHERE uniqueId IN (:uniqueIds)")
     suspend fun deleteEpisodesByIds(uniqueIds: List<String>)
+
+    @Query("DELETE FROM tv_episodes WHERE showId IN (:showIds)")
+    suspend fun deleteEpisodesByShowIds(showIds: List<String>)
+
+    /**
+     * Everything flagged deleted, so the purge can date it itself.
+     *
+     * The stamps are ISO-8601 and a lexical comparison in SQL would work, but a row whose stamp will
+     * not parse has to be left alone rather than guessed at — and that decision belongs in code.
+     */
+    @Query("SELECT * FROM media_items WHERE isSoftDeleted = 1")
+    suspend fun getSoftDeleted(): List<MediaItemEntity>
+
+    @Query("DELETE FROM media_items WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>)
 }
 
 @Dao
@@ -273,6 +288,12 @@ interface WatchHistoryDao {
      */
     @Query("SELECT * FROM watch_events WHERE mediaId = :mediaId AND voidedAt IS NULL")
     suspend fun getLiveEvents(mediaId: String): List<WatchEventEntity>
+
+    @Query("DELETE FROM watch_cycles WHERE mediaId IN (:mediaIds)")
+    suspend fun deleteCyclesFor(mediaIds: List<String>)
+
+    @Query("DELETE FROM watch_events WHERE mediaId IN (:mediaIds)")
+    suspend fun deleteEventsFor(mediaIds: List<String>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCycles(cycles: List<WatchCycleEntity>)

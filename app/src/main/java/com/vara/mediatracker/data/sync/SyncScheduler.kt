@@ -103,6 +103,19 @@ object SyncScheduler {
      * Intentionally unconstrained: badges expire against the wall clock, not against
      * network availability. This is a local recompute over data already in Room.
      */
+    /**
+     * Removes titles whose delete has aged out of the undo window.
+     *
+     * Scheduled unconditionally, unlike the sync jobs: this is local housekeeping and has nothing to
+     * do with whether the cloud is configured.
+     */
+    fun schedulePurge(context: Context) {
+        val request = PeriodicWorkRequestBuilder<PurgeWorker>(1, java.util.concurrent.TimeUnit.DAYS)
+            .build()
+        WorkManager.getInstance(context)
+            .enqueueUniquePeriodicWork(TAG_PURGE, ExistingPeriodicWorkPolicy.KEEP, request)
+    }
+
     fun scheduleBadgeRefresh(context: Context) {
         val request = PeriodicWorkRequestBuilder<BadgeUpdateWorker>(
             BADGE_INTERVAL_MINUTES, TimeUnit.MINUTES
@@ -289,6 +302,7 @@ object SyncScheduler {
     const val TAG_BADGE = "mediatracker-badge"
     const val TAG_ENRICH = "mediatracker-enrichment"
     const val TAG_METADATA = "mediatracker-metadata"
+    const val TAG_PURGE = "mediatracker-purge"
 
     /** Not user-visible; lets Settings show a "last synced" time for background runs. */
     fun recordSyncCompletion(context: Context, atMillis: Long = System.currentTimeMillis()) {

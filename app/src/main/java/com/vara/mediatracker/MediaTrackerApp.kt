@@ -53,6 +53,9 @@ class MediaTrackerApp : Application(), SingletonImageLoader.Factory {
 
         ReleaseNotifier(this, container).ensureChannel()
 
+        // Local housekeeping, so it is not gated on cloud sync being configured.
+        SyncScheduler.schedulePurge(this)
+
         // Re-registering is idempotent: UPDATE keeps the existing schedule instead of
         // resetting the interval on every process start.
         if (SyncScheduler.isEnabled(this)) {
