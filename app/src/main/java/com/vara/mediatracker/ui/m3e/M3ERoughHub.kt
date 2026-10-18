@@ -43,12 +43,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.util.NetworkResolver
@@ -114,7 +112,7 @@ internal fun M3ERoughHub(
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
             when (page) {
                 0 -> SmartTab(library, onOpenList)
-                1 -> DiscoverTab(library, core.networkLogos, core.studioLogos, onOpenList)
+                1 -> DiscoverTab(library, onOpenList)
                 else -> M3ERoughCollections(
                     container = container,
                     core = core,
@@ -254,8 +252,6 @@ private data class Facet(
 @Composable
 private fun DiscoverTab(
     library: List<MediaItemEntity>,
-    networkLogos: Map<String, String>,
-    studioLogos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     // Networks and studios are different things — one airs a show, one makes it — so they sit
@@ -308,9 +304,6 @@ private fun DiscoverTab(
                 BrandGrid(
                     title = brand.label,
                     facets = brands,
-                    // The network's own logo for a network, the studio's for a studio — never the
-                    // provider's, which is a different asset with a background behind it.
-                    logos = if (brand == BrandTab.Networks) networkLogos else studioLogos,
                     onOpenList = onOpenList
                 )
                 if (genres.isNotEmpty()) GenreGrid(genres, onOpenList)
@@ -337,18 +330,16 @@ private enum class BrandTab(val label: String) {
 }
 
 /**
- * Brands as tiles, the shape the Mac's `DiscoveryCard` uses with `style: .logo`: a card tall enough
- * to hold the mark at size, tinted with the brand's own colour where one is known, and the count
- * underneath.
+ * Brands as tiles: the name, and the count underneath.
  *
- * The logos were already being fetched and cached by the enrichment pass; nothing on this screen
- * read them until now, which is most of why it looked like a list of words.
+ * The marks these once drew are gone — a transparent logo disappears on a dark page, and the white
+ * plate that fixed that fought whatever palette was in use. Nothing here reads the logo maps any
+ * more, which is why they no longer travel this far.
  */
 @Composable
 private fun BrandGrid(
     title: String,
     facets: List<Facet>,
-    logos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     M3ESectionHeader(title)
@@ -360,9 +351,8 @@ private fun BrandGrid(
         )
         return
     }
-    // Three to a row rather than two: these are marks, not posters, and a phone does not need a
-    // 96dp card to recognise one. Smaller is also more of them on screen, which is the point of a
-    // browse grid.
+    // Three to a row rather than two: these are names, not posters, and a phone does not need a wide
+    // card to read one. Smaller is also more of them on screen, which is the point of a browse grid.
     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
         facets.chunked(3).forEach { row ->
             Row(
