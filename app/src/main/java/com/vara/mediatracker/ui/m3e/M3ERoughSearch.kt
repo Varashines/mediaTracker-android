@@ -37,6 +37,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,6 +78,13 @@ fun M3ERoughSearch(
     // Before a query there was nothing to look at but a prompt card, which is the dullest state a
     // search screen has. Trending gives it something worth tapping on the way to typing.
     var trending by remember { mutableStateOf(emptyList<TMDBSearchItem>()) }
+
+    // Focus on open, so the keyboard is up and the first thing you do is type. A search screen that
+    // makes you tap the field first has added a step to the one action it exists for.
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
 
     LaunchedEffect(Unit) {
         trending = runCatching { container.tmdbClient().getTrending().getOrNull()?.results }
@@ -166,7 +175,9 @@ fun M3ERoughSearch(
             TextField(
                 value = query,
                 onValueChange = { query = it },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester),
                 placeholder = { Text("Search titles", style = M3EType.rowSupporting()) },
                 leadingIcon = {
                     Icon(Icons.Default.Search, contentDescription = null, tint = M3EColor.textMuted())
