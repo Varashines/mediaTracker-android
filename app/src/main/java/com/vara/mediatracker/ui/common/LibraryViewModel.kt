@@ -53,13 +53,16 @@ data class LibraryCore(
     /** lowercased facet name -> TMDB logo path (networks, studios, providers). */
     val logos: Map<String, String> = emptyMap(),
     /**
-     * The same, for watch providers only.
+     * The same, split by kind.
      *
-     * Kept apart because a name can be both: Netflix and Apple TV+ are networks *and* providers,
-     * and TMDB carries a different mark for each — the provider one is the wordmark. Merged into
-     * `logos`, whichever row the DAO happened to return last won, so the brand could show a square
-     * icon where the Mac shows the wordmark.
+     * A name can be more than one kind — Netflix and Apple TV+ are networks *and* watch providers,
+     * and TMDB carries a different asset for each: a transparent PNG for the network, a JPG with a
+     * background for the provider. Merged into `logos` by name, whichever row the DAO returned last
+     * won, so a network could be drawn with the provider's mark. The Mac keeps them apart and its
+     * Networks section uses the network's, so these do too.
      */
+    val networkLogos: Map<String, String> = emptyMap(),
+    val studioLogos: Map<String, String> = emptyMap(),
     val providerLogos: Map<String, String> = emptyMap()
 )
 
@@ -116,6 +119,12 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
                 },
                 badgeRows = raw.badgeRows,
                 logos = raw.logoRows.associate { it.name.lowercase(Locale.US) to it.logoPath },
+                networkLogos = raw.logoRows
+                    .filter { it.facet == "network" }
+                    .associate { it.name.lowercase(Locale.US) to it.logoPath },
+                studioLogos = raw.logoRows
+                    .filter { it.facet == "studio" }
+                    .associate { it.name.lowercase(Locale.US) to it.logoPath },
                 providerLogos = raw.logoRows
                     .filter { it.facet == "provider" }
                     .associate { it.name.lowercase(Locale.US) to it.logoPath }

@@ -114,7 +114,7 @@ internal fun M3ERoughHub(
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
             when (page) {
                 0 -> SmartTab(library, onOpenList)
-                1 -> DiscoverTab(library, core.logos, core.providerLogos, onOpenList)
+                1 -> DiscoverTab(library, core.networkLogos, core.studioLogos, onOpenList)
                 else -> M3ERoughCollections(
                     container = container,
                     core = core,
@@ -254,8 +254,8 @@ private data class Facet(
 @Composable
 private fun DiscoverTab(
     library: List<MediaItemEntity>,
-    logos: Map<String, String>,
-    providerLogos: Map<String, String>,
+    networkLogos: Map<String, String>,
+    studioLogos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     // Networks and studios are different things — one airs a show, one makes it — so they sit
@@ -301,9 +301,9 @@ private fun DiscoverTab(
                 BrandGrid(
                     title = brand.label,
                     facets = brands,
-                    logos = logos,
-                    providerLogos = providerLogos,
-                    preferProviders = brand == BrandTab.Networks,
+                    // The network's own logo for a network, the studio's for a studio — never the
+                    // provider's, which is a different asset with a background behind it.
+                    logos = if (brand == BrandTab.Networks) networkLogos else studioLogos,
                     onOpenList = onOpenList
                 )
                 if (genres.isNotEmpty()) GenreGrid(genres, onOpenList)
@@ -342,8 +342,6 @@ private fun BrandGrid(
     title: String,
     facets: List<Facet>,
     logos: Map<String, String>,
-    providerLogos: Map<String, String>,
-    preferProviders: Boolean,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     M3ESectionHeader(title)
@@ -365,14 +363,10 @@ private fun BrandGrid(
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
             ) {
                 row.forEach { facet ->
-                    val key = facet.name.lowercase(java.util.Locale.US)
                     BrandTile(
                         facet = facet,
-                        // A streaming service is both a network and a watch provider, and TMDB's
-                        // provider mark is the wordmark — which is the one the Mac shows for Netflix
-                        // and Apple TV+. Prefer it, and fall back to the network's own logo.
                         logoUrl = TMDBClient.buildLogoUrl(
-                            if (preferProviders) providerLogos[key] ?: logos[key] else logos[key]
+                            logos[facet.name.lowercase(java.util.Locale.US)]
                         ),
                         modifier = Modifier.weight(1f),
                         onClick = {
@@ -386,7 +380,10 @@ private fun BrandGrid(
     }
 }
 
-/** One brand at size: the mark, its colour, and how many titles it holds. */
+/** Ink for a white brand plate. Fixed, because the plate is white in both themes. */
+private val BrandPlateInk = Color(0xFF1F2933)
+
+/** One brand: the mark on a white plate, and how many titles it holds. */
 @Composable
 private fun BrandTile(
     facet: Facet,
@@ -394,18 +391,14 @@ private fun BrandTile(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val brand = NetworkResolver.resolveByName(facet.name)
-    // A brand the resolver knows gets its own colour; one it does not gets the neutral card rather
-    // than its generic fallback, so an unknown studio is not tinted as if it were a network.
-    val known = brand.name != "TV Series" && brand.name != "Theatrical"
     Surface(
         onClick = onClick,
         shape = M3EShape.card(),
-        color = if (known) brand.badgeColor.copy(alpha = 0.22f) else M3EColor.card(),
-        border = BorderStroke(
-            1.dp,
-            if (known) brand.badgeColor.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant
-        ),
+        // White, the way the Mac draws them. A network's logo is a transparent mark, usually dark,
+        // and on a dark card it simply disappears — the plate is what makes it visible at all.
+        // The colour the brand would have carried is spent on being legible instead.
+        color = Color.White,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier.height(76.dp)
     ) {
         Column(
@@ -428,7 +421,7 @@ private fun BrandTile(
                     text = facet.name,
                     style = M3EType.rowSupporting(),
                     fontWeight = FontWeight.Bold,
-                    color = if (known) brand.textColor else M3EColor.text(),
+                    color = BrandPlateInk,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -439,7 +432,7 @@ private fun BrandTile(
             Text(
                 text = "${facet.count}",
                 style = M3EType.rowSupporting(),
-                color = M3EColor.textMuted()
+                color = BrandPlateInk.copy(alpha = 0.55f)
             )
         }
     }

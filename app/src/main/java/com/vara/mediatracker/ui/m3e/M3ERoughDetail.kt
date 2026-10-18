@@ -27,6 +27,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
@@ -118,9 +120,6 @@ fun M3ERoughDetail(
     var cast by remember(item.id) { mutableStateOf(emptyList<TMDBCastMember>()) }
     var directors by remember(item.id) { mutableStateOf(emptyList<String>()) }
     var creators by remember(item.id) { mutableStateOf(emptyList<String>()) }
-    var section by rememberSaveable(item.id) {
-        mutableStateOf(if (isTv) DetailSection.Seasons else DetailSection.Overview)
-    }
 
     // Re-read the library's copy, then fill in what TMDB knows. A title added from search is a
     // stub, and one that arrived through sync can be missing its metadata entirely — which is how a
@@ -337,19 +336,29 @@ fun M3ERoughDetail(
         }
     }
 
+    // Swipe between the sections, the same way the Hub's tabs move. They are peers, so moving
+    // sideways is what the hand expects, and the chips stay as the labels for where you are. The
+    // pager state is saveable, so leaving for another title and coming back keeps the section.
+    val pagerState = rememberPagerState(pageCount = { sections.size })
+
     // A grid for the whole screen, not a column with a grid inside it: Related is a grid of
     // posters, and nesting one inside a column would need a fixed height. Everything that is not a
     // poster spans every column, so the header and the sections read exactly as they did.
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
-        modifier = Modifier
-            .fillMaxSize()
-            .background(M3EColor.page())
-            .statusBarsPadding()
-            .padding(horizontal = M3ESpacing.page),
-        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
-        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
-    ) {
+    //
+    // Each section is a page of the pager, so the header repeats per page and scrolls with it —
+    // which is what lets the swipe carry the whole screen rather than a strip of it.
+    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        val section = sections.getOrElse(page) { sections.first() }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(M3EColor.page())
+                .statusBarsPadding()
+                .padding(horizontal = M3ESpacing.page),
+            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
+            verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+        ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Spacer(Modifier.height(M3ESpacing.tightGap))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -427,10 +436,10 @@ fun M3ERoughDetail(
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
                 verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
             ) {
-                sections.forEach { candidate ->
+                sections.forEachIndexed { index, candidate ->
                     FilterChip(
-                        selected = section == candidate,
-                        onClick = { section = candidate },
+                        selected = pagerState.currentPage == index,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
                         label = { Text(candidate.label, style = M3EType.action()) },
                         shape = M3EShape.chip()
                     )
@@ -574,6 +583,7 @@ fun M3ERoughDetail(
 
         // Clears the floating navigation bar: at 48 the last row sat underneath it.
         item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+        }
     }
 
     if (statusPickerOpen) {
