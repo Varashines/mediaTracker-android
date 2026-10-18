@@ -1,5 +1,6 @@
 package com.vara.mediatracker.ui.common
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -44,6 +45,12 @@ data class TVShowProgress(
  * This holder is produced once per DB change on [Dispatchers.Default] and shared by the
  * activity-scoped ViewModel, so the UI only ever reads the finished result.
  */
+/**
+ * `@Immutable`: produced once per DB change off the main thread and then only read. The compiler
+ * cannot see that, because `List` and `Map` are interfaces and read as unstable — which would make
+ * every composable taking a [LibraryCore] recompose whenever anything above it did.
+ */
+@Immutable
 data class LibraryCore(
     val items: List<MediaItemEntity> = emptyList(),
     val allEpisodes: List<EpisodeEntity> = emptyList(),
@@ -67,6 +74,10 @@ data class LibraryCore(
 )
 
 /** Home-specific derivations (Continue Watching, Coming Soon, hero) off the UI thread. */
+/**
+ * `@Immutable`, for the same reason as [LibraryCore]: derived off the main thread, then only read.
+ */
+@Immutable
 data class HomeData(
     val showProgressMap: Map<String, TVShowProgress> = emptyMap(),
     val resumeItems: List<MediaItemEntity> = emptyList(),

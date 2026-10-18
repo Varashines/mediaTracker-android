@@ -1,5 +1,6 @@
 package com.vara.mediatracker.ui.library
 
+import androidx.compose.runtime.Immutable
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.Taste
 import java.util.Locale
@@ -8,6 +9,12 @@ import java.util.Locale
  * The Library's filters: status (quick pills), badges, genres and languages, plus a sort
  * and a group-by. Deliberately small — the network/studio facets live on the Hub.
  */
+/**
+ * `@Immutable`: a snapshot of the filter state, all `val`, and the sets are rebuilt on every change
+ * rather than mutated. The compiler cannot infer that — `Set` is an interface — so without this the
+ * class reads as unstable and every screen taking it as a parameter recomposes on any parent change.
+ */
+@Immutable
 data class LibraryFilters(
     val type: String = TYPE_ALL,
     val state: String = STATE_ALL,

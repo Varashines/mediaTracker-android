@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +67,13 @@ import java.util.*
  * look, and one card per episode buried everything else under a wall of repeats.
  * Movies are always their own event, since they never share a date with anything.
  */
+/**
+ * `@Immutable` because it is a snapshot: every property is a `val`, and the lists are built fresh
+ * rather than handed out for mutation. Without it the compiler has to treat the class as unstable —
+ * `List` is an interface, and it cannot know this one is never changed — so every consumer of it is
+ * re-evaluated rather than skipped.
+ */
+@Immutable
 data class CalendarReleaseEvent(
     val mediaItem: MediaItemEntity,
     val dateString: String,      // "yyyy-MM-dd" local drop day
