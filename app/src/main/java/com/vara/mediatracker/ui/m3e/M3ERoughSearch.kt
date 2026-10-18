@@ -1,6 +1,7 @@
 package com.vara.mediatracker.ui.m3e
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -186,7 +187,10 @@ fun M3ERoughSearch(
                 onValueChange = { query = it },
                 modifier = Modifier
                     .weight(1f)
-                    .focusRequester(focusRequester),
+                    .focusRequester(focusRequester)
+                    // A hairline, so the bar reads as a field rather than as a gap in the page. The
+                    // fill alone was invisible against a dark background.
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, M3EShape.chip()),
                 placeholder = { Text("Search titles", style = M3EType.rowSupporting()) },
                 leadingIcon = {
                     Icon(Icons.Default.Search, contentDescription = null, tint = M3EColor.textMuted())

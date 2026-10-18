@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -176,7 +177,7 @@ fun M3ERoughScreen(
         // query — because leaving a section and returning otherwise resets it and makes the whole
         // thing feel like a demo.
         val holder = rememberSaveableStateHolder()
-        FadeIn {
+        FadeIn(rise = if (overlay is Overlay.Search) 28.dp else 0.dp) {
         when (val current = overlay) {
             is Overlay.Detail -> M3ERoughDetail(
                 item = current.item,
@@ -653,15 +654,23 @@ private fun ChipRow(options: List<String>, selected: String, onSelect: (String) 
  * own alpha up. Same effect, one tree alive at a time.
  */
 @Composable
-private fun FadeIn(content: @Composable () -> Unit) {
+private fun FadeIn(rise: Dp = 0.dp, content: @Composable () -> Unit) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
-    val alpha by animateFloatAsState(
+    val progress by animateFloatAsState(
         targetValue = if (shown) 1f else 0f,
-        animationSpec = tween(durationMillis = 160),
+        animationSpec = tween(durationMillis = 180),
         label = "sectionFade"
     )
-    Box(modifier = Modifier.fillMaxSize().alpha(alpha)) { content() }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .alpha(progress)
+            // A rise, when one is asked for: search comes up from the pill that opened it rather
+            // than appearing over the sections. Not a morph — that needs a shared-element
+            // transition — but it reads as the same movement, which is what the eye is following.
+            .offset(y = rise * (1f - progress))
+    ) { content() }
 }
 
 // MARK: - Building blocks
