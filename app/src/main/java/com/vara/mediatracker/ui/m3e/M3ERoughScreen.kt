@@ -25,6 +25,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -52,7 +54,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.LocalDate
 import java.time.ZoneId
@@ -91,6 +95,9 @@ import com.vara.mediatracker.di.AppContainer
  */
 const val M3ERoughPreview = true
 
+/** Home, Hub, Calendar, Library, Finished — the five the nav draws. */
+private const val SECTION_COUNT = 5
+
 @Composable
 fun M3ERoughScreen(
     container: AppContainer,
@@ -105,7 +112,11 @@ fun M3ERoughScreen(
     val core by libraryVm.core.collectAsState()
     val home by libraryVm.home.collectAsState()
     val library = core.items
-    var section by rememberSaveable { mutableIntStateOf(0) }
+    // The pager owns which section is showing, so the nav and a sideways swipe are the same thing
+    // rather than two states that have to be kept in step. Saveable, which is what keeps the
+    // earlier fix — leaving for a title and coming back lands where you were, not on Home.
+    val pagerState = rememberPagerState(pageCount = { SECTION_COUNT })
+    val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf<MediaItemEntity?>(null) }
     var list by remember { mutableStateOf<SectionList?>(null) }
     var searching by remember { mutableStateOf(false) }
@@ -159,8 +170,9 @@ fun M3ERoughScreen(
                     onThemePresetChanged = onThemePresetChanged,
                     onThemeModeChanged = onThemeModeChanged
                 )
-            else -> holder.SaveableStateProvider(section) {
-                when (section) {
+            else -> HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+            holder.SaveableStateProvider(page) {
+                when (page) {
                 0 -> HomeSection(
                     core = core,
                     home = home,
@@ -182,13 +194,14 @@ fun M3ERoughScreen(
                 else -> FinishedSection(library = library, onOpen = { open = it })
                 }
             }
+            }
         }
 
         FloatingNav(
-            selected = section,
+            selected = pagerState.currentPage,
             onSelect = { target ->
-                if (target != section) haptics.tap()
-                section = target
+                if (target != pagerState.currentPage) haptics.tap()
+                scope.launch { pagerState.animateScrollToPage(target) }
             },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
