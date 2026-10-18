@@ -1,6 +1,14 @@
 package com.vara.mediatracker.ui.m3e
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -170,7 +178,14 @@ fun M3ERoughScreen(
                     onThemePresetChanged = onThemePresetChanged,
                     onThemeModeChanged = onThemeModeChanged
                 )
-            else -> HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+            else -> HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                // One either side, built before the gesture rather than during it. Every page here
+                // is a whole screen of derivation — Home's rails, the Hub's facets, a month of
+                // episodes — and composing one mid-drag is what the drag ends up fighting.
+                beyondViewportPageCount = 1
+            ) { page ->
             holder.SaveableStateProvider(page) {
                 when (page) {
                 0 -> HomeSection(
@@ -710,28 +725,49 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
         ) {
             items.forEachIndexed { index, (label, icon) ->
                 val active = index == selected
+                // Animated, because the section can change by swipe now as well as by tap: a pill
+                // that snapped between two states made the swipe feel like it had landed on a
+                // different control rather than moved along one.
+                val pillColor by animateColorAsState(
+                    targetValue = if (active) M3EColor.accent() else M3EColor.card(),
+                    animationSpec = tween(durationMillis = 220),
+                    label = "navPill"
+                )
+                val iconTint by animateColorAsState(
+                    targetValue = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted(),
+                    animationSpec = tween(durationMillis = 220),
+                    label = "navIcon"
+                )
+                val horizontal by animateDpAsState(
+                    targetValue = if (active) 16.dp else 12.dp,
+                    animationSpec = tween(durationMillis = 220),
+                    label = "navPadding"
+                )
                 // Filled means chosen, the same as the calendar's selected day: a solid accent
                 // pill, so the current section is obvious at a glance rather than by a hairline.
                 Surface(
                     onClick = { onSelect(index) },
                     shape = RoundedCornerShape(50),
-                    color = if (active) M3EColor.accent() else M3EColor.card()
+                    color = pillColor
                 ) {
                     Row(
-                        modifier = Modifier.padding(
-                            horizontal = if (active) 16.dp else 12.dp,
-                            vertical = 10.dp
-                        ),
+                        modifier = Modifier.padding(horizontal = horizontal, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
                     ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = label,
-                            tint = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
-                        )
-                        if (active) {
-                            Text(label, style = M3EType.action(), color = MaterialTheme.colorScheme.onPrimary)
+                        Icon(imageVector = icon, contentDescription = label, tint = iconTint)
+                        AnimatedVisibility(
+                            visible = active,
+                            enter = fadeIn(tween(durationMillis = 200)) +
+                                expandHorizontally(tween(durationMillis = 240)),
+                            exit = fadeOut(tween(durationMillis = 120)) +
+                                shrinkHorizontally(tween(durationMillis = 180))
+                        ) {
+                            Text(
+                                text = label,
+                                style = M3EType.action(),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
                         }
                     }
                 }

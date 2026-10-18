@@ -5,6 +5,7 @@ import android.app.TimePickerDialog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -31,6 +32,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Notifications
@@ -105,6 +108,10 @@ fun M3ERoughSettings(
     var themeMode by rememberSaveable { mutableIntStateOf(prefs.themeMode) }
     var preset by rememberSaveable { mutableIntStateOf(prefs.themePreset) }
     var backgroundSync by rememberSaveable { mutableStateOf(SyncScheduler.isEnabled(context)) }
+    // Two levels: a summary list, and one group open at a time. Every control still lives here —
+    // it is the *page* that got shorter, not the settings.
+    var panel by rememberSaveable { mutableStateOf<SettingsPanel?>(null) }
+
     // The four keys are configuration, not settings you change: hidden until asked for.
     var keysShown by rememberSaveable { mutableStateOf(false) }
     var notificationsEnabled by rememberSaveable { mutableStateOf(prefs.notificationsEnabled) }
@@ -169,10 +176,39 @@ fun M3ERoughSettings(
             }
         }
 
+        // ── Summary ───────────────────────────────────────────────────────────────────────────
+        if (panel == null) {
+            item {
+                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        SummaryRow(
+                            title = "Appearance",
+                            value = "${when (themeMode) {
+                                2 -> "Light"
+                                1 -> "Dark"
+                                else -> "System"
+                            }} · ${ThemePresets.presets.getOrNull(preset)?.name ?: "Custom"}"
+                        ) { haptics.tap(); panel = SettingsPanel.Appearance }
+                        SettingDivider()
+                        SummaryRow(
+                            title = "Notifications",
+                            value = if (notificationsEnabled) "On" else "Off"
+                        ) { haptics.tap(); panel = SettingsPanel.Notifications }
+                        SettingDivider()
+                        SummaryRow(
+                            title = "Cloud sync",
+                            value = if (backgroundSync) "Auto, every 30m" else "Manual"
+                        ) { haptics.tap(); panel = SettingsPanel.Sync }
+                    }
+                }
+            }
+        }
+
         // ── Appearance ────────────────────────────────────────────────────────────────────────
+        if (panel == SettingsPanel.Appearance) {
         item {
             Column {
-                GroupLabel("Appearance")
+                PanelHeader("Appearance") { panel = null }
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -219,11 +255,13 @@ fun M3ERoughSettings(
                 }
             }
         }
+        }
 
         // ── Notifications ─────────────────────────────────────────────────────────────────────
+        if (panel == SettingsPanel.Notifications) {
         item {
             Column {
-                GroupLabel("Notifications")
+                PanelHeader("Notifications") { panel = null }
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -340,10 +378,13 @@ fun M3ERoughSettings(
             }
         }
 
+        }
+
         // ── Cloud sync ────────────────────────────────────────────────────────────────────────
+        if (panel == SettingsPanel.Sync) {
         item {
             Column {
-                GroupLabel("Cloud sync")
+                PanelHeader("Cloud sync") { panel = null }
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -476,6 +517,8 @@ fun M3ERoughSettings(
             }
         }
 
+        }
+
         item { Spacer(Modifier.height(M3ESpacing.pageVertical)) }
     }
 
@@ -512,6 +555,60 @@ fun M3ERoughSettings(
                 TextButton(onClick = { pickingWeekday = false }) { Text("Done") }
             }
         )
+    }
+}
+
+private enum class SettingsPanel { Appearance, Notifications, Sync }
+
+/** One group in the summary list: its name, what it is set to, and a way in. */
+@Composable
+private fun SummaryRow(title: String, value: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.rowGap + 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = M3EType.rowTitle(),
+            color = M3EColor.text(),
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            style = M3EType.rowSupporting(),
+            color = M3EColor.textMuted(),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.width(M3ESpacing.tightGap))
+        Icon(
+            imageVector = Icons.Default.KeyboardArrowRight,
+            contentDescription = null,
+            tint = M3EColor.textMuted()
+        )
+    }
+}
+
+/** The way back out of a group, and its name. */
+@Composable
+private fun PanelHeader(title: String, onBack: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onBack() }
+            .padding(vertical = M3ESpacing.tightGap),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.KeyboardArrowLeft,
+            contentDescription = "Back to settings",
+            tint = M3EColor.accent()
+        )
+        Spacer(Modifier.width(M3ESpacing.tightGap))
+        GroupLabel(title)
     }
 }
 
