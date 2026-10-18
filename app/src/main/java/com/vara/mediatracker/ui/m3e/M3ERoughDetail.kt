@@ -59,7 +59,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
@@ -346,7 +345,6 @@ fun M3ERoughDetail(
     // app. Per field: the muted tone is the better wash but is absent on the rows an older Mac path
     // wrote, so it falls back to the primary rather than to nothing.
     val accentColor = themeColor(live.themeColorHex)
-    val washColor = themeColor(live.themeMutedColorHex) ?: accentColor
 
     // The poster's colour becomes the screen's accent, rather than a decoration on top of the
     // palette's. Everything that reads `M3EColor.accent()` — the eyebrow, the selected chips, the
@@ -377,24 +375,7 @@ fun M3ERoughDetail(
             .background(M3EColor.page())
             .statusBarsPadding()
     ) {
-        Column(
-            modifier = Modifier
-                .padding(horizontal = M3ESpacing.page)
-                // A wash from the poster's own colour, fading out before the content. It is the one
-                // thing on the screen that is this title and not the app — and it is a wash rather
-                // than a fill so the palette system still owns the page.
-                .then(
-                    if (washColor != null) {
-                        Modifier.background(
-                            Brush.verticalGradient(
-                                listOf(washColor.copy(alpha = 0.22f), Color.Transparent)
-                            )
-                        )
-                    } else {
-                        Modifier
-                    }
-                )
-        ) {
+        Column(modifier = Modifier.padding(horizontal = M3ESpacing.page)) {
             Spacer(Modifier.height(M3ESpacing.tightGap))
 
             val byline = when {
