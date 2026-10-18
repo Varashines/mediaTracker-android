@@ -73,6 +73,17 @@ fun M3ERoughSearch(
     var remote by remember { mutableStateOf(emptyList<TMDBSearchItem>()) }
     var searching by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf<String?>(null) }
+    // Before a query there was nothing to look at but a prompt card, which is the dullest state a
+    // search screen has. Trending gives it something worth tapping on the way to typing.
+    var trending by remember { mutableStateOf(emptyList<TMDBSearchItem>()) }
+
+    LaunchedEffect(Unit) {
+        trending = runCatching { container.tmdbClient().getTrending().getOrNull()?.results }
+            .getOrNull()
+            .orEmpty()
+            .filter { it.media_type == "movie" || it.media_type == "tv" }
+            .take(18)
+    }
 
     val owned = remember(library) { library.associateBy { it.id } }
     val local = remember(library, query) {
@@ -182,18 +193,39 @@ fun M3ERoughSearch(
         Spacer(Modifier.height(M3ESpacing.tightGap))
 
         when {
-            query.isBlank() -> M3ETonalCard(
+            query.isBlank() -> LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = M3ESpacing.page)
+                    .fillMaxSize()
+                    .padding(horizontal = M3ESpacing.page),
+                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
+                verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
             ) {
-                Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
-                    Text("Search your library", style = M3EType.rowTitle(), color = M3EColor.text())
-                    Text(
-                        text = "Titles you own, and anything on TMDB you do not.",
-                        style = M3EType.rowSupporting(),
-                        color = M3EColor.textMuted()
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column {
+                        Text(
+                            text = "Titles you own, and anything on TMDB you do not.",
+                            style = M3EType.rowSupporting(),
+                            color = M3EColor.textMuted()
+                        )
+                        if (trending.isNotEmpty()) {
+                            Spacer(Modifier.height(M3ESpacing.cardGap))
+                            M3ESectionHeader("Trending this week")
+                        }
+                    }
+                }
+                items(trending, key = { "${it.media_type}_${it.id}" }) { result ->
+                    val mediaId = (if (result.media_type == "movie") "movie_" else "tv_") + result.id
+                    SearchTile(
+                        title = result.title ?: result.name ?: "Untitled",
+                        posterUrl = TMDBClient.buildPosterUrl(result.poster_path),
+                        owned = false,
+                        busy = adding == mediaId,
+                        onClick = { openOrAdd(result) }
                     )
+                }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Spacer(Modifier.height(M3ESpacing.bottomInset))
                 }
             }
 
