@@ -95,6 +95,7 @@ import com.vara.mediatracker.ui.home.HomeEligibility
 import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
@@ -482,6 +483,7 @@ fun M3ERoughDetail(
             val upcoming = nextEpisode?.takeIf {
                 HomeEligibility.episodeInstant(live, it)?.after(now) == true
             }
+            val upcomingAt = upcoming?.let { HomeEligibility.episodeInstant(live, it) }
             val unreleased = isoDay(live.releaseDate)?.takeIf {
                 it.isAfter(LocalDate.now()) && !live.state.equals("Completed", ignoreCase = true)
             }
@@ -489,7 +491,7 @@ fun M3ERoughDetail(
                 UpcomingNotice(
                     icon = Icons.Default.Schedule,
                     label = "Upcoming · S${upcoming.seasonNumber} E${upcoming.episodeNumber}",
-                    date = friendlyDate(upcoming.airDate ?: upcoming.airstamp)
+                    date = landingLabel(upcoming.airDate ?: upcoming.airstamp, upcomingAt)
                 )
             } else if (unreleased != null) {
                 UpcomingNotice(
@@ -497,7 +499,7 @@ fun M3ERoughDetail(
                     // A film is "not out yet"; a show with no episodes at all is simply upcoming,
                     // and its first air date is the date that matters.
                     label = if (isTv) "Upcoming" else "Not out yet",
-                    date = friendlyDate(live.releaseDate)
+                    date = landingLabel(live.releaseDate, null)
                 )
             } else if (isTv) {
                 PrimaryAction(
@@ -1124,10 +1126,29 @@ private fun tasteTint(taste: String): Color {
 private fun isoDay(iso: String?): LocalDate? =
     runCatching { LocalDate.parse(iso?.take(10)) }.getOrNull()
 
-/** "Wed, 23 Sep" — the weekday earns its place, because that is how an air date gets said out loud. */
-private fun friendlyDate(iso: String?): String? = isoDay(iso)?.format(
-    DateTimeFormatter.ofPattern("EEE, d MMM", Locale.getDefault())
-)
+/**
+ * When it lands, in the words the Coming soon list already uses.
+ *
+ * Today and tomorrow are named, because that is how a person reads a radar — "in 1 day" is not what
+ * anyone says. Past that the date is a date, and the time is shown whenever the app knows one, so
+ * "Today · 21:00" is a fact rather than an approximation.
+ */
+private fun landingLabel(iso: String?, instant: Date?): String? {
+    val zoned = instant?.toInstant()?.atZone(ZoneId.systemDefault())
+    val day = zoned?.toLocalDate() ?: isoDay(iso) ?: return null
+    val today = LocalDate.now()
+    val name = when (day) {
+        today -> "Today"
+        today.plusDays(1) -> "Tomorrow"
+        else -> day.format(DateTimeFormatter.ofPattern("EEE, d MMM", Locale.getDefault()))
+    }
+    val time = zoned?.toLocalTime()
+    return if (time != null && (time.hour != 0 || time.minute != 0)) {
+        "$name · " + String.format(Locale.US, "%02d:%02d", time.hour, time.minute)
+    } else {
+        name
+    }
+}
 
 private fun indianDate(iso: String?): String? {
     val raw = iso?.take(10) ?: return null

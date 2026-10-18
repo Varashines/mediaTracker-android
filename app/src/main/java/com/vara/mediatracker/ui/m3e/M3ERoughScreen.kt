@@ -595,12 +595,14 @@ private fun LibrarySection(
         }
         items(library, key = { it.id }) { item ->
             val hero = rememberTileOrigin(item.id)
-            M3EArtworkCard(
-                title = item.title,
-                modifier = hero.modifier,
-                onClick = { hero.record(); onOpen(item) }
-            ) {
-                Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+            M3EArtworkCard(title = item.title, onClick = { hero.record(); onOpen(item) }) {
+                Poster(
+                    item,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f)
+                        .then(hero.modifier)
+                )
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -715,12 +717,14 @@ private fun GridList(list: SectionList, onOpen: (MediaItemEntity) -> Unit, onBac
         }
         items(list.items, key = { it.id }) { item ->
             val hero = rememberTileOrigin(item.id)
-            M3EArtworkCard(
-                title = item.title,
-                modifier = hero.modifier,
-                onClick = { hero.record(); onOpen(item) }
-            ) {
-                Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+            M3EArtworkCard(title = item.title, onClick = { hero.record(); onOpen(item) }) {
+                Poster(
+                    item,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f)
+                        .then(hero.modifier)
+                )
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
@@ -917,14 +921,20 @@ private fun TitleRow(
 ) {
     val hero = rememberTileOrigin(item.id)
     M3ETonalCard(
-        modifier = Modifier.fillMaxWidth().then(hero.modifier),
+        modifier = Modifier.fillMaxWidth(),
         onClick = if (onClick == null) null else { { hero.record(); onClick() } }
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Poster(item, modifier = Modifier.width(44.dp).height(66.dp))
+            Poster(
+                item,
+                modifier = Modifier
+                    .width(44.dp)
+                    .height(66.dp)
+                    .then(hero.modifier)
+            )
             Spacer(Modifier.width(M3ESpacing.inlineGap))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -954,10 +964,16 @@ private fun PosterCard(item: MediaItemEntity, width: Dp, onClick: (() -> Unit)? 
     val hero = rememberTileOrigin(item.id)
     M3EArtworkCard(
         title = item.title,
-        modifier = Modifier.width(width).then(hero.modifier),
+        modifier = Modifier.width(width),
         onClick = if (onClick == null) null else { { hero.record(); onClick() } }
     ) {
-        Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+        Poster(
+            item,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .then(hero.modifier)
+        )
     }
 }
 

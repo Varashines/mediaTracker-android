@@ -214,6 +214,10 @@ fun M3EArtworkCard(
  *
  * The bounds are captured per tile, on layout, and only handed over when that tile is the one tapped:
  * recording into shared state on every layout would write on every scroll frame.
+ *
+ * The modifier goes on the **poster**, not on the card around it. A row card is wide and short, and
+ * the detail's poster is 2:3 — scaling one to the other squashed it vertically rather than growing
+ * it, which is exactly what it looked like.
  */
 class TileOrigin(val modifier: Modifier, val record: () -> Unit)
 
