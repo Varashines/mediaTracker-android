@@ -52,6 +52,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
@@ -61,6 +62,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -90,6 +92,9 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import com.vara.mediatracker.data.TrackingLogic
+import com.vara.mediatracker.ui.common.AppToast
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.LocalDate
@@ -180,6 +185,9 @@ fun M3ERoughScreen(
     // section — because the screen you actually came from had nowhere to be remembered.
     var stack by remember { mutableStateOf(listOf<Overlay>()) }
     val overlay = stack.lastOrNull()
+    // The detail is the one overlay that is a sheet rather than a replacement, so it is worth
+    // naming: the render, the bar's remove button and the confirm dialog all key off it.
+    val detail = overlay as? Overlay.Detail
     val haptics = rememberHaptics()
 
     val density = LocalDensity.current
@@ -189,6 +197,10 @@ fun M3ERoughScreen(
     // foot. A single constant was right under gesture navigation and short by a system bar's worth
     // under three-button navigation, which put the last row under the bar.
     val heroOrigin = remember { HeroOrigin() }
+    val scope = rememberCoroutineScope()
+    // What the confirm dialog is about. Holding the item rather than a boolean means the dialog
+    // cannot outlive the thing it is asking about.
+    var deleteTarget by remember { mutableStateOf<MediaItemEntity?>(null) }
     var navHeight by remember { mutableStateOf(0.dp) }
     val navClearance = navHeight + M3ESpacing.navGap +
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -230,7 +242,6 @@ fun M3ERoughScreen(
         // The detail is the one overlay that is a sheet, and a sheet slides *over* the screen rather
         // than replacing it — so there has to be a screen for it to slide over, and the section stays
         // composed while it is up. Every other overlay still replaces, which is what they are.
-        val detail = overlay as? Overlay.Detail
         if (overlay == null || detail != null) {
             // No transition between sections. Animating between two means composing two of them at
             // once, and each is a whole screen of derivation — so the animation spent its time racing
@@ -319,6 +330,42 @@ fun M3ERoughScreen(
         }
         }
 
+        // Removing is the one irreversible thing reachable from here, and it is not local: the
+        // deletion is pushed to the cloud, so the title leaves every device. "Remove" usually means
+        // "take it off this list", so the dialog says what it actually does.
+        deleteTarget?.let { target ->
+            AlertDialog(
+                onDismissRequest = { deleteTarget = null },
+                title = { Text("Remove \u201C${target.title}\u201D?") },
+                text = {
+                    Text(
+                        "It will leave your library here and on every device it syncs with. " +
+                            "You can add it back from search."
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        deleteTarget = null
+                        haptics.toggle()
+                        scope.launch {
+                            container.database.mediaDao().softDelete(target.id, TrackingLogic.isoNow())
+                            container.syncManager().pushMediaDeletes(listOf(target))
+                            AppToast.show("Removed \u201C${target.title}\u201D")
+                        }
+                        // Leave after the dialog has gone. Dismissing in the same frame as the
+                        // content change is the jitter the rest of the app avoids.
+                        scope.launch {
+                            delay(250)
+                            stack = emptyList()
+                        }
+                    }) { Text("Remove") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { deleteTarget = null }) { Text("Keep") }
+                }
+            )
+        }
+
         // While an overlay is open no section is current — Settings was being lit *alongside* Home,
         // which made it look like a child of whichever section you happened to be in.
         FloatingNav(
@@ -360,6 +407,9 @@ fun M3ERoughScreen(
                 Icons.AutoMirrored.Filled.ArrowBack
             },
             onBackToParent = { stack = stack.dropLast(1) },
+            // Only when there is a title on screen. The bar is the one place reachable from every
+            // overlay, which is why removing lives here rather than buried in a sheet.
+            onDelete = detail?.let { { deleteTarget = it.item } },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -1009,6 +1059,8 @@ private fun FloatingNav(
     parentLabel: String? = null,
     parentIcon: ImageVector = Icons.AutoMirrored.Filled.ArrowBack,
     onBackToParent: () -> Unit = {},
+    /** Removes the title on screen. Null when there is nothing to remove. */
+    onDelete: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -1052,6 +1104,26 @@ private fun FloatingNav(
                 NavPill(Icons.Default.Settings, "Settings", selected == SETTINGS) {
                     onSelect(SETTINGS)
                 }
+                }
+            }
+        }
+
+        // Remove, between the capsule and search: an action, not a place, and the one destructive
+        // thing here. It takes the error colour so it does not read as a third destination.
+        if (onDelete != null) {
+            Surface(
+                onClick = onDelete,
+                shape = RoundedCornerShape(50),
+                color = M3EColor.card(),
+                shadowElevation = 12.dp,
+                modifier = Modifier.size(56.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = "Remove from library",
+                        tint = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         }
