@@ -341,25 +341,16 @@ fun M3ERoughDetail(
     // pager state is saveable, so leaving for another title and coming back keeps the section.
     val pagerState = rememberPagerState(pageCount = { sections.size })
 
-    // A grid for the whole screen, not a column with a grid inside it: Related is a grid of
-    // posters, and nesting one inside a column would need a fixed height. Everything that is not a
-    // poster spans every column, so the header and the sections read exactly as they did.
-    //
-    // Each section is a page of the pager, so the header repeats per page and scrolls with it —
-    // which is what lets the swipe carry the whole screen rather than a strip of it.
-    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-        val section = sections.getOrElse(page) { sections.first() }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            modifier = Modifier
-                .fillMaxSize()
-                .background(M3EColor.page())
-                .statusBarsPadding()
-                .padding(horizontal = M3ESpacing.page),
-            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
-            verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
-        ) {
-        item(span = { GridItemSpan(maxLineSpan) }) {
+    // The header stays put and only what is under the tabs slides. A pager carrying the whole page
+    // moved the title, the poster and the controls sideways with it, which is not what a tab means:
+    // the section changes, not the title.
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(M3EColor.page())
+            .statusBarsPadding()
+    ) {
+        Column(modifier = Modifier.padding(horizontal = M3ESpacing.page)) {
             Spacer(Modifier.height(M3ESpacing.tightGap))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
@@ -375,9 +366,8 @@ fun M3ERoughDetail(
                     color = M3EColor.accent()
                 )
             }
-        }
+            Spacer(Modifier.height(M3ESpacing.tightGap))
 
-        item(span = { GridItemSpan(maxLineSpan) }) {
             val byline = when {
                 isTv && creators.isNotEmpty() -> "Created by ${creators.joinToString(", ")}"
                 !isTv && directors.isNotEmpty() -> "Directed by ${directors.joinToString(", ")}"
@@ -406,32 +396,28 @@ fun M3ERoughDetail(
                     Spacer(Modifier.weight(0.05f))
                 }
             }
-        }
+            Spacer(Modifier.height(M3ESpacing.cardGap))
 
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
-                if (isTv) {
-                    PrimaryAction(
-                        label = nextEpisode
-                            ?.let { "Mark S${it.seasonNumber} · E${it.episodeNumber} watched" }
-                            ?: "Everything watched",
-                        icon = Icons.Default.Check,
-                        enabled = nextEpisode != null,
-                        onClick = { nextEpisode?.let { setEpisodeWatched(it, true) } }
-                    )
-                } else {
-                    val watched = live.state.equals("Completed", ignoreCase = true)
-                    PrimaryAction(
-                        label = if (watched) "Watched" else "Mark watched",
-                        icon = if (watched) Icons.Default.Check else Icons.Default.Bookmark,
-                        enabled = true,
-                        onClick = { toggleMovie() }
-                    )
-                }
+            if (isTv) {
+                PrimaryAction(
+                    label = nextEpisode
+                        ?.let { "Mark S${it.seasonNumber} · E${it.episodeNumber} watched" }
+                        ?: "Everything watched",
+                    icon = Icons.Default.Check,
+                    enabled = nextEpisode != null,
+                    onClick = { nextEpisode?.let { setEpisodeWatched(it, true) } }
+                )
+            } else {
+                val watched = live.state.equals("Completed", ignoreCase = true)
+                PrimaryAction(
+                    label = if (watched) "Watched" else "Mark watched",
+                    icon = if (watched) Icons.Default.Check else Icons.Default.Bookmark,
+                    enabled = true,
+                    onClick = { toggleMovie() }
+                )
             }
-        }
+            Spacer(Modifier.height(M3ESpacing.cardGap))
 
-        item(span = { GridItemSpan(maxLineSpan) }) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
                 verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
@@ -446,6 +432,20 @@ fun M3ERoughDetail(
                 }
             }
         }
+
+        // Only this slides. A grid per page, because Related is a grid of posters and a column
+        // cannot hold one without a fixed height; everything that is not a poster spans every
+        // column, so a section reads the same as it did.
+        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
+            val section = sections.getOrElse(page) { sections.first() }
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = M3ESpacing.page),
+                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
+                verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+            ) {
 
         when (section) {
             DetailSection.Seasons -> {
@@ -583,6 +583,7 @@ fun M3ERoughDetail(
 
         // Clears the floating navigation bar: at 48 the last row sat underneath it.
         item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+            }
         }
     }
 
