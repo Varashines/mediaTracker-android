@@ -175,7 +175,9 @@ fun M3ERoughScreen(
                     container = container,
                     core = core,
                     onOpen = { open = it },
-                    onOpenList = { title, items, kind -> list = SectionList(title, items, kind) }
+                    onOpenList = { title, items, kind, layout ->
+                        list = SectionList(title, items, kind, layout)
+                    }
                 )
                 2 -> M3ERoughCalendar(core = core, onOpen = { open = it })
                 3 -> LibrarySection(core = core, onOpen = { open = it })
@@ -414,11 +416,21 @@ private fun FinishedSection(library: List<MediaItemEntity>, onOpen: (MediaItemEn
 /** Which supporting line an opened list shows. Shared with the Hub, which pushes lists too. */
 internal enum class ListSubtitle { Episode, Arrival, None }
 
+/**
+ * How an opened list presents its titles.
+ *
+ * A rail pushes rows, because the line beside each poster is the point of it — the episode you are
+ * on, when the next one lands. A facet pushes the Library's grid, because you are browsing rather
+ * than resuming, and artwork is what you browse by.
+ */
+internal enum class ListLayout { Rows, Grid }
+
 /** A list pushed by a rail's "See all". The subtitle is derived on render, so it stays current. */
 private data class SectionList(
     val title: String,
     val items: List<MediaItemEntity>,
-    val subtitle: ListSubtitle
+    val subtitle: ListSubtitle,
+    val layout: ListLayout = ListLayout.Rows
 )
 
 /**
@@ -430,6 +442,58 @@ private data class SectionList(
  */
 @Composable
 private fun M3ERoughList(
+    list: SectionList,
+    core: LibraryCore,
+    onOpen: (MediaItemEntity) -> Unit,
+    onBack: () -> Unit
+) {
+    when (list.layout) {
+        ListLayout.Grid -> GridList(list, onOpen, onBack)
+        ListLayout.Rows -> RowList(list, core, onOpen, onBack)
+    }
+}
+
+/** The Library's own presentation: three columns of posters, captions left to the long press. */
+@Composable
+private fun GridList(list: SectionList, onOpen: (MediaItemEntity) -> Unit, onBack: () -> Unit) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(M3EColor.page())
+            .statusBarsPadding()
+            .padding(horizontal = M3ESpacing.page),
+        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Column {
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = M3EColor.text()
+                        )
+                    }
+                }
+                M3EScreenHeader(eyebrow = "${list.items.size} titles", title = list.title)
+            }
+        }
+        items(list.items, key = { it.id }) { item ->
+            M3EArtworkCard(title = item.title, onClick = { onOpen(item) }) {
+                Poster(item, modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+            }
+        }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(M3ESpacing.bottomInset))
+        }
+    }
+}
+
+@Composable
+private fun RowList(
     list: SectionList,
     core: LibraryCore,
     onOpen: (MediaItemEntity) -> Unit,

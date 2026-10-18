@@ -56,7 +56,7 @@ import com.vara.mediatracker.ui.theme.AppTextStyles
 internal fun M3ERoughCollections(
     container: AppContainer,
     core: LibraryCore,
-    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit = { _, _, _ -> },
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit = { _, _, _, _ -> },
     /** False when embedded in the Hub, which supplies its own header. */
     showHeader: Boolean = true
 ) {
@@ -145,7 +145,7 @@ internal fun M3ERoughCollections(
                     count = titles.size,
                     covers = titles.take(3).map { it.posterUrl },
                     isSmart = true,
-                    onClick = { onOpenList(collection.name, titles, ListSubtitle.None) }
+                    onClick = { onOpenList(collection.name, titles, ListSubtitle.None, ListLayout.Grid) }
                 )
             }
         }
@@ -177,7 +177,7 @@ internal fun M3ERoughCollections(
                     count = titles.size,
                     covers = titles.take(3).map { it.posterUrl },
                     isSmart = false,
-                    onClick = { onOpenList(collection.name, titles, ListSubtitle.None) }
+                    onClick = { onOpenList(collection.name, titles, ListSubtitle.None, ListLayout.Grid) }
                 )
             }
         }

@@ -1,5 +1,6 @@
 package com.vara.mediatracker.ui.m3e
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
@@ -32,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -42,11 +45,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.util.NetworkResolver
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.LibraryCore
 import kotlinx.coroutines.launch
@@ -68,7 +73,7 @@ internal fun M3ERoughHub(
     container: AppContainer,
     core: LibraryCore,
     onOpen: (MediaItemEntity) -> Unit = {},
-    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit = { _, _, _ -> }
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit = { _, _, _, _ -> }
 ) {
     val library = core.items
     // The pager owns the tab, and it is saveable, which is what makes the Hub come back to the tab
@@ -137,7 +142,7 @@ private data class SmartTile(
 @Composable
 private fun SmartTab(
     library: List<MediaItemEntity>,
-    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     // The tints are read here, in a composable context: `M3EColor` reads the theme, so calling
     // it inside `remember`'s calculation is not allowed — the lambda is not composable.
@@ -203,7 +208,7 @@ private fun SmartTab(
                             SmartCard(
                                 tile = tile,
                                 modifier = Modifier.weight(1f),
-                                onClick = { onOpenList(tile.label, tile.items, ListSubtitle.Episode) }
+                                onClick = { onOpenList(tile.label, tile.items, ListSubtitle.Episode, ListLayout.Grid) }
                             )
                         }
                         if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -250,10 +255,16 @@ private data class Facet(
 private fun DiscoverTab(
     library: List<MediaItemEntity>,
     logos: Map<String, String>,
-    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
+    // Networks and studios are different things — one airs a show, one makes it — so they sit
+    // behind a pill pair rather than pooled into one list of "brands", which is how the Mac splits
+    // them and why it has a Networks/Studios switch.
+    var brand by rememberSaveable { mutableStateOf(BrandTab.Networks) }
+    val brands = remember(library, brand) {
+        facets(library) { if (brand == BrandTab.Networks) it.network else it.studios }.take(12)
+    }
     val genres = remember(library) { facets(library) { it.genres }.take(8) }
-    val networks = remember(library) { facets(library) { it.network }.take(6) }
     val languages = remember(library) { facets(library) { it.language }.take(6) }
 
     LazyColumn(
@@ -262,7 +273,7 @@ private fun DiscoverTab(
             .padding(horizontal = M3ESpacing.page),
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
-        if (genres.isEmpty() && networks.isEmpty() && languages.isEmpty()) {
+        if (brands.isEmpty() && genres.isEmpty() && languages.isEmpty()) {
             item {
                 M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
@@ -276,32 +287,148 @@ private fun DiscoverTab(
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
+                    BrandTab.all.forEach { candidate ->
+                        FilterChip(
+                            selected = brand == candidate,
+                            onClick = { brand = candidate },
+                            label = { Text(candidate.label, style = M3EType.action()) },
+                            shape = M3EShape.chip()
+                        )
+                    }
+                }
+                BrandGrid(
+                    title = brand.label,
+                    facets = brands,
+                    logos = logos,
+                    onOpenList = onOpenList
+                )
                 if (genres.isNotEmpty()) GenreGrid(genres, onOpenList)
-                if (networks.isNotEmpty()) FacetGroup("Networks", networks, logos, onOpenList)
                 if (languages.isNotEmpty()) LanguageChips(languages, onOpenList)
             }
         }
-        item { Spacer(Modifier.height(112.dp)) }
+        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
     }
 }
 
+/**
+ * Which brand list Discover is showing.
+ *
+ * A network airs a title, a studio makes it, and a library holds both — so they are separated the
+ * way the Mac separates them rather than merged into one list of names.
+ */
+private enum class BrandTab(val label: String) {
+    Networks("Networks"),
+    Studios("Studios");
+
+    companion object {
+        val all = listOf(Networks, Studios)
+    }
+}
+
+/**
+ * Brands as tiles, the shape the Mac's `DiscoveryCard` uses with `style: .logo`: a card tall enough
+ * to hold the mark at size, tinted with the brand's own colour where one is known, and the count
+ * underneath.
+ *
+ * The logos were already being fetched and cached by the enrichment pass; nothing on this screen
+ * read them until now, which is most of why it looked like a list of words.
+ */
 @Composable
-private fun FacetGroup(
+private fun BrandGrid(
     title: String,
     facets: List<Facet>,
     logos: Map<String, String>,
-    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
-    if (facets.isEmpty()) return
+    M3ESectionHeader(title)
+    if (facets.isEmpty()) {
+        Text(
+            text = "None yet.",
+            style = M3EType.rowSupporting(),
+            color = M3EColor.textMuted()
+        )
+        return
+    }
     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-        M3ESectionHeader(title)
-        facets.forEach { facet ->
-            FacetLine(
-                facet = facet,
-                // A network is a mark before it is a word: the logo is what you recognise in a
-                // list of them, and the name is the fallback for one TMDB has no logo for.
-                logoUrl = TMDBClient.buildLogoUrl(logos[facet.name.lowercase(java.util.Locale.US)])
-            ) { onOpenList(facet.name, facet.items, ListSubtitle.Episode) }
+        facets.chunked(2).forEach { pair ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+            ) {
+                pair.forEach { facet ->
+                    BrandTile(
+                        facet = facet,
+                        logoUrl = TMDBClient.buildLogoUrl(
+                            logos[facet.name.lowercase(java.util.Locale.US)]
+                        ),
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
+                        }
+                    )
+                }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** One brand at size: the mark, its colour, and how many titles it holds. */
+@Composable
+private fun BrandTile(
+    facet: Facet,
+    logoUrl: String?,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val brand = NetworkResolver.resolveByName(facet.name)
+    // A brand the resolver knows gets its own colour; one it does not gets the neutral card rather
+    // than its generic fallback, so an unknown studio is not tinted as if it were a network.
+    val known = brand.name != "TV Series" && brand.name != "Theatrical"
+    Surface(
+        onClick = onClick,
+        shape = M3EShape.card(),
+        color = if (known) brand.badgeColor.copy(alpha = 0.22f) else M3EColor.card(),
+        border = BorderStroke(
+            1.dp,
+            if (known) brand.badgeColor.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant
+        ),
+        modifier = modifier.height(96.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(M3ESpacing.inlineGap),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            if (logoUrl != null) {
+                AsyncImage(
+                    model = logoUrl,
+                    contentDescription = facet.name,
+                    // Fit, not Crop: a network mark sits on transparency, and cropping cuts it.
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.weight(1f).fillMaxWidth()
+                )
+            } else {
+                Text(
+                    text = facet.name,
+                    style = M3EType.rowTitle(),
+                    fontWeight = FontWeight.Bold,
+                    color = if (known) brand.textColor else M3EColor.text(),
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(M3ESpacing.tightGap))
+            Text(
+                text = "${facet.count} titles",
+                style = M3EType.rowSupporting(),
+                color = M3EColor.textMuted()
+            )
         }
     }
 }
@@ -328,54 +455,9 @@ private fun facets(
 }
 
 @Composable
-private fun FacetLine(facet: Facet, logoUrl: String?, onClick: () -> Unit) {
-    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                if (logoUrl != null) {
-                    AsyncImage(
-                        model = logoUrl,
-                        contentDescription = facet.name,
-                        // Fit, not Crop: a network logo is a mark on transparency, and cropping it
-                        // to fill would cut the mark rather than show it.
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.height(26.dp).widthIn(max = 150.dp)
-                    )
-                } else {
-                    Text(
-                        text = facet.name,
-                        style = M3EType.rowTitle(),
-                        fontWeight = FontWeight.SemiBold,
-                        color = M3EColor.text(),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            Spacer(Modifier.width(M3ESpacing.inlineGap))
-            Text(
-                text = "${facet.count} titles",
-                style = M3EType.rowSupporting(),
-                color = M3EColor.textMuted()
-            )
-        }
-    }
-}
-
-/**
- * Genres as a grid of tiles.
- *
- * A list made every genre look equally incidental; tiles give the counts somewhere to sit and let
- * the grid itself carry the browsing — which is the point of a facet. The count is the prominent
- * number and the genre is the label under it, the same shape the Smart tiles use.
- */
-@Composable
 private fun GenreGrid(
     facets: List<Facet>,
-    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
         M3ESectionHeader("Genres")
@@ -388,7 +470,7 @@ private fun GenreGrid(
                     GenreTile(
                         facet = facet,
                         modifier = Modifier.weight(1f),
-                        onClick = { onOpenList(facet.name, facet.items, ListSubtitle.Episode) }
+                        onClick = { onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid) }
                     )
                 }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -431,7 +513,7 @@ private fun GenreTile(
 @Composable
 private fun LanguageChips(
     facets: List<Facet>,
-    onOpenList: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
         M3ESectionHeader("Languages")
@@ -443,7 +525,7 @@ private fun LanguageChips(
                 Surface(
                     shape = M3EShape.chip(),
                     color = M3EColor.card(),
-                    onClick = { onOpenList(languageName(facet.name), facet.items, ListSubtitle.Episode) }
+                    onClick = { onOpenList(languageName(facet.name), facet.items, ListSubtitle.Episode, ListLayout.Grid) }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = M3ESpacing.inlineGap, vertical = M3ESpacing.tightGap),
