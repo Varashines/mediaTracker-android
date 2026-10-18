@@ -162,19 +162,21 @@ fun M3ERoughScreen(
     val home by libraryVm.home.collectAsState()
     val library = core.items
     var section by rememberSaveable { mutableIntStateOf(0) }
-    var overlay by remember { mutableStateOf<Overlay?>(null) }
+    // A stack, not a slot. One slot meant a title opened from Finished came back to Library — the
+    // section — because the screen you actually came from had nowhere to be remembered.
+    var stack by remember { mutableStateOf(listOf<Overlay>()) }
+    val overlay = stack.lastOrNull()
     val haptics = rememberHaptics()
 
-    // Back closes whatever is open, and that is the whole of it — there is no order to get wrong
-    // and no flag left set behind another.
-    BackHandler(enabled = overlay != null) { overlay = null }
+    // Back unwinds one step at a time: a title opened from Finished returns to Finished, and
+    // Finished returns to Library.
+    BackHandler(enabled = stack.isNotEmpty()) { stack = stack.dropLast(1) }
 
-    // Then, from a section that is not Home, back goes Home rather than leaving the app — what a
-    // bottom bar sets the expectation of everywhere else. Back at Home still exits.
+    // With nothing open, back from a section that is not Home goes Home rather than leaving the app
+    // — what a bottom bar sets the expectation of everywhere else. Back at Home still exits.
     //
-    // Gated on the overlay being closed, so the two never both claim the gesture: at any moment
-    // exactly one of these is enabled.
-    BackHandler(enabled = overlay == null && section != HOME) { section = HOME }
+    // Gated on the stack being empty, so exactly one of these is ever enabled.
+    BackHandler(enabled = stack.isEmpty() && section != HOME) { section = HOME }
 
     Box(
         modifier = Modifier
@@ -190,31 +192,31 @@ fun M3ERoughScreen(
             is Overlay.Detail -> M3ERoughDetail(
                 item = current.item,
                 container = container,
-                onOpenMedia = { overlay = Overlay.Detail(it) }
+                onOpenMedia = { stack = stack + Overlay.Detail(it) }
             )
             is Overlay.Titles -> M3ERoughList(
                 list = SectionList(current.title, current.items, current.subtitle, current.layout),
                 core = core,
-                onOpen = { overlay = Overlay.Detail(it) },
-                onBack = { overlay = null }
+                onOpen = { stack = stack + Overlay.Detail(it) },
+                onBack = { stack = stack.dropLast(1) }
             )
             Overlay.Hub -> M3ERoughHub(
                 container = container,
                 core = core,
-                onOpen = { overlay = Overlay.Detail(it) },
+                onOpen = { stack = stack + Overlay.Detail(it) },
                 onOpenList = { title, items, kind, layout ->
-                    overlay = Overlay.Titles(title, items, kind, layout)
+                    stack = stack + Overlay.Titles(title, items, kind, layout)
                 }
             )
             Overlay.Finished -> FinishedSection(
                 library = library,
-                onOpen = { overlay = Overlay.Detail(it) }
+                onOpen = { stack = stack + Overlay.Detail(it) }
             )
             Overlay.Search -> M3ERoughSearch(
                 library = library,
                 container = container,
-                onOpen = { overlay = Overlay.Detail(it) },
-                onBack = { overlay = null }
+                onOpen = { stack = stack + Overlay.Detail(it) },
+                onBack = { stack = stack.dropLast(1) }
             )
             // No transition. Animating between sections means composing two of them at once, and
             // each is a whole screen of derivation — so the animation spent its time racing the work
@@ -226,17 +228,17 @@ fun M3ERoughScreen(
                 0 -> HomeSection(
                     core = core,
                     home = home,
-                    onOpen = { overlay = Overlay.Detail(it) },
+                    onOpen = { stack = stack + Overlay.Detail(it) },
                     onSeeAll = { title, items, kind ->
-                        overlay = Overlay.Titles(title, items, kind, ListLayout.Rows)
+                        stack = stack + Overlay.Titles(title, items, kind, ListLayout.Rows)
                     }
                 )
-                1 -> M3ERoughCalendar(core = core, onOpen = { overlay = Overlay.Detail(it) })
+                1 -> M3ERoughCalendar(core = core, onOpen = { stack = stack + Overlay.Detail(it) })
                 2 -> LibrarySection(
                     core = core,
-                    onOpen = { overlay = Overlay.Detail(it) },
-                    onHub = { overlay = Overlay.Hub },
-                    onFinished = { overlay = Overlay.Finished }
+                    onOpen = { stack = stack + Overlay.Detail(it) },
+                    onHub = { stack = stack + Overlay.Hub },
+                    onFinished = { stack = stack + Overlay.Finished }
                 )
                 else -> M3ERoughSettings(
                     container = container,
@@ -255,23 +257,35 @@ fun M3ERoughScreen(
         FloatingNav(
             selected = if (overlay == null) section else -1,
             onSelect = { target ->
-                if (target != section || overlay != null) haptics.tap()
-                // Whatever is open closes: the bar means "take me to that section", from anywhere.
-                // Without this a tap while an overlay was up changed the section *behind* it and
-                // looked like it had done nothing.
-                overlay = null
+                if (target != section || stack.isNotEmpty()) haptics.tap()
+                // The bar means "take me to that section", from anywhere, so everything open is
+                // cleared rather than left behind the screen.
+                stack = emptyList()
                 section = target
             },
             onSearch = {
                 haptics.tap()
-                overlay = Overlay.Search
+                stack = stack + Overlay.Search
             },
             searching = overlay is Overlay.Search,
             // Search keeps the four pills — you can move on from it without going back — and so do
             // the sections. Everything else is somewhere you came from a section, and the bar
             // offers the way back to it rather than four places that are behind the screen.
-            parent = if (overlay != null && overlay !is Overlay.Search) section else null,
-            onBackToParent = { overlay = null },
+            // Named from the entry *below* the top, so a title opened from Finished says
+            // "Back to Finished" and Finished says "Back to Library" — the real step, not the
+            // section everything happens to sit in.
+            parentLabel = if (overlay != null && overlay !is Overlay.Search) {
+                when (val below = stack.getOrNull(stack.size - 2)) {
+                    is Overlay.Detail -> below.item.title
+                    is Overlay.Titles -> below.title
+                    Overlay.Hub -> "Hub"
+                    Overlay.Finished -> "Finished"
+                    else -> sectionLabel(section)
+                }
+            } else {
+                null
+            },
+            onBackToParent = { stack = stack.dropLast(1) },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -822,8 +836,8 @@ private fun FloatingNav(
     onSelect: (Int) -> Unit,
     onSearch: () -> Unit,
     searching: Boolean,
-    /** The section to return to, when what is on screen is not one of the four. */
-    parent: Int? = null,
+    /** Where the back pill goes, when what is on screen is not one of the four. */
+    parentLabel: String? = null,
     onBackToParent: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -845,12 +859,12 @@ private fun FloatingNav(
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (parent != null) {
+                if (parentLabel != null) {
                     // Not one of the four: a title, Hub, Finished or a pushed list. The bar says
                     // where it goes instead of offering four places that are behind the screen.
                     NavPill(
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        label = "Back to ${sectionLabel(parent)}",
+                        label = "Back to $parentLabel",
                         active = true,
                         onClick = onBackToParent
                     )
