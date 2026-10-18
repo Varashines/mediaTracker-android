@@ -93,6 +93,17 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 /**
+ * How long the poster takes to grow into place.
+ *
+ * Far slower than the platform's own ~300ms for this kind of move, and slow on purpose: at 320ms the
+ * motion was over before it could be judged at all. This is the number to bring down once it has been
+ * watched — 320ms is roughly where a transition like this normally sits, and anything past about
+ * 400ms will start to feel like waiting rather than arriving.
+ */
+private const val HERO_GROW_MILLIS = 1_000
+
+
+/**
  * The detail screen, in the [M3E] vocabulary: a header, one primary action, and tabs.
  *
  * The screen used to be one column — status, taste, every season, every episode, overview,
@@ -802,7 +813,7 @@ private fun Title(
     LaunchedEffect(heroFrom, target) {
         if (heroFrom != null && target != Rect.Zero && target.width > 0f) {
             grow.snapTo(0f)
-            grow.animateTo(1f, tween(durationMillis = 320))
+            grow.animateTo(1f, tween(durationMillis = HERO_GROW_MILLIS))
         } else {
             grow.snapTo(1f)
         }
