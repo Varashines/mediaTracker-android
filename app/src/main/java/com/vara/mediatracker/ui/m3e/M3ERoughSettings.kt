@@ -10,6 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Notifications
@@ -366,76 +369,72 @@ fun M3ERoughSettings(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(Modifier.height(M3ESpacing.tightGap))
 
-                    // Set once, then never touched — so it stays behind a tap rather than sitting
-                    // at the top of the page as four fields of noise.
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                haptics.tap()
-                                keysShown = !keysShown
-                            },
-                        verticalAlignment = Alignment.CenterVertically
+                    // Set once, then never touched — so it is a button that opens them rather than
+                    // four fields sitting on the page on every visit that is not about them.
+                    TextButton(
+                        onClick = {
+                            haptics.tap()
+                            keysShown = true
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = if (keysShown) "Hide keys" else "Keys",
-                            style = M3EType.rowTitle(),
-                            color = M3EColor.accent(),
-                            modifier = Modifier.weight(1f)
+                        Icon(
+                            imageVector = Icons.Default.Key,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
                         )
-                        Text(
-                            text = if (keysShown) "The four this app syncs with" else "Set on this device",
-                            style = M3EType.rowSupporting(),
-                            color = M3EColor.textMuted()
-                        )
-                    }
-
-                    if (keysShown) {
-                        Spacer(Modifier.height(M3ESpacing.tightGap))
-                        CredentialField(
-                            label = "Supabase URL",
-                            value = supabaseUrl,
-                            onValueChange = { supabaseUrl = it }
-                        )
-                        CredentialField(
-                            label = "Supabase anon key",
-                            value = supabaseAnonKey,
-                            onValueChange = { supabaseAnonKey = it },
-                            masked = true
-                        )
-                        CredentialField(
-                            label = "Sync key",
-                            value = syncKey,
-                            onValueChange = { syncKey = it },
-                            masked = true
-                        )
-                        CredentialField(
-                            label = "TMDB API key",
-                            value = tmdbKey,
-                            onValueChange = { tmdbKey = it },
-                            masked = true
-                        )
-                        Spacer(Modifier.height(M3ESpacing.tightGap))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = null,
-                                tint = M3EColor.textMuted(),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(M3ESpacing.tightGap))
-                            Text(
-                                text = "Stored on this device only.",
-                                style = M3EType.rowSupporting(),
-                                color = M3EColor.textMuted()
-                            )
-                        }
+                        Spacer(Modifier.width(M3ESpacing.tightGap))
+                        Text("Keys", style = M3EType.action())
                     }
                 }
             }
         }
 
         item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+    }
+
+    if (keysShown) {
+        AlertDialog(
+            onDismissRequest = { keysShown = false },
+            title = { Text("Keys") },
+            text = {
+                // Scrollable: four fields plus the note can outgrow a small window, and a dialog
+                // that cannot scroll simply cuts the last one off.
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        text = "The four this app syncs with. Stored on this device only.",
+                        style = M3EType.rowSupporting(),
+                        color = M3EColor.textMuted()
+                    )
+                    CredentialField(
+                        label = "Supabase URL",
+                        value = supabaseUrl,
+                        onValueChange = { supabaseUrl = it }
+                    )
+                    CredentialField(
+                        label = "Supabase anon key",
+                        value = supabaseAnonKey,
+                        onValueChange = { supabaseAnonKey = it },
+                        masked = true
+                    )
+                    CredentialField(
+                        label = "Sync key",
+                        value = syncKey,
+                        onValueChange = { syncKey = it },
+                        masked = true
+                    )
+                    CredentialField(
+                        label = "TMDB API key",
+                        value = tmdbKey,
+                        onValueChange = { tmdbKey = it },
+                        masked = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { keysShown = false }) { Text("Done") }
+            }
+        )
     }
 
     if (pickingWeekday) {
