@@ -62,6 +62,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -349,9 +350,29 @@ fun M3ERoughDetail(
     val accentColor = themeColor(live.themeColorHex)
     val washColor = themeColor(live.themeMutedColorHex) ?: accentColor
 
+    // The poster's colour becomes the screen's accent, rather than a decoration on top of the
+    // palette's. Everything that reads `M3EColor.accent()` — the eyebrow, the selected chips, the
+    // progress figures, the primary action — is this colour, so the detail is themed *by* the title
+    // instead of merely tinted near it. Falls back to the app palette when the Mac has no colour.
+    val baseScheme = MaterialTheme.colorScheme
+    val detailScheme = if (accentColor == null) {
+        baseScheme
+    } else {
+        baseScheme.copy(
+            primary = accentColor,
+            onPrimary = if (accentColor.luminance() > 0.5f) Color.Black else Color.White,
+            primaryContainer = accentColor.copy(alpha = 0.22f),
+            // The page itself leans towards the title: a tenth of the poster's colour mixed into
+            // the palette's background. Enough to read as "this title", not enough to fight the
+            // user's chosen palette.
+            background = mix(accentColor, baseScheme.background)
+        )
+    }
+
     // The header stays put and only what is under the tabs slides. A pager carrying the whole page
     // moved the title, the poster and the controls sideways with it, which is not what a tab means:
     // the section changes, not the title.
+    MaterialTheme(colorScheme = detailScheme) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -610,6 +631,7 @@ fun M3ERoughDetail(
         item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
             }
         }
+    }
     }
 
     if (statusPickerOpen) {
@@ -959,6 +981,19 @@ private fun indianDate(iso: String?): String? {
  * and tolerated if a future writer includes it. Anything unparseable returns null rather than
  * throwing: a bad value should cost the tint, not the screen.
  */
+/**
+ * [accent] mixed into [base], for a page that leans towards a title without leaving the palette.
+ *
+ * A flat tint at this strength would wash the whole screen and fight whatever palette the user
+ * chose; a blend keeps the palette's own value and only bends it.
+ */
+private fun mix(accent: Color, base: Color, amount: Float = 0.12f): Color = Color(
+    red = base.red + (accent.red - base.red) * amount,
+    green = base.green + (accent.green - base.green) * amount,
+    blue = base.blue + (accent.blue - base.blue) * amount,
+    alpha = base.alpha
+)
+
 private fun themeColor(hex: String?): Color? {
     val raw = hex?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     return runCatching {
