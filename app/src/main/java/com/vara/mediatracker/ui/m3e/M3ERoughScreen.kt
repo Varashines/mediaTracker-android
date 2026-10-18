@@ -528,7 +528,10 @@ private fun HomeSection(
                     }
                 )
             }
-            items(inProgress.take(RAIL_SIZE), key = { it.id }) { item ->
+            // Each rail is namespaced. Three `items` blocks in one LazyColumn share a single key
+            // space, and a show can legitimately be in two of them at once — in progress *and*
+                    // airing soon — which put the same id in the list twice.
+            items(inProgress.take(RAIL_SIZE), key = { "continue_${it.id}" }) { item ->
                 TitleRow(
                     item = item,
                     trailing = Icons.Default.PlayArrow,
@@ -549,7 +552,7 @@ private fun HomeSection(
                     }
                 )
             }
-            items(comingSoon.take(RAIL_SIZE), key = { it.id }) { item ->
+            items(comingSoon.take(RAIL_SIZE), key = { "soon_${it.id}" }) { item ->
                 TitleRow(
                     item = item,
                     trailing = Icons.Default.Schedule,
@@ -572,7 +575,7 @@ private fun HomeSection(
             }
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                    items(recentlyAdded, key = { it.id }) { item ->
+                    items(recentlyAdded, key = { "recent_${it.id}" }) { item ->
                         PosterCard(item, width = 120.dp, onClick = { onOpen(item) })
                     }
                 }

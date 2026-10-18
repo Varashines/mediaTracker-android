@@ -138,7 +138,7 @@ internal fun M3ERoughCollections(
                 )
             }
         } else {
-            items(smart, key = { it.id }) { collection ->
+            items(smart, key = { "smart_${it.id}" }) { collection ->
                 val titles = membersOf(collection)
                 CollectionCard(
                     name = collection.name,
@@ -170,7 +170,7 @@ internal fun M3ERoughCollections(
                 )
             }
         } else {
-            items(mine, key = { it.id }) { collection ->
+            items(mine, key = { "mine_${it.id}" }) { collection ->
                 val titles = membersOf(collection)
                 CollectionCard(
                     name = collection.name,

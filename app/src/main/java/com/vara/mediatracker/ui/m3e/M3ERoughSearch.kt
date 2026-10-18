@@ -283,7 +283,11 @@ fun M3ERoughSearch(
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         M3ESectionHeader("In your library")
                     }
-                    items(local, key = { it.id }) { item ->
+                    // Namespaced: a lazy grid's key space is shared by every `items` block in it,
+                    // and the TMDB block below keys on "<media_type>_<id>" — which for a TV result
+                    // is exactly the library's own "tv_<id>". Searching for a title you already own
+                    // put the same key in the grid twice and crashed the draw.
+                    items(local, key = { "local_${it.id}" }) { item ->
                         SearchTile(
                             title = item.title,
                             posterUrl = item.posterUrl,
@@ -296,7 +300,7 @@ fun M3ERoughSearch(
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         M3ESectionHeader("On TMDB")
                     }
-                    items(remote, key = { "${it.media_type}_${it.id}" }) { result ->
+                    items(remote, key = { "remote_${it.media_type}_${it.id}" }) { result ->
                         val mediaId = (if (result.media_type == "movie") "movie_" else "tv_") + result.id
                         SearchTile(
                             title = result.title ?: result.name ?: "Untitled",
