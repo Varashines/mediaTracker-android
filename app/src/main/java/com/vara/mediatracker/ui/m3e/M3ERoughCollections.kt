@@ -183,7 +183,7 @@ internal fun M3ERoughCollections(
         }
 
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Spacer(Modifier.height(112.dp))
+            Spacer(Modifier.height(M3ESpacing.bottomInset))
         }
     }
 }

@@ -216,7 +216,7 @@ private fun SmartTab(
                 }
             }
         }
-        item { Spacer(Modifier.height(112.dp)) }
+        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
     }
 }
 
@@ -384,10 +384,7 @@ private fun BrandGrid(
     }
 }
 
-/** Ink for a white brand plate. Fixed, because the plate is white in both themes. */
-private val BrandPlateInk = Color(0xFF1F2933)
-
-/** One brand: the mark on a white plate, and how many titles it holds. */
+/** One brand: its name, and how many titles it holds. */
 @Composable
 private fun BrandTile(
     facet: Facet,
@@ -422,7 +419,7 @@ private fun BrandTile(
             Text(
                 text = "${facet.count}",
                 style = M3EType.rowSupporting(),
-                color = BrandPlateInk.copy(alpha = 0.55f)
+                color = M3EColor.accent()
             )
         }
     }

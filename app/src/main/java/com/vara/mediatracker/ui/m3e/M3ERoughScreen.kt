@@ -408,7 +408,7 @@ private fun HomeSection(
                 }
             }
         }
-        item { Spacer(Modifier.height(112.dp)) }
+        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
     }
 }
 
@@ -479,7 +479,7 @@ private fun LibrarySection(
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Spacer(Modifier.height(112.dp))
+            Spacer(Modifier.height(M3ESpacing.bottomInset))
         }
     }
 }
@@ -518,7 +518,7 @@ private fun FinishedSection(library: List<MediaItemEntity>, onOpen: (MediaItemEn
         items(finished, key = { it.id }) { item ->
             TitleRow(item, trailing = Icons.Default.Check, onClick = { onOpen(item) })
         }
-        item { Spacer(Modifier.height(112.dp)) }
+        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
     }
 }
 
