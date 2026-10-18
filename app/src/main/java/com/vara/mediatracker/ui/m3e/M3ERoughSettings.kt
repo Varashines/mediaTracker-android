@@ -172,7 +172,7 @@ fun M3ERoughSettings(
         // ── Appearance ────────────────────────────────────────────────────────────────────────
         item {
             Column {
-                M3ESectionHeader("Appearance")
+                GroupLabel("Appearance")
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -223,7 +223,7 @@ fun M3ERoughSettings(
         // ── Notifications ─────────────────────────────────────────────────────────────────────
         item {
             Column {
-                M3ESectionHeader("Notifications")
+                GroupLabel("Notifications")
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -233,7 +233,6 @@ fun M3ERoughSettings(
                         SettingSwitchRow(
                             icon = Icons.Default.Notifications,
                             title = "Enable notifications",
-                            supporting = "New episodes and releases in your library",
                             checked = notificationsEnabled,
                             onCheckedChange = { enabled ->
                                 haptics.toggle()
@@ -256,7 +255,6 @@ fun M3ERoughSettings(
                             SettingSwitchRow(
                                 icon = Icons.Default.Movie,
                                 title = "Movies",
-                                supporting = "Announce a film on its release day",
                                 checked = notificationsMovies,
                                 onCheckedChange = { on ->
                                     haptics.toggle()
@@ -268,7 +266,6 @@ fun M3ERoughSettings(
                             SettingSwitchRow(
                                 icon = Icons.Default.Tv,
                                 title = "TV shows",
-                                supporting = "Announce a new episode on its air day",
                                 checked = notificationsTv,
                                 onCheckedChange = { on ->
                                     haptics.toggle()
@@ -280,7 +277,6 @@ fun M3ERoughSettings(
                             SettingDivider()
                             SettingValueRow(
                                 title = "Delivery time",
-                                supporting = "When a release day's reminder arrives",
                                 value = deliveryLabel(deliverySeconds),
                                 onClick = {
                                     TimePickerDialog(
@@ -302,7 +298,6 @@ fun M3ERoughSettings(
                             SettingSwitchRow(
                                 icon = Icons.Default.Schedule,
                                 title = "Weekly digest",
-                                supporting = "Your shows and movies, every week",
                                 checked = digestEnabled,
                                 onCheckedChange = { on ->
                                     haptics.toggle()
@@ -314,7 +309,6 @@ fun M3ERoughSettings(
                             if (digestEnabled) {
                                 SettingValueRow(
                                     title = "Digest day",
-                                    supporting = "Which day it arrives",
                                     value = weekdayLabel(digestWeekday),
                                     onClick = {
                                         haptics.tap()
@@ -323,7 +317,6 @@ fun M3ERoughSettings(
                                 )
                                 SettingValueRow(
                                     title = "Digest time",
-                                    supporting = "When on that day",
                                     value = deliveryLabel(digestTime),
                                     onClick = {
                                         TimePickerDialog(
@@ -350,7 +343,7 @@ fun M3ERoughSettings(
         // ── Cloud sync ────────────────────────────────────────────────────────────────────────
         item {
             Column {
-                M3ESectionHeader("Cloud sync")
+                GroupLabel("Cloud sync")
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -522,6 +515,22 @@ fun M3ERoughSettings(
     }
 }
 
+/**
+ * A group's name, at a label's size.
+ *
+ * These were section headers — headline size, with a spacer under each — which spent most of the
+ * page's height on three words whose whole job is to divide it. The card already separates the
+ * groups; the label only has to name them.
+ */
+@Composable
+private fun GroupLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = M3EType.rowSupporting(),
+        color = M3EColor.accent()
+    )
+}
+
 /** A title over its supporting line, with no trailing control — for rows that own a whole card. */
 @Composable
 private fun LabelledSetting(title: String, supporting: String) {
@@ -662,8 +671,8 @@ private fun PaletteGrid(selected: Int, onSelect: (Int) -> Unit) {
 private fun SettingSwitchRow(
     icon: ImageVector,
     title: String,
-    supporting: String,
     checked: Boolean,
+    supporting: String? = null,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -687,13 +696,15 @@ private fun SettingSwitchRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = supporting,
-                style = M3EType.rowSupporting(),
-                color = M3EColor.textMuted(),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (supporting != null) {
+                Text(
+                    text = supporting,
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         Spacer(Modifier.width(M3ESpacing.tightGap))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
@@ -740,8 +751,8 @@ private fun CredentialField(
 @Composable
 private fun SettingValueRow(
     title: String,
-    supporting: String,
     value: String,
+    supporting: String? = null,
     onClick: () -> Unit
 ) {
     Row(
@@ -753,7 +764,9 @@ private fun SettingValueRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = title, style = M3EType.rowTitle(), color = M3EColor.text())
-            Text(text = supporting, style = M3EType.rowSupporting(), color = M3EColor.textMuted())
+            if (supporting != null) {
+                Text(text = supporting, style = M3EType.rowSupporting(), color = M3EColor.textMuted())
+            }
         }
         Spacer(Modifier.width(M3ESpacing.tightGap))
         Text(text = value, style = M3EType.rowTitle(), color = M3EColor.accent())
