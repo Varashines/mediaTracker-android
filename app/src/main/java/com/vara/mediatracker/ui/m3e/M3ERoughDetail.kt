@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -59,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -341,6 +343,12 @@ fun M3ERoughDetail(
     // pager state is saveable, so leaving for another title and coming back keeps the section.
     val pagerState = rememberPagerState(pageCount = { sections.size })
 
+    // The Mac's palette, which is what makes this screen feel like *this* title rather than the
+    // app. Per field: the muted tone is the better wash but is absent on the rows an older Mac path
+    // wrote, so it falls back to the primary rather than to nothing.
+    val accentColor = themeColor(live.themeColorHex)
+    val washColor = themeColor(live.themeMutedColorHex) ?: accentColor
+
     // The header stays put and only what is under the tabs slides. A pager carrying the whole page
     // moved the title, the poster and the controls sideways with it, which is not what a tab means:
     // the section changes, not the title.
@@ -350,7 +358,24 @@ fun M3ERoughDetail(
             .background(M3EColor.page())
             .statusBarsPadding()
     ) {
-        Column(modifier = Modifier.padding(horizontal = M3ESpacing.page)) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = M3ESpacing.page)
+                // A wash from the poster's own colour, fading out before the content. It is the one
+                // thing on the screen that is this title and not the app — and it is a wash rather
+                // than a fill so the palette system still owns the page.
+                .then(
+                    if (washColor != null) {
+                        Modifier.background(
+                            Brush.verticalGradient(
+                                listOf(washColor.copy(alpha = 0.22f), Color.Transparent)
+                            )
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
+        ) {
             Spacer(Modifier.height(M3ESpacing.tightGap))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
@@ -816,11 +841,17 @@ private fun PrimaryAction(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     enabled: Boolean,
+    tint: Color? = null,
     onClick: () -> Unit
 ) {
     Button(
         onClick = onClick,
         enabled = enabled,
+        colors = if (tint != null) {
+            ButtonDefaults.buttonColors(containerColor = tint)
+        } else {
+            ButtonDefaults.buttonColors()
+        },
         modifier = Modifier
             .fillMaxWidth()
             .height(M3ESpacing.rowMinHeight)
@@ -919,6 +950,20 @@ private fun indianDate(iso: String?): String? {
     val parts = raw.split("-")
     if (parts.size != 3) return raw
     return "${parts[2]}-${parts[1]}-${parts[0]}"
+}
+
+/**
+ * The Mac's stored hex as a colour, or null when there is none to use.
+ *
+ * Stored without the leading `#` (`E83B0A`), which `parseColor` does not accept, so it is added —
+ * and tolerated if a future writer includes it. Anything unparseable returns null rather than
+ * throwing: a bad value should cost the tint, not the screen.
+ */
+private fun themeColor(hex: String?): Color? {
+    val raw = hex?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return runCatching {
+        Color(android.graphics.Color.parseColor(if (raw.startsWith("#")) raw else "#$raw"))
+    }.getOrNull()
 }
 
 /**
