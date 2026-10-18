@@ -228,9 +228,7 @@ fun M3ERoughScreen(
                     onOpen = { overlay = Overlay.Detail(it) },
                     onSeeAll = { title, items, kind ->
                         overlay = Overlay.Titles(title, items, kind, ListLayout.Rows)
-                    },
-                    onSearch = { overlay = Overlay.Search },
-                    onSettings = { overlay = Overlay.Settings }
+                    }
                 )
                 2 -> M3ERoughCalendar(core = core, onOpen = { overlay = Overlay.Detail(it) })
                 else -> LibrarySection(
@@ -280,9 +278,7 @@ private fun HomeSection(
     core: LibraryCore,
     home: HomeData,
     onOpen: (MediaItemEntity) -> Unit,
-    onSeeAll: (String, List<MediaItemEntity>, ListSubtitle) -> Unit,
-    onSearch: () -> Unit,
-    onSettings: () -> Unit
+    onSeeAll: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
 ) {
     // Rails come from the same derivations the shipping Home uses — HomeEligibility's eligibility
     // rules decide Continue watching, next-airing instants decide Coming soon — rather than this
