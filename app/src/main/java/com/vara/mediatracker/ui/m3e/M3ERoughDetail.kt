@@ -33,8 +33,10 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -67,6 +69,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -88,8 +91,13 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.sync.EpisodeEnrichment
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.rememberHaptics
+import com.vara.mediatracker.ui.home.HomeEligibility
 import com.vara.mediatracker.ui.theme.AppTextStyles
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -463,7 +471,35 @@ fun M3ERoughDetail(
             // its children at the same offset — which is what put the watch button on top of the
             // section chips.
             Column(modifier = Modifier.graphicsLayer { alpha = revealStage(reveal.value, 0.4f, 0.85f) }) {
-            if (isTv) {
+            // Nothing to mark yet is not the same as nothing left to watch. A show whose next episode
+            // has not aired, and a film that has not come out, both used to read "Everything watched"
+            // and grey out — wrong twice over, because nothing is watched and there is nothing you
+            // could mark. A date is the honest thing to put in its place.
+            //
+            // The test is the resolved instant, not the bare air date: a date parses to midnight, so
+            // today's episode would read as already aired and offer to be marked.
+            val now = Date()
+            val upcoming = nextEpisode?.takeIf {
+                HomeEligibility.episodeInstant(live, it)?.after(now) == true
+            }
+            val unreleased = isoDay(live.releaseDate)?.takeIf {
+                it.isAfter(LocalDate.now()) && !live.state.equals("Completed", ignoreCase = true)
+            }
+            if (upcoming != null) {
+                UpcomingNotice(
+                    icon = Icons.Default.Schedule,
+                    label = "Upcoming · S${upcoming.seasonNumber} E${upcoming.episodeNumber}",
+                    date = friendlyDate(upcoming.airDate ?: upcoming.airstamp)
+                )
+            } else if (unreleased != null) {
+                UpcomingNotice(
+                    icon = Icons.Default.CalendarMonth,
+                    // A film is "not out yet"; a show with no episodes at all is simply upcoming,
+                    // and its first air date is the date that matters.
+                    label = if (isTv) "Upcoming" else "Not out yet",
+                    date = friendlyDate(live.releaseDate)
+                )
+            } else if (isTv) {
                 PrimaryAction(
                     label = nextEpisode
                         ?.let { "Mark S${it.seasonNumber} · E${it.episodeNumber} watched" }
@@ -927,6 +963,49 @@ private fun Title(
     }
 }
 
+/**
+ * What stands in for the action when there is nothing to act on yet.
+ *
+ * A card rather than a disabled button: a greyed-out button says "you cannot do this", and the point
+ * here is the opposite — there is nothing to do *because* it has not happened. The accent and the
+ * calendar glyph carry it instead.
+ */
+@Composable
+private fun UpcomingNotice(
+    icon: ImageVector,
+    label: String,
+    date: String?
+) {
+    M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(M3ESpacing.cardGap),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap)
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = M3EColor.accent())
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = M3EType.rowTitle(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = M3EColor.text(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (date != null) {
+                    Text(
+                        text = date,
+                        style = M3EType.rowSupporting(),
+                        color = M3EColor.textMuted()
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** One emphasised action, deliberately the largest element on the screen. */
 @Composable
 private fun PrimaryAction(
@@ -1037,6 +1116,19 @@ private fun tasteTint(taste: String): Color {
  * is the display side only, and it is a reordering of the parts rather than a parse, so a value
  * that is not a plain ISO date is passed through instead of throwing.
  */
+/**
+ * A "yyyy-MM-dd", or the date half of an ISO instant, as a date — or null when it will not parse.
+ *
+ * `java.time` is available unguarded: minSdk here is 26, which is exactly where it arrived.
+ */
+private fun isoDay(iso: String?): LocalDate? =
+    runCatching { LocalDate.parse(iso?.take(10)) }.getOrNull()
+
+/** "Wed, 23 Sep" — the weekday earns its place, because that is how an air date gets said out loud. */
+private fun friendlyDate(iso: String?): String? = isoDay(iso)?.format(
+    DateTimeFormatter.ofPattern("EEE, d MMM", Locale.getDefault())
+)
+
 private fun indianDate(iso: String?): String? {
     val raw = iso?.take(10) ?: return null
     val parts = raw.split("-")
