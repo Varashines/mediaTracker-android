@@ -47,6 +47,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
@@ -821,7 +822,7 @@ private fun FloatingNav(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 NavPill(Icons.Default.Home, "Home", selected == HOME) { onSelect(HOME) }
-                NavPill(Icons.Default.Schedule, "Calendar", selected == CALENDAR) {
+                NavPill(Icons.Default.CalendarMonth, "Calendar", selected == CALENDAR) {
                     onSelect(CALENDAR)
                 }
                 NavPill(Icons.Default.VideoLibrary, "Library", selected == LIBRARY) {
