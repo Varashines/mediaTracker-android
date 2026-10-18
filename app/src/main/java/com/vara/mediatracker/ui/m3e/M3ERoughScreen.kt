@@ -746,14 +746,17 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
                     onClick = { onSelect(index) },
                     shape = RoundedCornerShape(50),
                     color = pillColor,
-                    modifier = Modifier.weight(1f)
+                    // Fixed width and fixed height. The label only appears on the active item, so
+                    // the box it appears in must not be the thing that grows — otherwise the other
+                    // four shift sideways, which is the jitter this started with.
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp)
                 ) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = M3ESpacing.tightGap),
+                        modifier = Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                        verticalArrangement = Arrangement.Center
                     ) {
                         Icon(
                             imageVector = icon,
@@ -761,13 +764,16 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
                             tint = contentColor,
                             modifier = Modifier.size(20.dp)
                         )
-                        Text(
-                            text = label,
-                            style = M3EType.rowSupporting(),
-                            color = contentColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        if (active) {
+                            Text(
+                                text = label,
+                                style = M3EType.rowSupporting(),
+                                color = contentColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                        }
                     }
                 }
             }
