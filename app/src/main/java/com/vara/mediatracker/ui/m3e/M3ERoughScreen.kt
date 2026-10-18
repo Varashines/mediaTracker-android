@@ -63,6 +63,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -79,6 +80,7 @@ import java.time.ZoneId
 import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -165,6 +167,7 @@ fun M3ERoughScreen(
         val holder = rememberSaveableStateHolder()
         val opened = open
         val shownList = list
+        FadeIn {
         when {
             opened != null -> M3ERoughDetail(
                 item = opened,
@@ -193,7 +196,8 @@ fun M3ERoughScreen(
             // each is a whole screen of derivation — so the animation spent its time racing the work
             // it was covering, which is what "weird" was. A bottom nav switches instantly on
             // Android, and instantly is what this does now.
-            else -> holder.SaveableStateProvider(section) {
+            else -> FadeIn {
+            holder.SaveableStateProvider(section) {
                 when (section) {
                 0 -> HomeSection(
                     core = core,
@@ -216,6 +220,8 @@ fun M3ERoughScreen(
                 else -> FinishedSection(library = library, onOpen = { open = it })
                 }
             }
+            }
+        }
         }
 
         FloatingNav(
@@ -582,6 +588,29 @@ private fun ChipRow(options: List<String>, selected: String, onSelect: (String) 
             )
         }
     }
+}
+
+/**
+ * Fades its content in on first composition.
+ *
+ * Deliberately *not* an `AnimatedContent`. That composes the outgoing and incoming trees together
+ * during a transition, and the section tree contains a `SaveableStateProvider` — two of them alive
+ * at once, handed the same key, which Compose rejects outright ("Key 0 was used multiple times").
+ * The crash was structural, not incidental.
+ *
+ * This wraps nothing: the outgoing section is disposed as usual and the incoming one animates its
+ * own alpha up. Same effect, one tree alive at a time.
+ */
+@Composable
+private fun FadeIn(content: @Composable () -> Unit) {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val alpha by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = tween(durationMillis = 160),
+        label = "sectionFade"
+    )
+    Box(modifier = Modifier.fillMaxSize().alpha(alpha)) { content() }
 }
 
 // MARK: - Building blocks
