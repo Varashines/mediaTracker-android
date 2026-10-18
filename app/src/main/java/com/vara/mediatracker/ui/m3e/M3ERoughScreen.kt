@@ -254,7 +254,11 @@ fun M3ERoughScreen(
         FloatingNav(
             selected = if (overlay == null) section else -1,
             onSelect = { target ->
-                if (target != section) haptics.tap()
+                if (target != section || overlay != null) haptics.tap()
+                // Whatever is open closes: the bar means "take me to that section", from anywhere.
+                // Without this a tap while an overlay was up changed the section *behind* it and
+                // looked like it had done nothing.
+                overlay = null
                 section = target
             },
             onSearch = {
@@ -822,26 +826,40 @@ private fun FloatingNav(
         Surface(
             shape = RoundedCornerShape(50),
             color = M3EColor.card(),
-            shadowElevation = 12.dp
+            shadowElevation = 12.dp,
+            // Capped, because weighted children take everything they are offered — and four equal
+            // pills across a full screen is a toolbar, not a capsule.
+            modifier = Modifier.widthIn(max = 300.dp)
         ) {
             Row(
                 modifier = Modifier.padding(M3ESpacing.tightGap),
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                NavPill(Icons.Default.Home, "Home", selected == HOME) { onSelect(HOME) }
-                NavPill(Icons.Default.CalendarMonth, "Calendar", selected == CALENDAR) {
-                    onSelect(CALENDAR)
+                NavPill(Icons.Default.Home, "Home", selected == HOME, Modifier.weight(1f)) {
+                    onSelect(HOME)
                 }
-                NavPill(Icons.Default.VideoLibrary, "Library", selected == LIBRARY) {
-                    onSelect(LIBRARY)
-                }
+                NavPill(
+                    Icons.Default.CalendarMonth,
+                    "Calendar",
+                    selected == CALENDAR,
+                    Modifier.weight(1f)
+                ) { onSelect(CALENDAR) }
+                NavPill(
+                    Icons.Default.VideoLibrary,
+                    "Library",
+                    selected == LIBRARY,
+                    Modifier.weight(1f)
+                ) { onSelect(LIBRARY) }
                 // Settings is a section like the other three, not an overlay. It was the fourth
                 // button but behaved differently — no lit pill, and back closed it — which is what
                 // made it feel like it belonged to whichever section you came from.
-                NavPill(Icons.Default.Settings, "Settings", selected == SETTINGS) {
-                    onSelect(SETTINGS)
-                }
+                NavPill(
+                    Icons.Default.Settings,
+                    "Settings",
+                    selected == SETTINGS,
+                    Modifier.weight(1f)
+                ) { onSelect(SETTINGS) }
             }
         }
 
@@ -867,27 +885,46 @@ private fun FloatingNav(
 
 /** One section in the bar: icon always, name only when it is the current one. */
 @Composable
-private fun NavPill(icon: ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
+private fun NavPill(
+    icon: ImageVector,
+    label: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    // Equal widths, so the name fading in moves nothing around it — the icon shifts to make room
+    // inside its own box, and the other three stay exactly where they were. That was the jitter,
+    // and equal widths are what removes it: the label fills a box instead of growing one.
+    val labelAlpha by animateFloatAsState(
+        targetValue = if (active) 1f else 0f,
+        animationSpec = tween(durationMillis = 180),
+        label = "navLabel"
+    )
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(50),
-        color = if (active) M3EColor.accent() else M3EColor.card()
+        color = if (active) M3EColor.accent() else M3EColor.card(),
+        modifier = modifier
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = if (active) 14.dp else 10.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+            horizontalArrangement = Arrangement.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
             )
-            if (active) {
+            if (labelAlpha > 0.01f) {
+                Spacer(Modifier.width(M3ESpacing.tightGap * labelAlpha))
                 Text(
                     text = label,
                     style = M3EType.action(),
-                    color = MaterialTheme.colorScheme.onPrimary
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.alpha(labelAlpha)
                 )
             }
         }
