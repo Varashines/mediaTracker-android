@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +60,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -103,7 +105,8 @@ fun M3ERoughSettings(
     var themeMode by rememberSaveable { mutableIntStateOf(prefs.themeMode) }
     var preset by rememberSaveable { mutableIntStateOf(prefs.themePreset) }
     var backgroundSync by rememberSaveable { mutableStateOf(SyncScheduler.isEnabled(context)) }
-    var networkLogo by rememberSaveable { mutableStateOf(prefs.detailNetworkLogo) }
+    // The four keys are configuration, not settings you change: hidden until asked for.
+    var keysShown by rememberSaveable { mutableStateOf(false) }
     var notificationsEnabled by rememberSaveable { mutableStateOf(prefs.notificationsEnabled) }
     var notificationsMovies by rememberSaveable { mutableStateOf(prefs.notificationsMovies) }
     var notificationsTv by rememberSaveable { mutableStateOf(prefs.notificationsTv) }
@@ -198,7 +201,9 @@ fun M3ERoughSettings(
 
                         LabelledSetting(
                             title = "Palette",
-                            supporting = "Six accents, from Mac to Sunset"
+                            // Names the one in use rather than describing the set: the swatches
+                            // already say what the options are.
+                            supporting = ThemePresets.presets.getOrNull(preset)?.name ?: "Custom"
                         )
                         PaletteGrid(
                             selected = preset,
@@ -210,19 +215,6 @@ fun M3ERoughSettings(
                             }
                         )
 
-                        SettingDivider()
-
-                        SettingSwitchRow(
-                            icon = Icons.Default.Cloud,
-                            title = "Network logo on detail",
-                            supporting = "Show the studio mark instead of its name",
-                            checked = networkLogo,
-                            onCheckedChange = {
-                                haptics.toggle()
-                                networkLogo = it
-                                prefs.detailNetworkLogo = it
-                            }
-                        )
                     }
                 }
             }
@@ -365,29 +357,90 @@ fun M3ERoughSettings(
                         modifier = Modifier.padding(M3ESpacing.cardGap),
                         verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
                     ) {
-                        CredentialField(
-                            label = "Supabase URL",
-                            value = supabaseUrl,
-                            onValueChange = { supabaseUrl = it }
-                        )
-                        CredentialField(
-                            label = "Supabase anon key",
-                            value = supabaseAnonKey,
-                            onValueChange = { supabaseAnonKey = it },
-                            masked = true
-                        )
-                        CredentialField(
-                            label = "Sync key",
-                            value = syncKey,
-                            onValueChange = { syncKey = it },
-                            masked = true
-                        )
-                        CredentialField(
-                            label = "TMDB API key",
-                            value = tmdbKey,
-                            onValueChange = { tmdbKey = it },
-                            masked = true
-                        )
+                        // Hidden by default. These are set once and then never touched, so four
+                        // text fields at the top of the screen were four fields of noise for the
+                        // ninety-nine times you open this screen to change a palette.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                LabelledSetting(
+                                    title = "Credentials",
+                                    supporting = if (keysShown) {
+                                        "The four keys this app syncs with"
+                                    } else {
+                                        "Hidden"
+                                    }
+                                )
+                            }
+                            TextButton(onClick = {
+                                haptics.tap()
+                                keysShown = !keysShown
+                            }) {
+                                Text(
+                                    text = if (keysShown) "Hide" else "Show",
+                                    style = M3EType.action(),
+                                    color = M3EColor.accent()
+                                )
+                            }
+                        }
+                        if (keysShown) {
+                            CredentialField(
+                                label = "Supabase URL",
+                                value = supabaseUrl,
+                                onValueChange = { supabaseUrl = it }
+                            )
+                            CredentialField(
+                                label = "Supabase anon key",
+                                value = supabaseAnonKey,
+                                onValueChange = { supabaseAnonKey = it },
+                                masked = true
+                            )
+                            CredentialField(
+                                label = "Sync key",
+                                value = syncKey,
+                                onValueChange = { syncKey = it },
+                                masked = true
+                            )
+                            CredentialField(
+                                label = "TMDB API key",
+                                value = tmdbKey,
+                                onValueChange = { tmdbKey = it },
+                                masked = true
+                            )
+                        }
+
+                        SettingDivider()
+
+                        // An action, not a setting: the screen had no way to say "do it now".
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = M3ESpacing.rowGap),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = null,
+                                tint = M3EColor.textMuted(),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(M3ESpacing.inlineGap))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Sync now", style = M3EType.rowTitle(), color = M3EColor.text())
+                                Text(
+                                    text = "Pull and push straight away",
+                                    style = M3EType.rowSupporting(),
+                                    color = M3EColor.textMuted()
+                                )
+                            }
+                            Spacer(Modifier.width(M3ESpacing.tightGap))
+                            Button(
+                                onClick = {
+                                    haptics.tap()
+                                    SyncScheduler.syncNow(context)
+                                },
+                                shape = M3EShape.chip()
+                            ) {
+                                Text("Sync", style = M3EType.action())
+                            }
+                        }
 
                         SettingDivider()
 
@@ -500,16 +553,23 @@ private fun SegmentedModes(selected: Int, onSelect: (Int) -> Unit) {
         Triple(1, "Dark", Icons.Default.DarkMode),
         Triple(2, "Light", Icons.Default.LightMode)
     )
+    // One container with three segments, not three separate pills: they are one choice, and three
+    // floating buttons read as three unrelated actions.
+    Surface(
+        shape = M3EShape.chip(),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth()
+    ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+        modifier = Modifier.padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         modes.forEach { (mode, label, icon) ->
             val isSelected = selected == mode
             Surface(
                 onClick = { onSelect(mode) },
                 shape = M3EShape.chip(),
-                color = if (isSelected) M3EColor.accent() else MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = if (isSelected) M3EColor.accent() else Color.Transparent,
                 contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted(),
                 modifier = Modifier.weight(1f)
             ) {
@@ -525,6 +585,7 @@ private fun SegmentedModes(selected: Int, onSelect: (Int) -> Unit) {
                 }
             }
         }
+    }
     }
 }
 
@@ -544,6 +605,9 @@ private fun PaletteGrid(selected: Int, onSelect: (Int) -> Unit) {
                     Column(
                         modifier = Modifier
                             .weight(1f)
+                            // Clipped before the click, so the ripple follows the shape. Without
+                            // this the feedback is a sharp rectangle around a round swatch.
+                            .clip(M3EShape.chip())
                             .clickable { onSelect(index) }
                             .padding(vertical = M3ESpacing.tightGap),
                         horizontalAlignment = Alignment.CenterHorizontally,
