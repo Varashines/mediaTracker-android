@@ -372,9 +372,6 @@ private fun BrandGrid(
                 row.forEach { facet ->
                     BrandTile(
                         facet = facet,
-                        logoUrl = TMDBClient.buildLogoUrl(
-                            logos[facet.name.lowercase(java.util.Locale.US)]
-                        ),
                         modifier = Modifier.weight(1f),
                         onClick = {
                             onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
@@ -394,20 +391,16 @@ private val BrandPlateInk = Color(0xFF1F2933)
 @Composable
 private fun BrandTile(
     facet: Facet,
-    logoUrl: String?,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Surface(
-        onClick = onClick,
-        shape = M3EShape.card(),
-        // White, the way the Mac draws them. A network's logo is a transparent mark, usually dark,
-        // and on a dark card it simply disappears — the plate is what makes it visible at all.
-        // The colour the brand would have carried is spent on being legible instead.
-        color = Color.White,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = modifier.height(76.dp)
-    ) {
+    // Text, in the theme's own colours.
+    //
+    // The logos were the wrong answer twice over: a mark on transparency disappears on a dark page,
+    // and the white plate that fixed it fought whatever palette the user had chosen. Text takes the
+    // theme's colours, so the tile is legible in both modes and belongs to the palette in use
+    // rather than to a third scheme invented for it.
+    M3ETonalCard(modifier = modifier.height(76.dp), onClick = onClick) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -415,26 +408,16 @@ private fun BrandTile(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            if (logoUrl != null) {
-                AsyncImage(
-                    model = logoUrl,
-                    contentDescription = facet.name,
-                    // Fit, not Crop: a network mark sits on transparency, and cropping cuts it.
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.weight(1f).fillMaxWidth()
-                )
-            } else {
-                Text(
-                    text = facet.name,
-                    style = M3EType.rowSupporting(),
-                    fontWeight = FontWeight.Bold,
-                    color = BrandPlateInk,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            Text(
+                text = facet.name,
+                style = M3EType.rowTitle(),
+                fontWeight = FontWeight.SemiBold,
+                color = M3EColor.text(),
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
             Spacer(Modifier.height(M3ESpacing.tightGap))
             Text(
                 text = "${facet.count}",

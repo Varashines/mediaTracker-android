@@ -187,7 +187,12 @@ fun M3ERoughScreen(
         // query — because leaving a section and returning otherwise resets it and makes the whole
         // thing feel like a demo.
         val holder = rememberSaveableStateHolder()
+        // A second holder for the overlay stack. Without it, pushing a list on top of the Hub took
+        // the Hub out of the composition and its tab came back as Smart — the state had nowhere to
+        // be kept. Keyed by depth, so each step remembers its own.
+        val overlayHolder = rememberSaveableStateHolder()
         FadeIn(key = overlay, rise = if (overlay is Overlay.Search) 28.dp else 0.dp) {
+        overlayHolder.SaveableStateProvider(if (stack.isEmpty()) -1 else stack.lastIndex) {
         when (val current = overlay) {
             is Overlay.Detail -> M3ERoughDetail(
                 item = current.item,
@@ -249,6 +254,7 @@ fun M3ERoughScreen(
                 }
             }
             }
+        }
         }
         }
 
