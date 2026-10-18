@@ -61,6 +61,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -344,7 +345,12 @@ fun M3ERoughDetail(
     // The Mac's palette, which is what makes this screen feel like *this* title rather than the
     // app. Per field: the muted tone is the better wash but is absent on the rows an older Mac path
     // wrote, so it falls back to the primary rather than to nothing.
-    val accentColor = themeColor(live.themeColorHex)
+    val rawAccent = themeColor(live.themeColorHex)
+    // Adjusted for the scheme, the way the Mac adjusts it: the same poster reads differently on a
+    // white page and a black one, and a colour lifted from artwork is usually neither vivid enough
+    // for dark nor deep enough for light to carry text on its own.
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val accentColor = rawAccent?.let { highContrastAccent(it, isDark) }
 
     // The poster's colour becomes the screen's accent, rather than a decoration on top of the
     // palette's. Everything that reads `M3EColor.accent()` — the eyebrow, the selected chips, the
@@ -361,7 +367,9 @@ fun M3ERoughDetail(
             // The page itself leans towards the title: a tenth of the poster's colour mixed into
             // the palette's background. Enough to read as "this title", not enough to fight the
             // user's chosen palette.
-            background = mix(accentColor, baseScheme.background)
+            // The page tint uses the *raw* colour — a background is not text — and takes more of it
+            // on a dark page, where a little colour disappears into the black.
+            background = mix(rawAccent, baseScheme.background, if (isDark) 0.14f else 0.10f)
         )
     }
 
@@ -957,6 +965,32 @@ private fun mix(accent: Color, base: Color, amount: Float = 0.12f): Color = Colo
     blue = base.blue + (accent.blue - base.blue) * amount,
     alpha = base.alpha
 )
+
+/**
+ * The poster's colour, made fit to carry text in this scheme.
+ *
+ * The Mac does this in OKLCH — perceptual lightness and chroma — which is the better space for it.
+ * This works in HSV, which Android converts to and from natively: the intent is the same (vivid and
+ * bright on a dark page, deep and saturated on a light one) but the numbers are not identical, so a
+ * poster can land on a slightly different shade here than on the Mac.
+ *
+ * A near-grey has no hue worth pushing, so it goes to a legible neutral instead of being forced into
+ * a colour that was never in the artwork.
+ */
+private fun highContrastAccent(color: Color, isDark: Boolean): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(color.toArgb(), hsv)
+    val (hue, saturation, value) = hsv
+    if (saturation < 0.05f) {
+        return if (isDark) Color(0xFFEDEDED) else Color(0xFF2B2B2B)
+    }
+    val adjusted = if (isDark) {
+        floatArrayOf(hue, maxOf(saturation, 0.55f), maxOf(value, 0.92f))
+    } else {
+        floatArrayOf(hue, maxOf(saturation, 0.50f), minOf(value, 0.55f))
+    }
+    return Color(android.graphics.Color.HSVToColor(adjusted))
+}
 
 private fun themeColor(hex: String?): Color? {
     val raw = hex?.trim()?.takeIf { it.isNotEmpty() } ?: return null
