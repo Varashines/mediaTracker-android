@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -78,6 +79,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -726,15 +728,19 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
                 // the label *appearing and disappearing* was — it changed one item's width and
                 // shifted the other four. Every item is weighted equally and always carries its
                 // name, so nothing changes shape and nothing moves except the colour.
-                val pillColor by animateColorAsState(
-                    targetValue = if (active) M3EColor.accent() else Color.Transparent,
-                    animationSpec = tween(durationMillis = 200),
-                    label = "navPill"
+                // One animation, not two. A single progress value drives both the fill and the
+                // icon/label colour, so they cannot drift apart and there is one thing to reason
+                // about. Short, because a nav selection is a state you are already looking at.
+                val progress by animateFloatAsState(
+                    targetValue = if (active) 1f else 0f,
+                    animationSpec = tween(durationMillis = 150),
+                    label = "navProgress"
                 )
-                val contentColor by animateColorAsState(
-                    targetValue = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted(),
-                    animationSpec = tween(durationMillis = 200),
-                    label = "navContent"
+                val pillColor = M3EColor.accent().copy(alpha = progress)
+                val contentColor = lerp(
+                    M3EColor.textMuted(),
+                    MaterialTheme.colorScheme.onPrimary,
+                    progress
                 )
                 Surface(
                     onClick = { onSelect(index) },
