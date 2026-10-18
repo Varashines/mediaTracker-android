@@ -5,7 +5,6 @@ import android.app.TimePickerDialog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -13,6 +12,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,17 +29,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -58,16 +55,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -85,14 +83,16 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 /**
- * Settings, in the [M3E] vocabulary: one tonal card per group, one row per setting.
+ * Settings, in the [M3E] vocabulary — one flat page.
  *
- * Unlike the other sketch screens this one is wired for real. Preferences, credentials, the
- * palette and the background-sync worker are the app's own — the same
- * [com.vara.mediatracker.data.prefs.PreferencesManager] fields and the same [SyncScheduler] the
- * shipping screen drives, reached through [container]. Theme changes go back up through the
- * callbacks so the activity can re-theme without a restart, which is the one thing a settings
- * screen cannot do for itself.
+ * No groups, no panels, no labels above runs of rows. Everything is on the page in one order and a
+ * divider is the only structure, which is all this needs: a settings screen you can read top to
+ * bottom without deciding which part of it you are in. An earlier version put the groups behind
+ * summary rows, which made you tap in to change one switch, and the one before that spent the page's
+ * height on three headline labels for three words.
+ *
+ * Nothing is hidden except the credentials, which stay behind Show/Hide for the reason they always
+ * were — set once, then never touched, so four text fields at the top were noise every other visit.
  */
 @Composable
 fun M3ERoughSettings(
@@ -107,13 +107,6 @@ fun M3ERoughSettings(
 
     var themeMode by rememberSaveable { mutableIntStateOf(prefs.themeMode) }
     var preset by rememberSaveable { mutableIntStateOf(prefs.themePreset) }
-    var backgroundSync by rememberSaveable { mutableStateOf(SyncScheduler.isEnabled(context)) }
-    // Two levels: a summary list, and one group open at a time. Every control still lives here —
-    // it is the *page* that got shorter, not the settings.
-    var panel by rememberSaveable { mutableStateOf<SettingsPanel?>(null) }
-
-    // The four keys are configuration, not settings you change: hidden until asked for.
-    var keysShown by rememberSaveable { mutableStateOf(false) }
     var notificationsEnabled by rememberSaveable { mutableStateOf(prefs.notificationsEnabled) }
     var notificationsMovies by rememberSaveable { mutableStateOf(prefs.notificationsMovies) }
     var notificationsTv by rememberSaveable { mutableStateOf(prefs.notificationsTv) }
@@ -122,9 +115,20 @@ fun M3ERoughSettings(
     var digestWeekday by rememberSaveable { mutableIntStateOf(prefs.digestWeekday) }
     var digestTime by rememberSaveable { mutableIntStateOf(prefs.digestTime) }
     var pickingWeekday by rememberSaveable { mutableStateOf(false) }
+    var keysShown by rememberSaveable { mutableStateOf(false) }
+    var backgroundSync by rememberSaveable { mutableStateOf(SyncScheduler.isEnabled(context)) }
 
-    // The queue is derived from prefs, the library and the clock, so anything that changes one of
-    // those re-plans it rather than trusting what was scheduled earlier.
+    // Credentials are staged locally and written on a debounce, so a key pasted or retyped commits
+    // once instead of on every keystroke. Restarting the effect on each change is the debounce.
+    var supabaseUrl by rememberSaveable { mutableStateOf(prefs.supabaseUrl) }
+    var supabaseAnonKey by rememberSaveable { mutableStateOf(prefs.supabaseAnonKey) }
+    var syncKey by rememberSaveable { mutableStateOf(prefs.syncKey) }
+    var tmdbKey by rememberSaveable { mutableStateOf(prefs.tmdbApiKey) }
+    LaunchedEffect(supabaseUrl, supabaseAnonKey, syncKey, tmdbKey) {
+        delay(400)
+        prefs.saveCredentials(supabaseUrl, supabaseAnonKey, syncKey, tmdbKey)
+    }
+
     val scope = rememberCoroutineScope()
     val reschedule: () -> Unit = {
         scope.launch {
@@ -150,17 +154,6 @@ fun M3ERoughSettings(
         }
     }
 
-    // Credentials are staged locally and written on a debounce, so a key pasted or retyped commits
-    // once instead of on every keystroke. Restarting the effect on each change is the debounce.
-    var supabaseUrl by rememberSaveable { mutableStateOf(prefs.supabaseUrl) }
-    var supabaseAnonKey by rememberSaveable { mutableStateOf(prefs.supabaseAnonKey) }
-    var syncKey by rememberSaveable { mutableStateOf(prefs.syncKey) }
-    var tmdbKey by rememberSaveable { mutableStateOf(prefs.tmdbApiKey) }
-    LaunchedEffect(supabaseUrl, supabaseAnonKey, syncKey, tmdbKey) {
-        delay(400)
-        prefs.saveCredentials(supabaseUrl, supabaseAnonKey, syncKey, tmdbKey)
-    }
-
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -171,50 +164,16 @@ fun M3ERoughSettings(
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.sectionGap)
     ) {
         item {
-            Column {
-                M3EScreenHeader(eyebrow = "Preferences", title = "Settings")
-            }
+            Spacer(Modifier.height(M3ESpacing.pageVertical))
+            M3EScreenHeader(eyebrow = "Preferences", title = "Settings")
         }
 
-        // ── Summary ───────────────────────────────────────────────────────────────────────────
-        if (panel == null) {
-            item {
-                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        SummaryRow(
-                            title = "Appearance",
-                            value = "${when (themeMode) {
-                                2 -> "Light"
-                                1 -> "Dark"
-                                else -> "System"
-                            }} · ${ThemePresets.presets.getOrNull(preset)?.name ?: "Custom"}"
-                        ) { haptics.tap(); panel = SettingsPanel.Appearance }
-                        SettingDivider()
-                        SummaryRow(
-                            title = "Notifications",
-                            value = if (notificationsEnabled) "On" else "Off"
-                        ) { haptics.tap(); panel = SettingsPanel.Notifications }
-                        SettingDivider()
-                        SummaryRow(
-                            title = "Cloud sync",
-                            value = if (backgroundSync) "Auto, every 30m" else "Manual"
-                        ) { haptics.tap(); panel = SettingsPanel.Sync }
-                    }
-                }
-            }
-        }
-
-        // ── Appearance ────────────────────────────────────────────────────────────────────────
-        if (panel == SettingsPanel.Appearance) {
         item {
-            Column {
-                PanelHeader("Appearance") { panel = null }
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(M3ESpacing.cardGap),
-                        verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
-                    ) {
+            M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(vertical = M3ESpacing.tightGap)) {
+
+                    // ── Appearance ───────────────────────────────────────────────────────────
+                    SettingBlock {
                         LabelledSetting(
                             title = "Theme",
                             supporting = when (themeMode) {
@@ -223,6 +182,7 @@ fun M3ERoughSettings(
                                 else -> "Follow the system"
                             }
                         )
+                        Spacer(Modifier.height(M3ESpacing.tightGap))
                         SegmentedModes(
                             selected = themeMode,
                             onSelect = { mode ->
@@ -232,15 +192,18 @@ fun M3ERoughSettings(
                                 onThemeModeChanged(mode)
                             }
                         )
+                    }
 
-                        SettingDivider()
+                    SettingDivider()
 
+                    SettingBlock {
                         LabelledSetting(
                             title = "Palette",
                             // Names the one in use rather than describing the set: the swatches
                             // already say what the options are.
                             supporting = ThemePresets.presets.getOrNull(preset)?.name ?: "Custom"
                         )
+                        Spacer(Modifier.height(M3ESpacing.tightGap))
                         PaletteGrid(
                             selected = preset,
                             onSelect = { index ->
@@ -250,150 +213,114 @@ fun M3ERoughSettings(
                                 onThemePresetChanged(index)
                             }
                         )
-
                     }
-                }
-            }
-        }
-        }
 
-        // ── Notifications ─────────────────────────────────────────────────────────────────────
-        if (panel == SettingsPanel.Notifications) {
-        item {
-            Column {
-                PanelHeader("Notifications") { panel = null }
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(M3ESpacing.cardGap),
-                        verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
-                    ) {
-                        SettingSwitchRow(
-                            icon = Icons.Default.Notifications,
-                            title = "Enable notifications",
-                            checked = notificationsEnabled,
-                            onCheckedChange = { enabled ->
-                                haptics.toggle()
-                                notificationsEnabled = enabled
-                                prefs.notificationsEnabled = enabled
-                                if (enabled) {
-                                    if (hasNotificationPermission(context)) {
-                                        reschedule()
-                                    } else {
-                                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    }
+                    SettingDivider()
+
+                    // ── Notifications ────────────────────────────────────────────────────────
+                    SettingSwitchRow(
+                        icon = Icons.Default.Notifications,
+                        title = "Enable notifications",
+                        checked = notificationsEnabled,
+                        onCheckedChange = { enabled ->
+                            haptics.toggle()
+                            notificationsEnabled = enabled
+                            prefs.notificationsEnabled = enabled
+                            if (enabled) {
+                                if (hasNotificationPermission(context)) {
+                                    reschedule()
                                 } else {
-                                    NotificationScheduler.cancelAll(context.applicationContext)
+                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 }
+                            } else {
+                                NotificationScheduler.cancelAll(context.applicationContext)
+                            }
+                        }
+                    )
+
+                    if (notificationsEnabled) {
+                        SettingSwitchRow(
+                            icon = Icons.Default.Movie,
+                            title = "Movies",
+                            checked = notificationsMovies,
+                            onCheckedChange = { on ->
+                                haptics.toggle()
+                                notificationsMovies = on
+                                prefs.notificationsMovies = on
+                                reschedule()
                             }
                         )
-
-                        if (notificationsEnabled) {
-                            SettingDivider()
-                            SettingSwitchRow(
-                                icon = Icons.Default.Movie,
-                                title = "Movies",
-                                checked = notificationsMovies,
-                                onCheckedChange = { on ->
-                                    haptics.toggle()
-                                    notificationsMovies = on
-                                    prefs.notificationsMovies = on
+                        SettingSwitchRow(
+                            icon = Icons.Default.Tv,
+                            title = "TV shows",
+                            checked = notificationsTv,
+                            onCheckedChange = { on ->
+                                haptics.toggle()
+                                notificationsTv = on
+                                prefs.notificationsTv = on
+                                reschedule()
+                            }
+                        )
+                        SettingValueRow(
+                            title = "Delivery time",
+                            value = clockLabel(deliverySeconds)
+                        ) {
+                            TimePickerDialog(
+                                context,
+                                { _, hour, minute ->
+                                    val seconds = hour * 3600 + minute * 60
+                                    deliverySeconds = seconds
+                                    prefs.notificationsTime = seconds
                                     reschedule()
-                                }
-                            )
-                            SettingSwitchRow(
-                                icon = Icons.Default.Tv,
-                                title = "TV shows",
-                                checked = notificationsTv,
-                                onCheckedChange = { on ->
-                                    haptics.toggle()
-                                    notificationsTv = on
-                                    prefs.notificationsTv = on
-                                    reschedule()
-                                }
-                            )
-                            SettingDivider()
+                                },
+                                deliverySeconds / 3600,
+                                (deliverySeconds % 3600) / 60,
+                                false
+                            ).show()
+                        }
+                        SettingSwitchRow(
+                            icon = Icons.Default.Schedule,
+                            title = "Weekly digest",
+                            checked = digestEnabled,
+                            onCheckedChange = { on ->
+                                haptics.toggle()
+                                digestEnabled = on
+                                prefs.digestEnabled = on
+                                applyDigest(on, digestWeekday, digestTime)
+                            }
+                        )
+                        if (digestEnabled) {
                             SettingValueRow(
-                                title = "Delivery time",
-                                value = deliveryLabel(deliverySeconds),
-                                onClick = {
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hour, minute ->
-                                            val seconds = hour * 3600 + minute * 60
-                                            deliverySeconds = seconds
-                                            prefs.notificationsTime = seconds
-                                            reschedule()
-                                        },
-                                        deliverySeconds / 3600,
-                                        (deliverySeconds % 3600) / 60,
-                                        false
-                                    ).show()
-                                }
-                            )
-
-                            SettingDivider()
-                            SettingSwitchRow(
-                                icon = Icons.Default.Schedule,
-                                title = "Weekly digest",
-                                checked = digestEnabled,
-                                onCheckedChange = { on ->
-                                    haptics.toggle()
-                                    digestEnabled = on
-                                    prefs.digestEnabled = on
-                                    applyDigest(on, digestWeekday, digestTime)
-                                }
-                            )
-                            if (digestEnabled) {
-                                SettingValueRow(
-                                    title = "Digest day",
-                                    value = weekdayLabel(digestWeekday),
-                                    onClick = {
-                                        haptics.tap()
-                                        pickingWeekday = true
-                                    }
-                                )
-                                SettingValueRow(
-                                    title = "Digest time",
-                                    value = deliveryLabel(digestTime),
-                                    onClick = {
-                                        TimePickerDialog(
-                                            context,
-                                            { _, hour, minute ->
-                                                val seconds = hour * 3600 + minute * 60
-                                                digestTime = seconds
-                                                prefs.digestTime = seconds
-                                                applyDigest(true, digestWeekday, seconds)
-                                            },
-                                            digestTime / 3600,
-                                            (digestTime % 3600) / 60,
-                                            false
-                                        ).show()
-                                    }
-                                )
+                                title = "Digest day",
+                                value = weekdayLabel(digestWeekday)
+                            ) {
+                                haptics.tap()
+                                pickingWeekday = true
+                            }
+                            SettingValueRow(
+                                title = "Digest time",
+                                value = clockLabel(digestTime)
+                            ) {
+                                TimePickerDialog(
+                                    context,
+                                    { _, hour, minute ->
+                                        val seconds = hour * 3600 + minute * 60
+                                        digestTime = seconds
+                                        prefs.digestTime = seconds
+                                        applyDigest(true, digestWeekday, seconds)
+                                    },
+                                    digestTime / 3600,
+                                    (digestTime % 3600) / 60,
+                                    false
+                                ).show()
                             }
                         }
                     }
-                }
-            }
-        }
 
-        }
+                    SettingDivider()
 
-        // ── Cloud sync ────────────────────────────────────────────────────────────────────────
-        if (panel == SettingsPanel.Sync) {
-        item {
-            Column {
-                PanelHeader("Cloud sync") { panel = null }
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(M3ESpacing.cardGap),
-                        verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
-                    ) {
-                        // Hidden by default. These are set once and then never touched, so four
-                        // text fields at the top of the screen were four fields of noise for the
-                        // ninety-nine times you open this screen to change a palette.
+                    // ── Cloud sync ───────────────────────────────────────────────────────────
+                    SettingBlock {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 LabelledSetting(
@@ -417,6 +344,7 @@ fun M3ERoughSettings(
                             }
                         }
                         if (keysShown) {
+                            Spacer(Modifier.height(M3ESpacing.tightGap))
                             CredentialField(
                                 label = "Supabase URL",
                                 value = supabaseUrl,
@@ -441,30 +369,29 @@ fun M3ERoughSettings(
                                 masked = true
                             )
                         }
+                    }
 
-                        SettingDivider()
+                    SettingSwitchRow(
+                        icon = Icons.Default.Sync,
+                        title = "Background sync",
+                        checked = backgroundSync,
+                        supporting = if (backgroundSync) {
+                            "Every 30 minutes, while the app is closed"
+                        } else {
+                            "Off"
+                        },
+                        onCheckedChange = {
+                            backgroundSync = it
+                            SyncScheduler.setEnabled(context, it)
+                            if (it) SyncScheduler.syncNow(context)
+                        }
+                    )
 
-                        // An action, not a setting: the screen had no way to say "do it now".
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = M3ESpacing.rowGap),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = null,
-                                tint = M3EColor.textMuted(),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(Modifier.width(M3ESpacing.inlineGap))
+                    SettingBlock {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Sync now", style = M3EType.rowTitle(), color = M3EColor.text())
-                                Text(
-                                    text = "Pull and push straight away",
-                                    style = M3EType.rowSupporting(),
-                                    color = M3EColor.textMuted()
-                                )
                             }
-                            Spacer(Modifier.width(M3ESpacing.tightGap))
                             Button(
                                 onClick = {
                                     haptics.tap()
@@ -475,39 +402,17 @@ fun M3ERoughSettings(
                                 Text("Sync", style = M3EType.action())
                             }
                         }
-
-                        SettingDivider()
-
-                        SettingSwitchRow(
-                            icon = Icons.Default.Sync,
-                            title = "Background sync",
-                            supporting = if (backgroundSync) {
-                                "Every 30 minutes, while the app is closed"
-                            } else {
-                                "Off"
-                            },
-                            checked = backgroundSync,
-                            onCheckedChange = {
-                                backgroundSync = it
-                                SyncScheduler.setEnabled(context, it)
-                                if (it) SyncScheduler.syncNow(context)
-                            }
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Spacer(Modifier.height(M3ESpacing.rowGap))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.Info,
                                 contentDescription = null,
                                 tint = M3EColor.textMuted(),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
-                            Spacer(Modifier.width(M3ESpacing.inlineGap))
+                            Spacer(Modifier.width(M3ESpacing.tightGap))
                             Text(
-                                text = "Keys are stored on this device only. The same four make the " +
-                                    "Mac app talk to the same library.",
+                                text = "Keys are stored on this device only.",
                                 style = M3EType.rowSupporting(),
                                 color = M3EColor.textMuted()
                             )
@@ -517,9 +422,7 @@ fun M3ERoughSettings(
             }
         }
 
-        }
-
-        item { Spacer(Modifier.height(M3ESpacing.pageVertical)) }
+        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
     }
 
     if (pickingWeekday) {
@@ -558,99 +461,31 @@ fun M3ERoughSettings(
     }
 }
 
-private enum class SettingsPanel { Appearance, Notifications, Sync }
-
-/** One group in the summary list: its name, what it is set to, and a way in. */
+/** A run of rows inside the one card, with the horizontal inset they all share. */
 @Composable
-private fun SummaryRow(title: String, value: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.rowGap + 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            style = M3EType.rowTitle(),
-            color = M3EColor.text(),
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = value,
-            style = M3EType.rowSupporting(),
-            color = M3EColor.textMuted(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(Modifier.width(M3ESpacing.tightGap))
-        Icon(
-            imageVector = Icons.Default.KeyboardArrowRight,
-            contentDescription = null,
-            tint = M3EColor.textMuted()
-        )
-    }
-}
-
-/** The way back out of a group, and its name. */
-@Composable
-private fun PanelHeader(title: String, onBack: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onBack() }
-            .padding(vertical = M3ESpacing.tightGap),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = Icons.Default.KeyboardArrowLeft,
-            contentDescription = "Back to settings",
-            tint = M3EColor.accent()
-        )
-        Spacer(Modifier.width(M3ESpacing.tightGap))
-        GroupLabel(title)
-    }
-}
-
-/**
- * A group's name, at a label's size.
- *
- * These were section headers — headline size, with a spacer under each — which spent most of the
- * page's height on three words whose whole job is to divide it. The card already separates the
- * groups; the label only has to name them.
- */
-@Composable
-private fun GroupLabel(text: String) {
-    Text(
-        text = text.uppercase(),
-        style = M3EType.rowSupporting(),
-        color = M3EColor.accent()
+private fun SettingBlock(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier.padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.tightGap),
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
+        content = content
     )
 }
 
-/** A title over its supporting line, with no trailing control — for rows that own a whole card. */
+/** A title over its supporting line, with no trailing control. */
 @Composable
 private fun LabelledSetting(title: String, supporting: String) {
     Column {
-        Text(
-            text = title,
-            style = M3EType.rowTitle(),
-            color = M3EColor.text()
-        )
-        Text(
-            text = supporting,
-            style = M3EType.rowSupporting(),
-            color = M3EColor.textMuted()
-        )
+        Text(text = title, style = M3EType.rowTitle(), color = M3EColor.text())
+        Text(text = supporting, style = M3EType.rowSupporting(), color = M3EColor.textMuted())
     }
 }
 
 /**
  * Auto / Dark / Light as one control rather than three switches.
  *
- * Stacked under its label instead of beside it: three pills plus a label in one row is exactly the
- * squeeze that wraps label text on a narrow screen, so the control gets its own line and each pill
- * an equal share of it.
+ * One container with three equal segments, not three floating pills: they are one choice, and three
+ * buttons read as three unrelated actions. Stacked under its label rather than beside it — three
+ * pills plus a label in one row is the squeeze that wraps label text on a narrow screen.
  */
 @Composable
 private fun SegmentedModes(selected: Int, onSelect: (Int) -> Unit) {
@@ -659,39 +494,41 @@ private fun SegmentedModes(selected: Int, onSelect: (Int) -> Unit) {
         Triple(1, "Dark", Icons.Default.DarkMode),
         Triple(2, "Light", Icons.Default.LightMode)
     )
-    // One container with three segments, not three separate pills: they are one choice, and three
-    // floating buttons read as three unrelated actions.
     Surface(
         shape = M3EShape.chip(),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth()
     ) {
-    Row(
-        modifier = Modifier.padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
-        modes.forEach { (mode, label, icon) ->
-            val isSelected = selected == mode
-            Surface(
-                onClick = { onSelect(mode) },
-                shape = M3EShape.chip(),
-                color = if (isSelected) M3EColor.accent() else Color.Transparent,
-                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted(),
-                modifier = Modifier.weight(1f)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = M3ESpacing.rowGap),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+        Row(
+            modifier = Modifier.padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            modes.forEach { (mode, label, icon) ->
+                val isSelected = selected == mode
+                Surface(
+                    onClick = { onSelect(mode) },
+                    shape = M3EShape.chip(),
+                    color = if (isSelected) M3EColor.accent() else Color.Transparent,
+                    contentColor = if (isSelected) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        M3EColor.textMuted()
+                    },
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(text = label, style = M3EType.rowSupporting())
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = M3ESpacing.tightGap),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text(text = label, style = M3EType.rowSupporting())
+                    }
                 }
             }
         }
-    }
     }
 }
 
@@ -738,8 +575,8 @@ private fun PaletteGrid(selected: Int, onSelect: (Int) -> Unit) {
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = "Selected",
-                                    // Contrast against the swatch itself, not the page: the
-                                    // presets run from near-white to near-black.
+                                    // Contrast against the swatch itself, not the page: the presets
+                                    // run from near-white to near-black.
                                     tint = if (preset.accentColor.luminance() > 0.5f) {
                                         Color.Black
                                     } else {
@@ -763,7 +600,7 @@ private fun PaletteGrid(selected: Int, onSelect: (Int) -> Unit) {
     }
 }
 
-/** Leading icon, title over supporting text, switch trailing. */
+/** Leading icon, title over an optional supporting line, switch trailing. */
 @Composable
 private fun SettingSwitchRow(
     icon: ImageVector,
@@ -775,7 +612,7 @@ private fun SettingSwitchRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = M3ESpacing.rowGap),
+            .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.rowGap),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
@@ -808,6 +645,30 @@ private fun SettingSwitchRow(
     }
 }
 
+/** A setting whose value is edited elsewhere, by tapping the row. */
+@Composable
+private fun SettingValueRow(title: String, value: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.rowGap),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = M3EType.rowTitle(),
+            color = M3EColor.text(),
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            style = M3EType.rowTitle(),
+            color = M3EColor.accent()
+        )
+    }
+}
+
 /** One credential. Masked fields get a reveal, because a key is pasted as often as it is read. */
 @Composable
 private fun CredentialField(
@@ -832,7 +693,11 @@ private fun CredentialField(
             {
                 IconButton(onClick = { revealed = !revealed }) {
                     Icon(
-                        imageVector = if (revealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        imageVector = if (revealed) {
+                            Icons.Default.VisibilityOff
+                        } else {
+                            Icons.Default.Visibility
+                        },
                         contentDescription = if (revealed) "Hide $label" else "Show $label"
                     )
                 }
@@ -844,38 +709,13 @@ private fun CredentialField(
     )
 }
 
-/** A setting whose value is edited elsewhere, by tapping the row. */
 @Composable
-private fun SettingValueRow(
-    title: String,
-    value: String,
-    supporting: String? = null,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(vertical = M3ESpacing.rowGap),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = M3EType.rowTitle(), color = M3EColor.text())
-            if (supporting != null) {
-                Text(text = supporting, style = M3EType.rowSupporting(), color = M3EColor.textMuted())
-            }
-        }
-        Spacer(Modifier.width(M3ESpacing.tightGap))
-        Text(text = value, style = M3EType.rowTitle(), color = M3EColor.accent())
-    }
+private fun SettingDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(vertical = M3ESpacing.tightGap),
+        color = MaterialTheme.colorScheme.outlineVariant
+    )
 }
-
-private fun hasNotificationPermission(context: Context): Boolean =
-    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-        ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
 
 /** The Mac stores weekdays 1..7 starting at Sunday; this reads them in that order. */
 private val WEEKDAY_NAMES = listOf(
@@ -885,13 +725,12 @@ private val WEEKDAY_NAMES = listOf(
 private fun weekdayLabel(macWeekday: Int): String =
     WEEKDAY_NAMES.getOrElse(macWeekday - 1) { "Sunday" }
 
-private fun deliveryLabel(seconds: Int): String =
+private fun clockLabel(seconds: Int): String =
     String.format(Locale.US, "%02d:%02d", seconds / 3600, (seconds % 3600) / 60)
 
-@Composable
-private fun SettingDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(vertical = M3ESpacing.tightGap),
-        color = MaterialTheme.colorScheme.outlineVariant
-    )
-}
+private fun hasNotificationPermission(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
