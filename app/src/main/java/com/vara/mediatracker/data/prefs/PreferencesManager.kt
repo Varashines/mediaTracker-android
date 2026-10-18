@@ -188,6 +188,18 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putInt("weekly_digest_time", value).apply()
 
     /**
+     * Set once the one-time poster-colour pull has completed *successfully*.
+     *
+     * The bulk colour backfill preserved each row's `updated_at`, so the watermarked pull can never
+     * see those colours — this flag is what makes the one explicit fetch happen, once, instead of on
+     * every launch. Only set when the fetch actually reached the cloud, so a launch without network
+     * tries again rather than giving up permanently.
+     */
+    var themeColorPullDone: Boolean
+        get() = prefs.getBoolean("theme_color_pull_done", false)
+        set(value) = prefs.edit().putBoolean("theme_color_pull_done", value).apply()
+
+    /**
      * Persists every credential in a single atomic edit. Called on a debounce rather
      * than per keystroke, so four keys commit together instead of racing each other.
      */

@@ -73,6 +73,18 @@ class MediaTrackerApp : Application(), ImageLoaderFactory {
                 container.preferences.tasteCanonicalizationDone = true
             }
 
+            // The bulk colour backfill preserved each row's `updated_at` so it would not read as an
+            // edit and force a re-pull — which means the watermarked pull can never see those
+            // colours, since their stamps are older than any watermark. So they are fetched once,
+            // explicitly. The flag is only set when the fetch actually reached the cloud, so a
+            // launch without network tries again rather than giving up for good.
+            if (!container.preferences.themeColorPullDone) {
+                container.syncManager().pullThemeColors()?.let { colored ->
+                    container.preferences.themeColorPullDone = true
+                    android.util.Log.i("ThemeColors", "Pulled $colored poster palettes")
+                }
+            }
+
             // On a fresh install, or straight after the v3 migration, media_badges is
             // empty. Without this pass every title would render badge-less until the
             // first scheduled run — up to 15 minutes of wrong UI.

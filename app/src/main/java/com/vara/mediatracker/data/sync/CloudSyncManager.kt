@@ -831,6 +831,42 @@ class CloudSyncManager(
 
     private fun canonicalEpisodeId(id: String): String = MediaIds.canonicalEpisodeIdOrNull(id) ?: id
 
+    /**
+     * The one-time colour pull.
+     *
+     * The bulk backfill that put the palette in the cloud preserved each row's `updated_at` so it
+     * would not look like an edit and force a re-pull on every device. That was the right call for
+     * that job, but it has a consequence: the ordinary watermarked pull — `updated_at > watermark`
+     * — can never see these colours, because their stamps are older than any watermark.
+     *
+     * So this asks for them once, without a watermark, and writes only the three columns. Not a full
+     * reconcile: state and taste have not changed, and dragging every row through the conflict rules
+     * to learn a derived colour would be a great deal of work for no change.
+     *
+     * Returns the number of rows written, or null when the fetch failed — so a caller can tell
+     * "nothing to do" from "did not reach the cloud" and only mark the job done in the first case.
+     * Idempotent: a second run writes nothing.
+     */
+    suspend fun pullThemeColors(): Int? = runCatching {
+        val remote = fetchRemoteMedia(since = null)
+        val byId = mediaDao.getAllMediaList().associateBy { it.id }
+        val updated = remote.mapNotNull { row ->
+            val primary = row.theme_color_hex ?: return@mapNotNull null
+            val existing = byId[row.media_id] ?: return@mapNotNull null
+            val unchanged = existing.themeColorHex == primary &&
+                existing.themeMutedColorHex == row.theme_muted_color_hex &&
+                existing.themeSecondaryColorHex == row.theme_secondary_color_hex
+            if (unchanged) return@mapNotNull null
+            existing.copy(
+                themeColorHex = primary,
+                themeMutedColorHex = row.theme_muted_color_hex,
+                themeSecondaryColorHex = row.theme_secondary_color_hex
+            )
+        }
+        if (updated.isNotEmpty()) mediaDao.upsertMedia(updated)
+        updated.size
+    }.getOrNull()
+
     private suspend fun fetchRemoteMedia(since: String? = null): List<RemoteMedia> =
         fetchAllPages("user_media", since)
 
