@@ -45,6 +45,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
@@ -266,6 +267,11 @@ fun M3ERoughScreen(
                 overlay = Overlay.Search
             },
             searching = overlay is Overlay.Search,
+            // Search keeps the four pills — you can move on from it without going back — and so do
+            // the sections. Everything else is somewhere you came from a section, and the bar
+            // offers the way back to it rather than four places that are behind the screen.
+            parent = if (overlay != null && overlay !is Overlay.Search) section else null,
+            onBackToParent = { overlay = null },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -816,6 +822,9 @@ private fun FloatingNav(
     onSelect: (Int) -> Unit,
     onSearch: () -> Unit,
     searching: Boolean,
+    /** The section to return to, when what is on screen is not one of the four. */
+    parent: Int? = null,
+    onBackToParent: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -836,30 +845,30 @@ private fun FloatingNav(
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                NavPill(Icons.Default.Home, "Home", selected == HOME, Modifier.weight(1f)) {
-                    onSelect(HOME)
+                if (parent != null) {
+                    // Not one of the four: a title, Hub, Finished or a pushed list. The bar says
+                    // where it goes instead of offering four places that are behind the screen.
+                    NavPill(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "Back to ${sectionLabel(parent)}",
+                        active = true,
+                        onClick = onBackToParent
+                    )
+                } else {
+                NavPill(Icons.Default.Home, "Home", selected == HOME) { onSelect(HOME) }
+                NavPill(Icons.Default.CalendarMonth, "Calendar", selected == CALENDAR) {
+                    onSelect(CALENDAR)
                 }
-                NavPill(
-                    Icons.Default.CalendarMonth,
-                    "Calendar",
-                    selected == CALENDAR,
-                    Modifier.weight(1f)
-                ) { onSelect(CALENDAR) }
-                NavPill(
-                    Icons.Default.VideoLibrary,
-                    "Library",
-                    selected == LIBRARY,
-                    Modifier.weight(1f)
-                ) { onSelect(LIBRARY) }
+                NavPill(Icons.Default.VideoLibrary, "Library", selected == LIBRARY) {
+                    onSelect(LIBRARY)
+                }
                 // Settings is a section like the other three, not an overlay. It was the fourth
                 // button but behaved differently — no lit pill, and back closed it — which is what
                 // made it feel like it belonged to whichever section you came from.
-                NavPill(
-                    Icons.Default.Settings,
-                    "Settings",
-                    selected == SETTINGS,
-                    Modifier.weight(1f)
-                ) { onSelect(SETTINGS) }
+                NavPill(Icons.Default.Settings, "Settings", selected == SETTINGS) {
+                    onSelect(SETTINGS)
+                }
+                }
             }
         }
 
@@ -885,71 +894,41 @@ private fun FloatingNav(
 
 /** One section in the bar: icon always, name only when it is the current one. */
 @Composable
-private fun NavPill(
-    icon: ImageVector,
-    label: String,
-    active: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    // Equal widths, so the name fading in moves nothing around it — the icon shifts to make room
-    // inside its own box, and the other three stay exactly where they were. That was the jitter,
-    // and equal widths are what removes it: the label fills a box instead of growing one.
-    val labelAlpha by animateFloatAsState(
-        targetValue = if (active) 1f else 0f,
-        animationSpec = tween(durationMillis = 180),
-        label = "navLabel"
-    )
+private fun NavPill(icon: ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(50),
-        color = if (active) M3EColor.accent() else M3EColor.card(),
-        modifier = modifier
+        color = if (active) M3EColor.accent() else M3EColor.card()
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = if (active) 16.dp else 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
             )
-            if (labelAlpha > 0.01f) {
-                Spacer(Modifier.width(M3ESpacing.tightGap * labelAlpha))
+            if (active) {
                 Text(
                     text = label,
                     style = M3EType.action(),
                     color = MaterialTheme.colorScheme.onPrimary,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.alpha(labelAlpha)
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
     }
 }
 
-/** One row inside the centre button's popup. */
-@Composable
-private fun MoreItem(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .clickable { onClick() }
-            .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.rowGap),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = M3EColor.textMuted(),
-            modifier = Modifier.size(20.dp)
-        )
-        Text(text = label, style = M3EType.rowTitle(), color = M3EColor.text())
-    }
+/** The bar's name for a section, so the back pill can say where it goes. */
+private fun sectionLabel(index: Int): String = when (index) {
+    HOME -> "Home"
+    CALENDAR -> "Calendar"
+    LIBRARY -> "Library"
+    else -> "Settings"
 }
 
 /** The day a title lands: an air date for a show, a release date for a movie. */
