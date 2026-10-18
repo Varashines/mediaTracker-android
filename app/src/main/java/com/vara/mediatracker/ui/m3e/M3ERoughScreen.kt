@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -710,7 +711,12 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
     )
 
     Surface(
-        modifier = modifier,
+        // Capped, so the capsule stays compact and centred rather than stretching edge to edge.
+        //
+        // The items are weighted, and a Row with weighted children has no intrinsic width — so it
+        // takes everything it is offered. The earlier content-sized items made the capsule wrap
+        // them; the weights are what made it full width.
+        modifier = modifier.widthIn(max = 300.dp),
         shape = RoundedCornerShape(50),
         color = M3EColor.card(),
         shadowElevation = 12.dp
