@@ -214,7 +214,7 @@ private fun SmartTab(
                 }
             }
         }
-        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+        item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
 
@@ -310,7 +310,7 @@ private fun DiscoverTab(
                 if (languages.isNotEmpty()) LanguageGrid(languages, onOpenList)
             }
         }
-        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+        item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
 

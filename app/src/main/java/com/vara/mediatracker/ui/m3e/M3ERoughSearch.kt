@@ -244,7 +244,7 @@ fun M3ERoughSearch(
                     )
                 }
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Spacer(Modifier.height(M3ESpacing.bottomInset))
+                    Spacer(Modifier.height(LocalNavClearance.current))
                 }
             }
 

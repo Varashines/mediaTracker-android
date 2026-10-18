@@ -390,7 +390,7 @@ fun M3ERoughSettings(
             }
         }
 
-        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+        item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 
     if (keysShown) {

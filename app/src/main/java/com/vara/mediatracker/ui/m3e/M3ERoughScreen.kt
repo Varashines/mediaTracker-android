@@ -22,10 +22,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -67,6 +70,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -77,6 +81,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.LocalDate
@@ -169,6 +175,16 @@ fun M3ERoughScreen(
     val overlay = stack.lastOrNull()
     val haptics = rememberHaptics()
 
+    val density = LocalDensity.current
+
+    // The bar's height is the only unknown: the gap it keeps above the system bar and the system
+    // bar's own height are both known, and the three together are the room a list must leave at its
+    // foot. A single constant was right under gesture navigation and short by a system bar's worth
+    // under three-button navigation, which put the last row under the bar.
+    var navHeight by remember { mutableStateOf(0.dp) }
+    val navClearance = navHeight + M3ESpacing.navGap +
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
     // Back unwinds one step at a time: a title opened from Finished returns to Finished, and
     // Finished returns to Library.
     BackHandler(enabled = stack.isNotEmpty()) { stack = stack.dropLast(1) }
@@ -192,6 +208,7 @@ fun M3ERoughScreen(
         // the Hub out of the composition and its tab came back as Smart — the state had nowhere to
         // be kept. Keyed by depth, so each step remembers its own.
         val overlayHolder = rememberSaveableStateHolder()
+        CompositionLocalProvider(LocalNavClearance provides navClearance) {
         FadeIn(key = overlay, rise = if (overlay is Overlay.Search) 28.dp else 0.dp) {
         overlayHolder.SaveableStateProvider(if (stack.isEmpty()) -1 else stack.lastIndex) {
         when (val current = overlay) {
@@ -258,6 +275,7 @@ fun M3ERoughScreen(
         }
         }
         }
+        }
 
         // While an overlay is open no section is current — Settings was being lit *alongside* Home,
         // which made it look like a child of whichever section you happened to be in.
@@ -303,7 +321,8 @@ fun M3ERoughScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 24.dp)
+                .padding(bottom = M3ESpacing.navGap)
+                .onSizeChanged { navHeight = with(density) { it.height.toDp() } }
         )
     }
 }
@@ -408,7 +427,7 @@ private fun HomeSection(
                 }
             }
         }
-        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+        item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
 
@@ -479,7 +498,7 @@ private fun LibrarySection(
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Spacer(Modifier.height(M3ESpacing.bottomInset))
+            Spacer(Modifier.height(LocalNavClearance.current))
         }
     }
 }
@@ -518,7 +537,7 @@ private fun FinishedSection(library: List<MediaItemEntity>, onOpen: (MediaItemEn
         items(finished, key = { it.id }) { item ->
             TitleRow(item, trailing = Icons.Default.Check, onClick = { onOpen(item) })
         }
-        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+        item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
 
@@ -594,7 +613,7 @@ private fun GridList(list: SectionList, onOpen: (MediaItemEntity) -> Unit, onBac
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Spacer(Modifier.height(M3ESpacing.bottomInset))
+            Spacer(Modifier.height(LocalNavClearance.current))
         }
     }
 }
@@ -640,7 +659,7 @@ private fun RowList(
                 subtitle = subtitle
             )
         }
-        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+        item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
 

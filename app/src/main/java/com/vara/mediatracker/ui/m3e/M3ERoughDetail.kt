@@ -600,7 +600,7 @@ fun M3ERoughDetail(
         }
 
         // Clears the floating navigation bar: at 48 the last row sat underneath it.
-        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(LocalNavClearance.current)) }
             }
         }
     }

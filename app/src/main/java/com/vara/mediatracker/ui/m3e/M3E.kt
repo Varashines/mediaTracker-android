@@ -3,6 +3,7 @@ package com.vara.mediatracker.ui.m3e
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
@@ -58,8 +59,12 @@ object M3ESpacing {
     val pageVertical = 24.dp
 
     /**
-     * Trailing space at the end of a scroll, so the floating navigation bar does not sit on the
-     * last row. Sized to the bar plus its bottom padding, with a little to spare.
+     * Fallback trailing space at the end of a scroll, for the frame before the shell has measured
+     * the real one — see [LocalNavClearance].
+     *
+     * The bar sits above the system bar, so the room a list must leave depends on that bar's height,
+     * which is not knowable from here. This is a gesture-navigation estimate and nothing should rely
+     * on it.
      */
     val bottomInset = 112.dp
 
@@ -80,7 +85,24 @@ object M3ESpacing {
 
     /** Minimum height of a tappable row. */
     val rowMinHeight = 56.dp
+
+    /** The air the floating bar keeps above the system bar. Part of [LocalNavClearance]. */
+    val navGap = 24.dp
 }
+
+/**
+ * The room a scrolling list must leave at its foot, so the floating navigation bar does not sit on
+ * the last row.
+ *
+ * A `CompositionLocal` rather than a constant, because the answer is not constant. The bar is
+ * `navigationBarsPadding()` plus its own height plus a gap, and the inset underneath is what varies:
+ * roughly 24dp under gesture navigation, roughly 48dp with three buttons. A fixed number is right on
+ * one of them and leaves the last row under the bar on the other — which is the bug this replaced.
+ *
+ * The shell measures the bar and provides the result. [M3ESpacing.bottomInset] stands in for the
+ * first frame, before there is anything to measure.
+ */
+val LocalNavClearance = compositionLocalOf { M3ESpacing.bottomInset }
 
 /**
  * Type roles, read through the theme so a single change to `AppTypography` moves the whole app.

@@ -273,7 +273,7 @@ fun M3ERoughCalendar(
             }
         }
 
-        item { Spacer(Modifier.height(M3ESpacing.bottomInset)) }
+        item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
 
