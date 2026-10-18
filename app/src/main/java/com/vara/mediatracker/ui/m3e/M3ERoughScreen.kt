@@ -2,7 +2,6 @@ package com.vara.mediatracker.ui.m3e
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -13,7 +12,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
@@ -159,23 +157,6 @@ fun M3ERoughScreen(
         val holder = rememberSaveableStateHolder()
         val opened = open
         val shownList = list
-        // One key for the overlay stack, so the transition below knows when it changed.
-        val overlayKey = when {
-            opened != null -> 1
-            shownList != null -> 2
-            searching -> 3
-            settings -> 4
-            else -> 0
-        }
-        AnimatedContent(
-            targetState = overlayKey,
-            transitionSpec = {
-                (fadeIn(tween(durationMillis = 180)) +
-                    slideInVertically(tween(durationMillis = 180)) { it / 24 }) togetherWith
-                    ExitTransition.None
-            },
-            modifier = Modifier.fillMaxSize()
-        ) { _ ->
         when {
             opened != null -> M3ERoughDetail(
                 item = opened,
@@ -204,20 +185,8 @@ fun M3ERoughScreen(
             // each is a whole screen of derivation — so the animation spent its time racing the work
             // it was covering, which is what "weird" was. A bottom nav switches instantly on
             // Android, and instantly is what this does now.
-            // Only the incoming section animates. The outgoing one leaves immediately, so the
-            // transition composes one screen rather than two — which is what made animating between
-            // sections jitter in the first place. A fade-in reads as smooth at a fifth of the cost.
-            else -> AnimatedContent(
-                targetState = section,
-                transitionSpec = {
-                    (fadeIn(tween(durationMillis = 160)) +
-                        slideInVertically(tween(durationMillis = 160)) { it / 24 }) togetherWith
-                        ExitTransition.None
-                },
-                modifier = Modifier.fillMaxSize()
-            ) { current ->
-            holder.SaveableStateProvider(current) {
-                when (current) {
+            else -> holder.SaveableStateProvider(section) {
+                when (section) {
                 0 -> HomeSection(
                     core = core,
                     home = home,
@@ -239,8 +208,6 @@ fun M3ERoughScreen(
                 else -> FinishedSection(library = library, onOpen = { open = it })
                 }
             }
-            }
-        }
         }
 
         FloatingNav(
