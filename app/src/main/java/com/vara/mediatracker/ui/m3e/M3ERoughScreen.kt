@@ -222,7 +222,7 @@ fun M3ERoughScreen(
                         overlay = Overlay.Titles(title, items, kind, ListLayout.Rows)
                     }
                 )
-                2 -> M3ERoughCalendar(core = core, onOpen = { overlay = Overlay.Detail(it) })
+                1 -> M3ERoughCalendar(core = core, onOpen = { overlay = Overlay.Detail(it) })
                 2 -> LibrarySection(
                     core = core,
                     onOpen = { overlay = Overlay.Detail(it) },
