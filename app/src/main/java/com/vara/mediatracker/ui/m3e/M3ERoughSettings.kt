@@ -5,6 +5,7 @@ import android.app.TimePickerDialog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -57,6 +58,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -82,11 +84,15 @@ import com.vara.mediatracker.data.sync.NotificationScheduler
 import com.vara.mediatracker.data.sync.ReleaseReminderPlanner
 import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.ui.common.AppToast
+import com.vara.mediatracker.ui.common.LocalNowMillis
 import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.ui.theme.ThemePresets
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
+import kotlinx.coroutines.withContext
 
 /**
  * Settings, in the [M3E] vocabulary — three purpose-built blocks, no rows.
@@ -123,6 +129,9 @@ fun M3ERoughSettings(
     var pickingWeekday by rememberSaveable { mutableStateOf(false) }
     var keysShown by rememberSaveable { mutableStateOf(false) }
     var backgroundSync by rememberSaveable { mutableStateOf(SyncScheduler.isEnabled(context)) }
+    // Hoisted out of the card's item so scrolling the settings away and back does not lose it.
+    var syncing by remember { mutableStateOf(false) }
+    var lastSyncedAt by remember { mutableLongStateOf(SyncScheduler.lastSyncTimestamp(context)) }
 
     // Credentials are staged locally and written on a debounce, so a key pasted or retyped commits
     // once instead of on every keystroke. Restarting the effect on each change is the debounce.
@@ -136,6 +145,22 @@ fun M3ERoughSettings(
     }
 
     val scope = rememberCoroutineScope()
+
+    // Read through the shared clock, so the wording ages on its own — "just now" becomes "5 minutes
+    // ago" without the screen having to be reopened.
+    val nowMillis = LocalNowMillis.current
+    val lastSyncedLabel = remember(lastSyncedAt, nowMillis) {
+        if (lastSyncedAt == 0L) {
+            "Never synced"
+        } else {
+            "Last synced " + DateUtils.getRelativeTimeSpanString(
+                lastSyncedAt,
+                nowMillis,
+                DateUtils.MINUTE_IN_MILLIS,
+                DateUtils.FORMAT_ABBREV_RELATIVE
+            )
+        }
+    }
     val reschedule: () -> Unit = {
         scope.launch {
             NotificationScheduler.syncAll(
@@ -318,11 +343,36 @@ fun M3ERoughSettings(
         item {
             M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
+                    // Run in place rather than enqueued. Enqueueing made the button feel dead: the
+                    // work happened eventually, somewhere else, and the screen said nothing either
+                    // way. The Mac runs its Sync Now in place and reports what it did, so this does.
                     Button(
                         onClick = {
+                            if (syncing) return@Button
                             haptics.tap()
-                            SyncScheduler.syncNow(context)
+                            syncing = true
+                            container.appScope.launch {
+                                val result = container.syncManager().sync(since = prefs.syncWatermark)
+                                withContext(Dispatchers.Main) {
+                                    syncing = false
+                                    if (result.isSuccess) {
+                                        result.getOrNull()?.watermark?.let { prefs.syncWatermark = it }
+                                        val at = System.currentTimeMillis()
+                                        SyncScheduler.recordSyncCompletion(context, at)
+                                        lastSyncedAt = at
+                                        val s = result.getOrNull()
+                                        AppToast.show(
+                                            "Synced — ↑ ${s?.outgoing ?: 0} sent, ↓ ${s?.incoming ?: 0} received"
+                                        )
+                                    } else {
+                                        AppToast.show(
+                                            "Sync failed: ${result.exceptionOrNull()?.localizedMessage}"
+                                        )
+                                    }
+                                }
+                            }
                         },
+                        enabled = !syncing,
                         shape = M3EShape.chip(),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -334,8 +384,18 @@ fun M3ERoughSettings(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(M3ESpacing.tightGap))
-                        Text("Sync now", style = M3EType.action())
+                        Text(if (syncing) "Syncing…" else "Sync now", style = M3EType.action())
                     }
+
+                    // The same stamp the background worker writes, so the line covers both without
+                    // anyone having to know which one ran.
+                    Spacer(Modifier.height(M3ESpacing.tightGap))
+                    Text(
+                        text = lastSyncedLabel,
+                        style = M3EType.rowSupporting(),
+                        color = M3EColor.textMuted(),
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
 
                     Spacer(Modifier.height(M3ESpacing.cardGap))
                     Row(verticalAlignment = Alignment.CenterVertically) {
