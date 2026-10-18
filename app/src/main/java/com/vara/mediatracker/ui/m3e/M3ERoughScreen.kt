@@ -1,6 +1,7 @@
 package com.vara.mediatracker.ui.m3e
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -9,6 +10,9 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -103,8 +107,6 @@ import com.vara.mediatracker.di.AppContainer
  */
 const val M3ERoughPreview = true
 
-/** Home, Hub, Calendar, Library, Finished — the five the nav draws. */
-private const val SECTION_COUNT = 5
 
 @Composable
 fun M3ERoughScreen(
@@ -120,11 +122,7 @@ fun M3ERoughScreen(
     val core by libraryVm.core.collectAsState()
     val home by libraryVm.home.collectAsState()
     val library = core.items
-    // The pager owns which section is showing, so the nav and a sideways swipe are the same thing
-    // rather than two states that have to be kept in step. Saveable, which is what keeps the
-    // earlier fix — leaving for a title and coming back lands where you were, not on Home.
-    val pagerState = rememberPagerState(pageCount = { SECTION_COUNT })
-    val scope = rememberCoroutineScope()
+    var section by rememberSaveable { mutableIntStateOf(0) }
     var open by remember { mutableStateOf<MediaItemEntity?>(null) }
     var list by remember { mutableStateOf<SectionList?>(null) }
     var searching by remember { mutableStateOf(false) }
@@ -178,16 +176,19 @@ fun M3ERoughScreen(
                     onThemePresetChanged = onThemePresetChanged,
                     onThemeModeChanged = onThemeModeChanged
                 )
-            else -> HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                // One either side, built before the gesture rather than during it. Every page here
-                // is a whole screen of derivation — Home's rails, the Hub's facets, a month of
-                // episodes — and composing one mid-drag is what the drag ends up fighting.
-                beyondViewportPageCount = 1
-            ) { page ->
-            holder.SaveableStateProvider(page) {
-                when (page) {
+            else -> AnimatedContent(
+                targetState = section,
+                transitionSpec = {
+                    // A short slide with a fade, in the direction you moved. The swipe was meant to
+                    // give this; it turns out the gesture was the expensive part, not the motion.
+                    val forward = targetState > initialState
+                    (slideInHorizontally { if (forward) it / 8 else -it / 8 } + fadeIn(tween(180))) togetherWith
+                        (slideOutHorizontally { if (forward) -it / 8 else it / 8 } + fadeOut(tween(120)))
+                },
+                modifier = Modifier.fillMaxSize()
+            ) { current ->
+            holder.SaveableStateProvider(current) {
+                when (current) {
                 0 -> HomeSection(
                     core = core,
                     home = home,
@@ -213,10 +214,10 @@ fun M3ERoughScreen(
         }
 
         FloatingNav(
-            selected = pagerState.currentPage,
+            selected = section,
             onSelect = { target ->
-                if (target != pagerState.currentPage) haptics.tap()
-                scope.launch { pagerState.animateScrollToPage(target) }
+                if (target != section) haptics.tap()
+                section = target
             },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
