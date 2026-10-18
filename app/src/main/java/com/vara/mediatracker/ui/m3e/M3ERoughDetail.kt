@@ -30,7 +30,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -105,7 +104,6 @@ import kotlinx.coroutines.launch
 fun M3ERoughDetail(
     item: MediaItemEntity,
     container: AppContainer,
-    onBack: () -> Unit,
     onOpenMedia: (MediaItemEntity) -> Unit = {}
 ) {
     val db = container.database
@@ -397,21 +395,6 @@ fun M3ERoughDetail(
                     }
                 )
         ) {
-            Spacer(Modifier.height(M3ESpacing.tightGap))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = M3EColor.text()
-                    )
-                }
-                Text(
-                    text = item.type.uppercase(),
-                    style = AppTextStyles.MonoLabel,
-                    color = M3EColor.accent()
-                )
-            }
             Spacer(Modifier.height(M3ESpacing.tightGap))
 
             val byline = when {

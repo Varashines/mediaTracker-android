@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
@@ -140,7 +139,6 @@ fun M3ERoughScreen(
             opened != null -> M3ERoughDetail(
                 item = opened,
                 container = container,
-                onBack = { open = null },
                 onOpenMedia = { open = it }
             )
             shownList != null -> M3ERoughList(
@@ -468,16 +466,7 @@ private fun GridList(list: SectionList, onOpen: (MediaItemEntity) -> Unit, onBac
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = M3EColor.text()
-                        )
-                    }
-                }
+                Spacer(Modifier.height(M3ESpacing.pageVertical))
                 M3EScreenHeader(
                     eyebrow = "${list.items.size} titles",
                     title = list.title,
@@ -516,16 +505,7 @@ private fun RowList(
     ) {
         item {
             Column {
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = M3EColor.text()
-                        )
-                    }
-                }
+                Spacer(Modifier.height(M3ESpacing.pageVertical))
                 M3EScreenHeader(
                     eyebrow = "${list.items.size} titles",
                     title = list.title,
