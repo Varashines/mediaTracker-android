@@ -10,12 +10,19 @@ import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.TVSeasonEntity
+import com.vara.mediatracker.util.withPerformanceHint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+
+/**
+ * Expected duration of one pass, for the performance hint: a batch of shows, four at a time, each a
+ * couple of TMDB and TVMaze round trips.
+ */
+private const val ENRICH_TARGET_MILLIS = 20_000L
 
 /**
  * Backfills episode air dates and air times for TV shows that have none.
@@ -56,14 +63,16 @@ class EpisodeEnrichmentWorker(
 
         try {
             val gate = Semaphore(MAX_CONCURRENT_SHOWS)
-            coroutineScope {
-                todo.map { show ->
-                    async(Dispatchers.IO) {
-                        gate.withPermit {
-                            if (EpisodeEnrichment.enrichShow(db, tmdb, tvmaze, show)) processed++
+            withPerformanceHint(applicationContext, ENRICH_TARGET_MILLIS) {
+                coroutineScope {
+                    todo.map { show ->
+                        async(Dispatchers.IO) {
+                            gate.withPermit {
+                                if (EpisodeEnrichment.enrichShow(db, tmdb, tvmaze, show)) processed++
+                            }
                         }
-                    }
-                }.awaitAll()
+                    }.awaitAll()
+                }
             }
         } catch (e: Exception) {
             return Result.retry()

@@ -5,6 +5,13 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.util.withPerformanceHint
+
+/**
+ * Expected duration of a badge pass, for the performance hint. It is a walk over the library with no
+ * network in it, so the estimate is small.
+ */
+private const val BADGE_TARGET_MILLIS = 3_000L
 
 /**
  * Keeps smart badges current while the app is closed.
@@ -26,7 +33,9 @@ class BadgeUpdateWorker(
     override suspend fun doWork(): Result {
         val container = AppContainer(applicationContext)
         return try {
-            val count = BadgeComputer.recompute(container.database)
+            val count = withPerformanceHint(applicationContext, BADGE_TARGET_MILLIS) {
+                BadgeComputer.recompute(container.database)
+            }
             Result.success(workDataOf(KEY_BADGED to count))
         } catch (e: Exception) {
             // A badge pass over the whole library should not be retried aggressively;

@@ -9,6 +9,13 @@ import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.badge.SmartBadge
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.util.withPerformanceHint
+
+/**
+ * Expected duration of one sync pass, for the performance hint. A diff against the cloud is usually
+ * a second or two; this is the upper end of ordinary.
+ */
+private const val SYNC_TARGET_MILLIS = 4_000L
 
 /**
  * Pulls the library from the cloud, refreshes TMDB metadata, and raises a
@@ -37,7 +44,9 @@ class SyncWorker(
         // overwrite local rows (so an offline edit taken since the last push was clobbered),
         // and it re-fetched the whole library every 30 minutes. `sync` diffs against the cloud
         // and only asks for rows newer than the stored watermark — an idle pass pulls nothing.
-        val outcome = container.syncManager().sync(since = prefs.syncWatermark)
+        val outcome = withPerformanceHint(applicationContext, SYNC_TARGET_MILLIS) {
+            container.syncManager().sync(since = prefs.syncWatermark)
+        }
         val failure = outcome.exceptionOrNull()
         if (failure != null) {
             // Transient network/server problems deserve a retry with backoff. A 4xx from

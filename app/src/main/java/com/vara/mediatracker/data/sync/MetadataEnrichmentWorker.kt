@@ -12,12 +12,19 @@ import com.vara.mediatracker.data.model.FacetLogoEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.util.GenreMapper
+import com.vara.mediatracker.util.withPerformanceHint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+
+/**
+ * Expected duration of one batch, for the performance hint. One session per batch rather than one
+ * per pass: the batches are what the work is actually made of, and each one re-states the target.
+ */
+private const val METADATA_TARGET_MILLIS = 8_000L
 
 /**
  * Backfills the Discovery Hub facets (genres, language, studios, watch providers) for
@@ -63,12 +70,14 @@ class MetadataEnrichmentWorker(
                 if (todo.isEmpty()) break
 
                 val gate = Semaphore(MAX_CONCURRENT)
-                val results = coroutineScope {
-                    todo.map { item ->
-                        async(Dispatchers.IO) {
-                            gate.withPermit { enrich(db, tmdb, item, region) }
-                        }
-                    }.awaitAll()
+                val results = withPerformanceHint(applicationContext, METADATA_TARGET_MILLIS) {
+                    coroutineScope {
+                        todo.map { item ->
+                            async(Dispatchers.IO) {
+                                gate.withPermit { enrich(db, tmdb, item, region) }
+                            }
+                        }.awaitAll()
+                    }
                 }
                 val batchProcessed = results.count { it }
                 processed += batchProcessed
