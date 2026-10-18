@@ -1,6 +1,7 @@
 package com.vara.mediatracker.ui.m3e
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,12 +16,15 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -197,5 +201,30 @@ fun M3EArtworkCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * Blurs whatever is behind a dialog, where the platform can.
+ *
+ * A dialog is a window, so this is the OS doing the work — and because the backdrop behind a modal
+ * never moves, it is blurred once rather than per frame. That is the whole reason it belongs here
+ * and not on the nav: a bar with content scrolling under it would re-blur every frame, and this app
+ * is mostly scrolling.
+ *
+ * API 31 — Android 12 — and up. Below that the attribute does not exist and nothing happens, so the
+ * dialogs have to look finished without it. They do: the scrim still carries them.
+ */
+@Composable
+fun M3EGlassDialog(radius: Int = 24) {
+    val window = (LocalView.current.parent as? DialogWindowProvider)?.window ?: return
+    DisposableEffect(window) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            window.setBackgroundBlurRadius(radius)
+            // The default scrim is heavy enough to hide the blur entirely, which leaves a darker
+            // rectangle for no visible gain. Blur takes over part of what the dim was doing.
+            window.setDimAmount(0.32f)
+        }
+        onDispose { }
     }
 }

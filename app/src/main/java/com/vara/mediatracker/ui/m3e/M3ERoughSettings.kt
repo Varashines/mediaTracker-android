@@ -398,6 +398,7 @@ fun M3ERoughSettings(
             onDismissRequest = { keysShown = false },
             title = { Text("Keys") },
             text = {
+                M3EGlassDialog()
                 // Scrollable: four fields plus the note can outgrow a small window, and a dialog
                 // that cannot scroll simply cuts the last one off.
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -442,6 +443,7 @@ fun M3ERoughSettings(
             onDismissRequest = { pickingWeekday = false },
             title = { Text("Digest day") },
             text = {
+                M3EGlassDialog()
                 Column {
                     (1..7).forEach { day ->
                         Row(
