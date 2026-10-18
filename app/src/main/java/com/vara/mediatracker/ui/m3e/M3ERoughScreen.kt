@@ -711,12 +711,7 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
     )
 
     Surface(
-        // Capped, so the capsule stays compact and centred rather than stretching edge to edge.
-        //
-        // The items are weighted, and a Row with weighted children has no intrinsic width — so it
-        // takes everything it is offered. The earlier content-sized items made the capsule wrap
-        // them; the weights are what made it full width.
-        modifier = modifier.widthIn(max = 300.dp),
+        modifier = modifier,
         shape = RoundedCornerShape(50),
         color = M3EColor.card(),
         shadowElevation = 12.dp
@@ -728,62 +723,35 @@ private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit, modifier: Modifi
         ) {
             items.forEachIndexed { index, (label, icon) ->
                 val active = index == selected
-                // Icon and name, on every item, at an equal width.
-                //
-                // Removing the name was the wrong fix for the jitter: the label was not the problem,
-                // the label *appearing and disappearing* was — it changed one item's width and
-                // shifted the other four. Every item is weighted equally and always carries its
-                // name, so nothing changes shape and nothing moves except the colour.
-                // One animation, not two. A single progress value drives both the fill and the
-                // icon/label colour, so they cannot drift apart and there is one thing to reason
-                // about. Short, because a nav selection is a state you are already looking at.
-                val progress by animateFloatAsState(
-                    targetValue = if (active) 1f else 0f,
-                    animationSpec = tween(durationMillis = 150),
-                    label = "navProgress"
-                )
-                val pillColor = M3EColor.accent().copy(alpha = progress)
-                val contentColor = lerp(
-                    M3EColor.textMuted(),
-                    MaterialTheme.colorScheme.onPrimary,
-                    progress
-                )
-                // The active item is wider and the others give up the room, and the *weight* is
-                // what animates. An instant width change is what jittered; a width that grows over
-                // 200ms is the motion, so the label has somewhere to appear rather than shoving its
-                // neighbours aside. The name fades in at the halfway point, once there is room.
-                val weight by animateFloatAsState(
-                    targetValue = if (active) 1.9f else 1f,
-                    animationSpec = tween(durationMillis = 200),
-                    label = "navWeight"
-                )
+                // Filled means chosen, the same as the calendar's selected day: a solid accent
+                // pill, so the current section is obvious at a glance rather than by a hairline.
                 Surface(
                     onClick = { onSelect(index) },
                     shape = RoundedCornerShape(50),
-                    color = pillColor,
-                    modifier = Modifier
-                        .weight(weight)
-                        .height(44.dp)
+                    color = if (active) M3EColor.accent() else M3EColor.card()
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.padding(
+                            horizontal = if (active) 16.dp else 12.dp,
+                            vertical = 10.dp
+                        ),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
                     ) {
                         Icon(
                             imageVector = icon,
                             contentDescription = label,
-                            tint = contentColor,
-                            modifier = Modifier.size(20.dp)
+                            tint = if (active) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                M3EColor.textMuted()
+                            }
                         )
-                        if (progress > 0.5f) {
-                            Spacer(Modifier.width(6.dp))
+                        if (active) {
                             Text(
                                 text = label,
-                                style = M3EType.rowSupporting(),
-                                color = contentColor,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                style = M3EType.action(),
+                                color = MaterialTheme.colorScheme.onPrimary
                             )
                         }
                     }
