@@ -177,7 +177,7 @@ fun M3ERoughScreen(
         // query — because leaving a section and returning otherwise resets it and makes the whole
         // thing feel like a demo.
         val holder = rememberSaveableStateHolder()
-        FadeIn(rise = if (overlay is Overlay.Search) 28.dp else 0.dp) {
+        FadeIn(key = overlay, rise = if (overlay is Overlay.Search) 28.dp else 0.dp) {
         when (val current = overlay) {
             is Overlay.Detail -> M3ERoughDetail(
                 item = current.item,
@@ -212,7 +212,7 @@ fun M3ERoughScreen(
             // each is a whole screen of derivation — so the animation spent its time racing the work
             // it was covering, which is what "weird" was. A bottom nav switches instantly on
             // Android, and instantly is what this does now.
-            null -> FadeIn {
+            null -> FadeIn(key = section) {
             holder.SaveableStateProvider(section) {
                 when (section) {
                 0 -> HomeSection(
@@ -654,12 +654,15 @@ private fun ChipRow(options: List<String>, selected: String, onSelect: (String) 
  * own alpha up. Same effect, one tree alive at a time.
  */
 @Composable
-private fun FadeIn(rise: Dp = 0.dp, content: @Composable () -> Unit) {
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { shown = true }
+private fun FadeIn(key: Any?, rise: Dp = 0.dp, content: @Composable () -> Unit) {
+    // Keyed, and that is the whole point of the parameter: unkeyed, this ran once on first
+    // composition and never again, so changing what is inside it animated nothing. The fade
+    // appeared to work only because it was never watched twice.
+    var shown by remember(key) { mutableStateOf(false) }
+    LaunchedEffect(key) { shown = true }
     val progress by animateFloatAsState(
         targetValue = if (shown) 1f else 0f,
-        animationSpec = tween(durationMillis = 180),
+        animationSpec = tween(durationMillis = if (rise > 0.dp) 240 else 180),
         label = "sectionFade"
     )
     Box(
