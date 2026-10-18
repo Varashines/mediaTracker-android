@@ -64,7 +64,20 @@ data class MediaItemEntity(
      * macOS keeps the same value in `MediaItem.dateAdded`.
      */
     val dateAdded: String? = null,
-    val updatedAt: String? = null
+    val updatedAt: String? = null,
+    /**
+     * The Mac's extracted poster palette, carried through sync.
+     *
+     * Android deliberately does not extract these. The Mac owns the algorithm, and a second one
+     * here would answer differently for the same poster — and only one of the two can be right.
+     * They are read-only on this device: pulled, displayed, and pushed back unchanged.
+     *
+     * Each is nullable independently. Rows written by an older Mac path carry only the primary,
+     * so a consumer must fall back per field rather than assuming all three arrive together.
+     */
+    val themeColorHex: String? = null,
+    val themeMutedColorHex: String? = null,
+    val themeSecondaryColorHex: String? = null
 )
 
 @Entity(

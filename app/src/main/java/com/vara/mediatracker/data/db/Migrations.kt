@@ -242,10 +242,28 @@ object Migrations {
         }
     }
 
+    /**
+     * v15 -> v16: the Mac's poster palette, carried through sync.
+     *
+     * Android does not extract colours — the Mac owns that, and a second algorithm here would
+     * disagree with it. These three columns are pulled, displayed and pushed back unchanged.
+     *
+     * Existing rows stay NULL. The one-time colour pull fills them, because the bulk push that put
+     * them in the cloud preserved each row's `updated_at` — so the ordinary watermarked pull can
+     * never see them.
+     */
+    val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `media_items` ADD COLUMN `themeColorHex` TEXT")
+            db.execSQL("ALTER TABLE `media_items` ADD COLUMN `themeMutedColorHex` TEXT")
+            db.execSQL("ALTER TABLE `media_items` ADD COLUMN `themeSecondaryColorHex` TEXT")
+        }
+    }
+
     val ALL: Array<Migration> =
         arrayOf(
             MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
             MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
-            MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15
+            MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16
         )
 }
