@@ -46,6 +46,16 @@ data class RemoteMedia(
     val last_state_change_date: String? = null,
     /** When the title joined the library — the Mac's `dateAdded`. Never moves on a watch. */
     val date_added: String? = null,
+    /**
+     * The Mac's extracted poster palette.
+     *
+     * Read-only on this device: Android never writes these, so they ride along on a pull and are
+     * left out of a push. Leaving them out is what keeps a push from clearing them — a nullable
+     * property at its default is not serialized, and the server only writes the columns it is sent.
+     */
+    val theme_color_hex: String? = null,
+    val theme_muted_color_hex: String? = null,
+    val theme_secondary_color_hex: String? = null,
     val updated_at: String? = null
 )
 
@@ -249,7 +259,11 @@ class CloudSyncManager(
                 isSoftDeleted = rem.is_soft_deleted,
                 lastInteractionDate = rem.last_interaction_date,
                 lastStateChangeDate = rem.last_state_change_date,
-                updatedAt = rem.updated_at
+                updatedAt = rem.updated_at,
+                // The Mac's palette, per field: a null remote never clears a colour we already hold.
+                themeColorHex = rem.theme_color_hex ?: existing?.themeColorHex,
+                themeMutedColorHex = rem.theme_muted_color_hex ?: existing?.themeMutedColorHex,
+                themeSecondaryColorHex = rem.theme_secondary_color_hex ?: existing?.themeSecondaryColorHex
             )
         }
         mediaDao.upsertMedia(updatedEntities)

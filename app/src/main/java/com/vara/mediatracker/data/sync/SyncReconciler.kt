@@ -128,7 +128,12 @@ object SyncReconciler {
         // Keep what we already know; take the cloud's (the Mac's dateAdded) when we don't —
         // that is how rows that predate the column get a real "added" time.
         dateAdded = existing?.dateAdded ?: remote.date_added,
-        updatedAt = remote.updated_at
+        updatedAt = remote.updated_at,
+        // The Mac's palette. Read-only here, and per field: a null remote must not clear a colour
+        // this device already holds, and an older Mac path wrote only the primary.
+        themeColorHex = remote.theme_color_hex ?: existing?.themeColorHex,
+        themeMutedColorHex = remote.theme_muted_color_hex ?: existing?.themeMutedColorHex,
+        themeSecondaryColorHex = remote.theme_secondary_color_hex ?: existing?.themeSecondaryColorHex
     )
 
     // MARK: - Episodes
