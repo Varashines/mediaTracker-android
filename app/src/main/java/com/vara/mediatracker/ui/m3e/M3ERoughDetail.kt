@@ -506,10 +506,23 @@ fun M3ERoughDetail(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(
-                    with(density) {
-                        val collapsed = COLLAPSED_HEIGHT.toPx()
-                        (collapsed + (expandedHeight - collapsed) * (1f - collapse)).toDp()
+                // Wraps its content until there is a measurement to fold with.
+                //
+                // The height comes from measuring this box's own child, so on the first frames there
+                // is no number yet — and a box told to be zero tall clips its contents away, which is
+                // why the poster vanished entirely rather than merely folding. Wrapping first means
+                // the content is on screen, the measurement lands, and the fold takes over from
+                // there.
+                .then(
+                    if (expandedHeight > 0f) {
+                        Modifier.height(
+                            with(density) {
+                                val collapsed = COLLAPSED_HEIGHT.toPx()
+                                (collapsed + (expandedHeight - collapsed) * (1f - collapse)).toDp()
+                            }
+                        )
+                    } else {
+                        Modifier
                     }
                 )
                 .clipToBounds()
