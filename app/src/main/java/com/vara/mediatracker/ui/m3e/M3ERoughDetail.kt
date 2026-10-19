@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -165,6 +166,7 @@ fun M3ERoughDetail(
     var live by remember(item.id) { mutableStateOf(item) }
     var season by remember(item.id) { mutableStateOf<Int?>(null) }
     var statusPickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
+    var pickingSeason by rememberSaveable(item.id) { mutableStateOf(false) }
     var tastePickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
     // The sheet fills in rather than arriving complete: the poster lands, then the title, then the
     // controls, then the content. Only when arriving from a tile — a detail pushed on top of another
@@ -693,29 +695,50 @@ fun M3ERoughDetail(
                     ) {
                         val allWatched =
                             seasonEpisodes.isNotEmpty() && seasonEpisodes.all { it.isWatched }
-                        M3ESectionHeader(
-                            title = "Season $currentSeason",
-                            trailing = {
-                                TextButton(onClick = { setSeasonWatched(!allWatched) }) {
-                                    Text(
-                                        text = if (allWatched) "Clear season" else "Watch season",
-                                        style = M3EType.action(),
-                                        color = M3EColor.accent()
-                                    )
-                                }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // The heading is the picker.
+                            //
+                            // It already says which season you are in, so tapping it to change it is
+                            // the most direct thing there is, and the caret is what says it is
+                            // tappable. The pills it opens are the same ones that used to sit on the
+                            // page — they were not the problem, the row they occupied was, and a
+                            // show with thirty-one seasons turned that row into a scrubber.
+                            Row(
+                                modifier = Modifier
+                                    .clip(M3EShape.chip())
+                                    .clickable {
+                                        haptics.tap()
+                                        pickingSeason = true
+                                    }
+                                    .padding(horizontal = M3ESpacing.tightGap, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Season $currentSeason",
+                                    style = M3EType.sectionTitle(),
+                                    color = M3EColor.text()
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ExpandMore,
+                                    contentDescription = "Change season",
+                                    tint = M3EColor.accent(),
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
-                        )
-                    }
-                }
-                item {
-                    ChoiceRow(
-                        options = seasons.map { "Season $it" },
-                        selected = "Season $currentSeason",
-                        tintFor = { M3EColor.accent() },
-                        onSelect = { label ->
-                            label.substringAfter("Season ").toIntOrNull()?.let { season = it }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { setSeasonWatched(!allWatched) }) {
+                                Text(
+                                    text = if (allWatched) "Clear season" else "Watch season",
+                                    style = M3EType.action(),
+                                    color = M3EColor.accent()
+                                )
+                            }
                         }
-                    )
+                    }
                 }
                 if (seasonEpisodes.isEmpty()) {
                     item {
@@ -837,6 +860,30 @@ fun M3ERoughDetail(
             }
         }
     }
+    }
+
+    if (pickingSeason) {
+        AlertDialog(
+            onDismissRequest = { pickingSeason = false },
+            title = { Text("Season") },
+            text = {
+                // The same pills, wrapped. They fill a dialog instead of a row, which is the whole
+                // change: thirty-one of them wrap into four lines here and take a scrubber there.
+                ChoiceRow(
+                    options = seasons.map { "Season $it" },
+                    selected = "Season $currentSeason",
+                    tintFor = { M3EColor.accent() },
+                    onSelect = { label ->
+                        haptics.tap()
+                        label.substringAfter("Season ").toIntOrNull()?.let { season = it }
+                        pickingSeason = false
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { pickingSeason = false }) { Text("Done") }
+            }
+        )
     }
 
     if (statusPickerOpen) {
