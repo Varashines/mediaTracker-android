@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -55,7 +54,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -467,28 +465,28 @@ fun M3ERoughDetail(
                 .graphicsLayer { alpha = revealStage(reveal.value, 0.5f, 1f) }
         ) { page ->
             val section = sections.getOrElse(page) { sections.first() }
-            val pageList = rememberLazyGridState()
-            val headerGone by remember {
-                derivedStateOf { pageList.layoutInfo.visibleItemsInfo.none { it.key == "header" } }
-            }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
-                state = pageList,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = M3ESpacing.page),
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
                 verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
             ) {
+                // Always rendered, never gated.
+                //
+                // It was gated on "the section has scrolled away", and that could not work: the bar
+                // flipping between zero height and its own height moves the content, which brings the
+                // section back into view, which flips the gate back. The poster shook and nothing
+                // ever settled. A bar that is always there changes no layout, so there is nothing to
+                // oscillate against.
                 stickyHeader(key = "bar") {
-                    if (headerGone) {
-                        CompactBar(
-                            title = live.title,
-                            nextEpisode = nextEpisode,
-                            upcoming = upcoming,
-                            onMarkWatched = { nextEpisode?.let { setEpisodeWatched(it, true) } }
-                        )
-                    }
+                    CompactBar(
+                        title = live.title,
+                        nextEpisode = nextEpisode,
+                        upcoming = upcoming,
+                        onMarkWatched = { nextEpisode?.let { setEpisodeWatched(it, true) } }
+                    )
                 }
                 item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
                 Column {
