@@ -683,7 +683,17 @@ fun M3ERoughDetail(
                             selected = pagerState.currentPage == index,
                             onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
                             label = { Text(candidate.label, style = M3EType.action()) },
-                            shape = M3EShape.chip()
+                            shape = M3EShape.chip(),
+                            // Filled when selected, not tinted.
+                            //
+                            // The default is the accent at container alpha, which on a light palette
+                            // is a faint wash of the page — you could not tell which tab you were on.
+                            // Filled with the accent and labelled on it, the current one is
+                            // unambiguous in both modes, and the accent is the poster's own colour.
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = M3EColor.accent(),
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            )
                         )
                     }
                 }

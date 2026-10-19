@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -512,7 +513,7 @@ private fun HomeSection(
                 }
             )
         }
-        item { MetricRow(core.items.size, inProgress.size, completed) }
+
 
         if (inProgress.isNotEmpty()) {
             item {
@@ -529,13 +530,30 @@ private fun HomeSection(
             // Each rail is namespaced. Three `items` blocks in one LazyColumn share a single key
             // space, and a show can legitimately be in two of them at once — in progress *and*
                     // airing soon — which put the same id in the list twice.
-            items(inProgress.take(RAIL_SIZE), key = { "continue_${it.id}" }) { item ->
-                TitleRow(
-                    item = item,
-                    trailing = Icons.Default.PlayArrow,
-                    onClick = { onOpen(item) },
-                    subtitle = nextEpisodeSubtitle(item, core)
-                )
+            // A poster rail, not a row of cards.
+            //
+            // It was the same `TitleRow` list as Coming soon directly below it, so the two rails read
+            // as one long list with two headings. A rail of posters with a progress line under each
+            // says "carry on with these" without the words, and shows how far in you are — which is
+            // the only reason this rail exists rather than the Library's sort.
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+                    items(inProgress.take(RAIL_SIZE), key = { "continue_${it.id}" }) { item ->
+                        val progress = home.showProgressMap[item.id]?.let {
+                            if (it.totalEpisodes > 0) {
+                                it.watchedEpisodes.toFloat() / it.totalEpisodes
+                            } else {
+                                null
+                            }
+                        }
+                        PosterCard(
+                            item = item,
+                            width = 120.dp,
+                            progress = progress,
+                            onClick = { onOpen(item) }
+                        )
+                    }
+                }
             }
         }
         if (comingSoon.isNotEmpty()) {
@@ -944,26 +962,6 @@ private fun EmphasisBanner(count: Int, onClick: (() -> Unit)? = null) {
     }
 }
 
-@Composable
-private fun MetricRow(library: Int, inProgress: Int, completed: Int) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
-    ) {
-        Metric("Library", library, Modifier.weight(1f))
-        Metric("Watching", inProgress, Modifier.weight(1f))
-        Metric("Finished", completed, Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun Metric(label: String, value: Int, modifier: Modifier = Modifier) {
-    Column(modifier = modifier) {
-        Text("$value", style = M3EType.metric(), color = M3EColor.text())
-        Text(label.uppercase(), style = M3EType.rowSupporting(), color = M3EColor.textMuted())
-    }
-}
-
 /** One tonal card per row: poster, title, supporting line, trailing action. */
 @Composable
 private fun TitleRow(
@@ -1013,20 +1011,47 @@ private fun TitleRow(
 }
 
 @Composable
-private fun PosterCard(item: MediaItemEntity, width: Dp, onClick: (() -> Unit)? = null) {
+private fun PosterCard(
+    item: MediaItemEntity,
+    width: Dp,
+    progress: Float? = null,
+    onClick: (() -> Unit)? = null
+) {
     val hero = rememberTileOrigin(item.id)
     M3EArtworkCard(
         title = item.title,
         modifier = Modifier.width(width),
         onClick = if (onClick == null) null else { { hero.record(); onClick() } }
     ) {
-        Poster(
-            item,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f / 3f)
-                .then(hero.modifier)
-        )
+        Column {
+            Poster(
+                item,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f)
+                    .then(hero.modifier)
+            )
+            // Under the poster rather than on it: a bar over artwork is unreadable on half the
+            // posters in a library, and the card is the thing being scanned.
+            if (progress != null) {
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress.coerceIn(0f, 1f))
+                            .height(3.dp)
+                            .clip(CircleShape)
+                            .background(M3EColor.accent())
+                    )
+                }
+            }
+        }
     }
 }
 
