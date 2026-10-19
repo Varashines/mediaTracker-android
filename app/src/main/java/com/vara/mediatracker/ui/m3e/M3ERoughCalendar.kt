@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -38,7 +37,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -226,37 +224,17 @@ fun M3ERoughCalendar(
         selected = next.atDay(selectedDay.dayOfMonth.coerceAtMost(next.lengthOfMonth())).toString()
     }
 
-    // The releases are the only thing that scrolls. The calendar is a fixed header above them, and
-    // that is the whole reason this works: a calendar whose height changes *inside* the scrolling
-    // container fights the scroll every frame, and that fight is what produced a band under the grid,
-    // a stray strip and then a jitter across four attempts. Outside it, changing its height cannot
-    // disturb anything.
-    val listState = rememberLazyListState()
-
-    // Whether the releases have been scrolled at all. The list merely starting to move counts — a
-    // small threshold on purpose, because a day with three releases only scrolls a little, and the
-    // old 24 was enough to miss it.
-    val scrolledPastTop by remember {
-        derivedStateOf {
-            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 8
-        }
-    }
-
-    // Latched, not direct. Set once the list has been scrolled while the day has more than two
-    // releases, and released only when the scroll comes back to the top. A fraction that tracks the
-    // finger would change sixty times a second and flicker; this changes twice.
+    // The month folds for a long day, and the trigger is the day rather than the scroll.
     //
-    // No control, deliberately. The state is a consequence of where you are, not a setting — and a
-    // control for something the scroll already decides is a control that will mostly be wrong about
-    // what you wanted. If the list is too short to scroll, it never compacts, which is correct: a
-    // short list does not need the room.
-    var isCompactWeek by remember { mutableStateOf(false) }
-    LaunchedEffect(scrolledPastTop, releases.size) {
-        if (!scrolledPastTop) isCompactWeek = false
-        // Three or more. Three rows plus a section heading is where a full month stops fitting, and
-        // the day is the thing you are reading.
-        else if (releases.size >= 3) isCompactWeek = true
-    }
+    // It was the scroll, and that could not work: the gesture that triggered the change was also the
+    // gesture the change disturbed. The date header scrolled away before the fold landed, and on a
+    // day short enough to fit there was nothing to scroll at all, so it never fired. Neither is a
+    // threshold problem — the trigger simply cannot be the thing the trigger moves.
+    //
+    // The escape is the strip itself: tapping it opens the month again, and the reset is keyed on
+    // the day, so picking a different day folds it back.
+    var monthOpened by remember(selectedDay) { mutableStateOf(false) }
+    val isCompactWeek = releases.size >= 3 && !monthOpened
 
     // One row or five, and that is the whole of the week/month difference. A row count cannot be
     // wrong; a height or a travel distance can, and mine was, repeatedly.
@@ -348,6 +326,17 @@ fun M3ERoughCalendar(
                     onSelect = {
                         haptics.tap()
                         selected = it.toString()
+                    },
+                    // Only when folded. The strip is the month, collapsed, so the thing to tap to
+                    // open it is the strip — no separate control, and no reliance on there being
+                    // something to scroll.
+                    onExpand = if (isCompactWeek) {
+                        {
+                            haptics.tap()
+                            monthOpened = true
+                        }
+                    } else {
+                        null
                     }
                 )
                 Spacer(Modifier.height(M3ESpacing.cardGap))
@@ -355,7 +344,6 @@ fun M3ERoughCalendar(
         }
 
         LazyColumn(
-            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = M3ESpacing.page),
             verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
@@ -395,17 +383,28 @@ fun M3ERoughCalendar(
                     }
                 }
             } else {
-                item {
-                    M3ESectionHeader(
-                        title = fullLabel.format(selectedDay),
-                        trailing = {
-                            Text(
-                                text = "${releases.size} ${if (releases.size == 1) "release" else "releases"}",
-                                style = M3EType.rowSupporting(),
-                                color = M3EColor.textMuted()
-                            )
-                        }
-                    )
+                // Pinned, so the day cannot be pulled out of view while you read its releases — which
+                // is exactly what happened when the fold was driven by scrolling. Opaque, because a
+                // sticky header the rows show through is worse than no header.
+                stickyHeader(key = "day") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(M3EColor.page())
+                            .padding(vertical = M3ESpacing.tightGap)
+                    ) {
+                        M3ESectionHeader(
+                            title = fullLabel.format(selectedDay),
+                            trailing = {
+                                Text(
+                                    text = "${releases.size} " +
+                                        if (releases.size == 1) "release" else "releases",
+                                    style = M3EType.rowSupporting(),
+                                    color = M3EColor.textMuted()
+                                )
+                            }
+                        )
+                    }
                 }
                 if (releases.isEmpty()) {
                     item {
@@ -566,7 +565,8 @@ private fun MonthGrid(
     selectedDay: LocalDate,
     dayLabel: DateTimeFormatter,
     intensityOf: (LocalDate) -> Float,
-    onSelect: (LocalDate) -> Unit
+    onSelect: (LocalDate) -> Unit,
+    onExpand: (() -> Unit)? = null
 ) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth().animateContentSize()) {
         Column(
@@ -593,6 +593,31 @@ private fun MonthGrid(
                     }
                 }
                 if (index < weeks.size - 1) Spacer(Modifier.height(CELL_GAP))
+            }
+            if (onExpand != null) {
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(M3EShape.chip())
+                        .clickable { onExpand() }
+                        .padding(vertical = M3ESpacing.tightGap),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = M3EColor.accent(),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "Show month",
+                        style = M3EType.action(),
+                        color = M3EColor.accent()
+                    )
+                }
             }
         }
     }
