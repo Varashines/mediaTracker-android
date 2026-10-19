@@ -883,13 +883,14 @@ fun M3ERoughDetail(
         // layout before, and that is exactly how two dialogs that look alike drift apart.
         ChoicePicker(
             title = "Season",
-            options = seasons.map { "Season $it" },
-            selected = "Season $currentSeason",
+            // The numbers alone. The title says "Season", so repeating it in every cell is what made
+            // them wide enough to truncate at "Season 10".
+            options = seasons.map { it.toString() },
+            selected = currentSeason.toString(),
             tintFor = { M3EColor.accent() },
-            onSelect = { label ->
-                label.substringAfter("Season ").toIntOrNull()?.let { season = it }
-            },
-            onDismiss = { pickingSeason = false }
+            onSelect = { label -> label.toIntOrNull()?.let { season = it } },
+            onDismiss = { pickingSeason = false },
+            columns = 5
         )
     }
 
@@ -1037,7 +1038,16 @@ private fun ChoicePicker(
     selected: String,
     tintFor: @Composable (String) -> Color,
     onSelect: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /**
+     * When set, the options are drawn as a grid of that many columns instead of wrapping chips.
+     *
+     * For a list of numbers. A chip has to carry its own meaning, so a season chip said "Season 10"
+     * — and that is what made it too wide for a third of a dialog and too long to line up. With the
+     * dialog titled "Season", a cell only needs the number, and a number is small enough to be a
+     * cell in a table rather than a chip in a row.
+     */
+    columns: Int? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1052,22 +1062,71 @@ private fun ChoicePicker(
                     .heightIn(max = 300.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                ChoiceRow(
-                    options = options,
-                    selected = selected,
-                    tintFor = tintFor,
-                    onSelect = {
-                        onSelect(it)
-                        // Choosing is the whole interaction. A Done button asks you to confirm a
-                        // decision you made a moment ago and cannot have meant differently.
-                        onDismiss()
-                    }
-                )
+                val pick: (String) -> Unit = {
+                    onSelect(it)
+                    // Choosing is the whole interaction. A Done button asks you to confirm a decision
+                    // you made a moment ago and cannot have meant differently.
+                    onDismiss()
+                }
+                if (columns != null) {
+                    NumberGrid(options, selected, tintFor, pick, columns)
+                } else {
+                    ChoiceRow(options, selected, tintFor, pick)
+                }
             }
         },
         // Empty on purpose: selecting closes it, and so does tapping outside.
         confirmButton = {}
     )
+}
+
+/**
+ * Numbers as a table.
+ *
+ * Roomier than a chip row on purpose: a cell is a target you aim at, and a number you are hunting for
+ * — season 24 of 31 — is found by position, so the position has to be legible. A larger figure in a
+ * square cell with real air around it is a lookup; a row of small chips is a search.
+ */
+@Composable
+private fun NumberGrid(
+    options: List<String>,
+    selected: String,
+    tintFor: @Composable (String) -> Color,
+    onSelect: (String) -> Unit,
+    columns: Int
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+        options.chunked(columns).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+            ) {
+                row.forEach { option ->
+                    val isSelected = option.equals(selected, ignoreCase = true)
+                    val tint = tintFor(option)
+                    Surface(
+                        onClick = { onSelect(option) },
+                        shape = M3EShape.card(),
+                        color = if (isSelected) tint.copy(alpha = 0.20f) else M3EColor.card(),
+                        contentColor = if (isSelected) tint else M3EColor.text(),
+                        border = if (isSelected) BorderStroke(2.dp, tint) else null,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = option,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
 }
 
 /** The app's six tracking states, raw values — what sync and the Mac both read. */
