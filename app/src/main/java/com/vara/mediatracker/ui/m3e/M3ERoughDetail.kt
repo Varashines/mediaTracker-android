@@ -1,6 +1,9 @@
 package com.vara.mediatracker.ui.m3e
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -92,6 +95,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -491,6 +495,22 @@ fun M3ERoughDetail(
                 val used = (next - collapse) * collapsePx
                 collapse = next
                 return Offset(0f, used)
+            }
+
+            // Releasing halfway is not a state the header has.
+            //
+            // It is a section or a title row, never a bit of both — so on release the fold finishes
+            // the way it was already going. Nearest end wins, which is what makes it feel magnetic
+            // rather than sticky: past halfway it commits, short of it it lets go. The fling is
+            // consumed while it snaps, so the list does not also move under the animation.
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (collapse <= 0f || collapse >= 1f) return Velocity.Zero
+                animate(
+                    initialValue = collapse,
+                    targetValue = if (collapse >= 0.5f) 1f else 0f,
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                ) { value, _ -> collapse = value }
+                return available
             }
         }
     }
