@@ -477,37 +477,34 @@ fun M3ERoughDetail(
                 .graphicsLayer { alpha = revealStage(reveal.value, 0.5f, 1f) }
         ) { page ->
             val section = sections.getOrElse(page) { sections.first() }
-            val pageList = rememberLazyGridState()
-            // Drives the two alphas only. Nothing about the layout reads it, which is what keeps it
-            // from oscillating — the earlier version had it deciding a height.
-            val headerGone by remember {
-                derivedStateOf { pageList.layoutInfo.visibleItemsInfo.none { it.key == "header" } }
-            }
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                state = pageList,
+            // A LazyColumn, not a grid.
+            //
+            // The grid's `stickyHeader` exists and compiles and does not pin — chips, headings and
+            // the bar all scrolled away with the content. A column's sticky headers are the
+            // well-trodden path, and everything here was already full-width except the Related
+            // posters, which are now rows of three built where they are used.
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = M3ESpacing.page),
-                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
                 verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
             ) {
-                // Always the same height, and only its alpha moves.
+                // The bar carries the name from the start, and that is deliberate.
                 //
-                // Gating its *height* on "the section has scrolled away" is what shook the screen:
-                // the bar growing from nothing moved the content, which brought the section back,
-                // which shrank the bar again. An alpha has no such problem — it is a draw, not a
-                // layout — so the bar can appear as the section leaves and still be stable.
+                // Gating its height on "the section has scrolled away" shook the screen — the bar
+                // growing from nothing moved the content, which brought the section back, which
+                // shrank the bar again. Gating only its alpha left the space reserved and empty,
+                // which is a blank strip above the poster. Showing the name in it is the one version
+                // that is neither: no layout change, and nothing empty.
                 stickyHeader(key = "bar") {
                     CompactBar(
                         title = live.title,
                         nextEpisode = nextEpisode,
                         upcoming = upcoming,
-                        visible = headerGone,
                         onMarkWatched = { nextEpisode?.let { setEpisodeWatched(it, true) } }
                     )
                 }
-                item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
+                item(key = "header") {
                 Column {
             Spacer(Modifier.height(M3ESpacing.tightGap))
 
@@ -526,7 +523,6 @@ fun M3ERoughDetail(
                 reveal = reveal,
                 heroGrow = heroGrow,
                 heroPlayed = heroPlayed,
-                titleAlpha = if (headerGone) 0f else 1f,
                 sheetRise = sheetRise,
                 sheetHeight = sheetHeight
             ) {
@@ -648,7 +644,7 @@ fun M3ERoughDetail(
                         )
                     }
                 }
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item {
                     ChoiceRow(
                         options = seasons.map { "Season $it" },
                         selected = "Season $currentSeason",
@@ -659,7 +655,7 @@ fun M3ERoughDetail(
                     )
                 }
                 if (seasonEpisodes.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item {
                         M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                             Text(
                                 text = "No episodes here yet.",
@@ -672,8 +668,7 @@ fun M3ERoughDetail(
                 } else {
                     items(
                         items = seasonEpisodes,
-                        key = { it.uniqueId },
-                        span = { GridItemSpan(maxLineSpan) }
+                        key = { it.uniqueId }
                     ) { episode ->
                         EpisodeRow(
                             episode = episode,
@@ -685,7 +680,7 @@ fun M3ERoughDetail(
             }
 
             DetailSection.Info, DetailSection.Overview -> {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item {
                     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
                         if (live.overview.isNotBlank()) {
                             M3ESectionHeader("Overview")
@@ -735,11 +730,11 @@ fun M3ERoughDetail(
             }
 
             DetailSection.Related -> {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                item {
                     M3ESectionHeader("More like this")
                 }
                 if (related.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
+                    item {
                         M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                             Text(
                                 text = "Nothing to suggest yet.",
@@ -750,21 +745,32 @@ fun M3ERoughDetail(
                         }
                     }
                 } else {
-                    // Cells of the same grid the Library uses, rather than rows of three built by
-                    // hand — the layout is the grid's, so it cannot drift from the Library's.
-                    items(related, key = { "${it.media_type}_${it.id}" }) { result ->
-                        RelatedCard(
-                            result = result,
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { openRelated(result) }
-                        )
+                    // Rows of three, built here rather than by the grid. A row of weighted cards
+                    // each carrying its own aspect ratio is the same shape the grid gave them, and
+                    // it is what a column can hold.
+                    related.chunked(3).forEach { row ->
+                        item(key = "related_${row.first().media_type}_${row.first().id}") {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap)
+                            ) {
+                                row.forEach { result ->
+                                    RelatedCard(
+                                        result = result,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = { openRelated(result) }
+                                    )
+                                }
+                                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
                     }
                 }
             }
         }
 
         // Clears the floating navigation bar: at 48 the last row sat underneath it.
-        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(LocalNavClearance.current)) }
+        item { Spacer(Modifier.height(LocalNavClearance.current)) }
             }
         }
     }
@@ -1105,16 +1111,13 @@ private fun CompactBar(
     title: String,
     nextEpisode: EpisodeEntity?,
     upcoming: EpisodeEntity?,
-    visible: Boolean,
     onMarkWatched: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(M3EColor.page())
-            .padding(vertical = M3ESpacing.tightGap)
-            // The whole bar fades as one, and its height is the same either way.
-            .graphicsLayer { alpha = if (visible) 1f else 0f },
+            .padding(vertical = M3ESpacing.tightGap),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
