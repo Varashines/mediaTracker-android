@@ -20,7 +20,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.SplitButtonLayout
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -176,6 +185,7 @@ fun M3ERoughDetail(
     var season by remember(item.id) { mutableStateOf<Int?>(null) }
     var statusPickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
     var pickingSeason by rememberSaveable(item.id) { mutableStateOf(false) }
+    var seasonMenu by rememberSaveable(item.id) { mutableStateOf(false) }
     var tastePickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
     // The sheet fills in rather than arriving complete: the poster lands, then the title, then the
     // controls, then the content. Only when arriving from a tile — a detail pushed on top of another
@@ -790,12 +800,48 @@ fun M3ERoughDetail(
                                 }
                             }
                             Spacer(Modifier.weight(1f))
-                            TextButton(onClick = { setSeasonWatched(!allWatched) }) {
-                                Text(
-                                    text = if (allWatched) "Clear season" else "Watch season",
-                                    style = M3EType.action(),
-                                    color = M3EColor.accent()
+                            // A split button: the action the heading is about, and the other
+                            // direction of it in the menu. The primary is what you mean nine times
+                            // in ten, so it gets the face; "the opposite of this" is a menu item,
+                            // not a second button competing with it.
+                            Box {
+                                SplitButtonLayout(
+                                    leadingButton = {
+                                        Button(onClick = { setSeasonWatched(!allWatched) }) {
+                                            Text(
+                                                text = if (allWatched) "Clear season" else "Watch season",
+                                                style = M3EType.action()
+                                            )
+                                        }
+                                    },
+                                    trailingButton = {
+                                        FilledTonalIconButton(onClick = { seasonMenu = true }) {
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = "More season actions"
+                                            )
+                                        }
+                                    }
                                 )
+                                DropdownMenu(
+                                    expanded = seasonMenu,
+                                    onDismissRequest = { seasonMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Mark all watched") },
+                                        onClick = {
+                                            seasonMenu = false
+                                            setSeasonWatched(true)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Clear all") },
+                                        onClick = {
+                                            seasonMenu = false
+                                            setSeasonWatched(false)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -1661,6 +1707,37 @@ private fun openingSeasonFor(episodes: List<EpisodeEntity>): Int {
 
 @Composable
 private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Boolean) -> Unit) {
+    // A sweep either way toggles it.
+    //
+    // The row never actually leaves the list — an episode is not a thing you dismiss — so the state
+    // is told not to settle: the gesture fires the toggle and the row springs back. That is the
+    // difference between a swipe *action* and a swipe *dismissal*, and it is one boolean.
+    val sweepState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value != SwipeToDismissBoxValue.Settled) onToggle(!watched)
+            false
+        }
+    )
+    SwipeToDismissBox(
+        state = sweepState,
+        backgroundContent = {
+            val tint = if (watched) M3EColor.textMuted() else M3EColor.positive()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(M3EShape.card())
+                    .background(tint.copy(alpha = 0.18f))
+                    .padding(horizontal = M3ESpacing.cardGap),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Icon(
+                    imageVector = if (watched) Icons.Default.Undo else Icons.Default.Check,
+                    contentDescription = null,
+                    tint = tint
+                )
+            }
+        }
+    ) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
@@ -1699,6 +1776,7 @@ private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Bool
             }
             Checkbox(checked = watched, onCheckedChange = onToggle)
         }
+    }
     }
 }
 

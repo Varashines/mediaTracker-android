@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -254,6 +256,15 @@ fun M3ERoughSearch(
                     .padding(horizontal = M3ESpacing.page)
             ) {
                 Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
+                    // Something that moves while the request is out. The words alone look like a
+                    // result that happens to say "Searching…".
+                    if (searching) {
+                        LoadingIndicator(
+                            modifier = Modifier.size(32.dp),
+                            color = M3EColor.accent()
+                        )
+                        Spacer(Modifier.height(M3ESpacing.tightGap))
+                    }
                     Text(
                         text = if (searching) "Searching…" else "Nothing found",
                         style = M3EType.rowTitle(),

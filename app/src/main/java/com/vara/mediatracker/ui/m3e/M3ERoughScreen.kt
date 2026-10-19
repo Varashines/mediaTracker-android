@@ -64,15 +64,19 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -92,9 +96,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import com.vara.mediatracker.data.TrackingLogic
+import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.ui.common.AppToast
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -177,6 +184,7 @@ fun M3ERoughScreen(
     // naming: the render, the bar's remove button and the confirm dialog all key off it.
     val detail = overlay as? Overlay.Detail
     val haptics = rememberHaptics()
+    val context = LocalContext.current
 
     val density = LocalDensity.current
 
@@ -398,6 +406,11 @@ fun M3ERoughScreen(
             // Only when there is a title on screen. The bar is the one place reachable from every
             // overlay, which is why removing lives here rather than buried in a sheet.
             onDelete = detail?.let { { deleteTarget = it.item } },
+            calendarBadge = home.comingSoonItems.size.takeIf { it > 0 },
+            settingsStale = run {
+                val last = SyncScheduler.lastSyncTimestamp(context)
+                last == 0L || System.currentTimeMillis() - last > TimeUnit.HOURS.toMillis(24)
+            },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -933,7 +946,10 @@ private fun EmphasisBanner(count: Int, onClick: (() -> Unit)? = null) {
         onClick = { onClick?.invoke() },
         enabled = onClick != null,
         modifier = Modifier.fillMaxWidth(),
-        shape = M3EShape.hero(),
+        // An expressive silhouette rather than a rounded rectangle. This is the one card the
+        // language says should be noticed, so it is the one place a shape from `MaterialShapes`
+        // reads as deliberate instead of decorative.
+        shape = MaterialShapes.Cookie9Sided.toShape(),
         colors = CardDefaults.cardColors(
             containerColor = M3EColor.emphasis(),
             contentColor = M3EColor.onEmphasis()
@@ -1089,6 +1105,10 @@ private fun FloatingNav(
     onBackToParent: () -> Unit = {},
     /** Removes the title on screen. Null when there is nothing to remove. */
     onDelete: (() -> Unit)? = null,
+    /** Upcoming releases, for the Calendar pill. */
+    calendarBadge: Int? = null,
+    /** Something worth looking at in Settings — a dot, not a number. */
+    settingsStale: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -1120,7 +1140,12 @@ private fun FloatingNav(
                     )
                 } else {
                 NavPill(Icons.Default.Home, "Home", selected == HOME) { onSelect(HOME) }
-                NavPill(Icons.Default.CalendarMonth, "Calendar", selected == CALENDAR) {
+                NavPill(
+                    Icons.Default.CalendarMonth,
+                    "Calendar",
+                    selected == CALENDAR,
+                    badgeCount = calendarBadge
+                ) {
                     onSelect(CALENDAR)
                 }
                 NavPill(Icons.Default.VideoLibrary, "Library", selected == LIBRARY) {
@@ -1129,7 +1154,12 @@ private fun FloatingNav(
                 // Settings is a section like the other three, not an overlay. It was the fourth
                 // button but behaved differently — no lit pill, and back closed it — which is what
                 // made it feel like it belonged to whichever section you came from.
-                NavPill(Icons.Default.Settings, "Settings", selected == SETTINGS) {
+                NavPill(
+                    Icons.Default.Settings,
+                    "Settings",
+                    selected == SETTINGS,
+                    badgeDot = settingsStale
+                ) {
                     onSelect(SETTINGS)
                 }
                 }
@@ -1178,7 +1208,14 @@ private fun FloatingNav(
 
 /** One section in the bar: icon always, name only when it is the current one. */
 @Composable
-private fun NavPill(icon: ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
+private fun NavPill(
+    icon: ImageVector,
+    label: String,
+    active: Boolean,
+    badgeCount: Int? = null,
+    badgeDot: Boolean = false,
+    onClick: () -> Unit
+) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(50),
@@ -1189,11 +1226,24 @@ private fun NavPill(icon: ImageVector, label: String, active: Boolean, onClick: 
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
-            )
+            val tint = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
+            // A badge says what is waiting in a place you have not opened — a count for a number of
+            // things, a dot for "something", because "how many" is not useful for a stale sync.
+            if (badgeCount != null || badgeDot) {
+                BadgedBox(
+                    badge = {
+                        if (badgeCount != null) {
+                            Badge { Text("$badgeCount") }
+                        } else {
+                            Badge()
+                        }
+                    }
+                ) {
+                    Icon(imageVector = icon, contentDescription = label, tint = tint)
+                }
+            } else {
+                Icon(imageVector = icon, contentDescription = label, tint = tint)
+            }
             if (active) {
                 Text(
                     text = label,

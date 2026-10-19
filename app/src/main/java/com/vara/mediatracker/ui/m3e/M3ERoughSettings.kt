@@ -59,6 +59,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -493,9 +494,10 @@ fun M3ERoughSettings(
                             .height(M3ESpacing.rowMinHeight)
                     ) {
                         if (syncing || checkingImpact) {
-                            CircularProgressIndicator(
+                            // M3E's morphing indicator, not a ring. Same job, in the vocabulary the
+                            // rest of the screen is written in.
+                            LoadingIndicator(
                                 modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
                         } else {
@@ -830,9 +832,8 @@ fun M3ERoughSettings(
                         modifier = Modifier.weight(1f)
                     ) {
                         if (syncing) {
-                            CircularProgressIndicator(
+                            LoadingIndicator(
                                 modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
                         } else {
