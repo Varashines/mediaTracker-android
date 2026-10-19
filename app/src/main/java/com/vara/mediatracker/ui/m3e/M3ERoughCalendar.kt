@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -689,6 +690,13 @@ private fun MonthGrid(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // Unbounded, and that is what stops the jitter.
+                //
+                // The month's height comes from this Column's height, and this Column is inside the
+                // box whose height that is — so measured normally it was measured against its own
+                // output, and the two chased each other every frame. Unbounded takes the parent's
+                // height out of the measurement, so this is the content's height and nothing else.
+                .wrapContentHeight(unbounded = true)
                 // Read in the layout phase, so the row travels without recomposing anything.
                 .offset { IntOffset(0, -(travelPx * collapse).roundToInt()) }
                 .padding(M3ESpacing.cardGap)
