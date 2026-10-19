@@ -116,7 +116,7 @@ internal fun M3ERoughHub(
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
             when (page) {
                 0 -> SmartTab(library, onOpenList)
-                1 -> DiscoverTab(library, core.networkLogos, onOpenList)
+                1 -> DiscoverTab(library, onOpenList)
                 else -> M3ERoughCollections(
                     container = container,
                     core = core,
@@ -256,7 +256,6 @@ private data class Facet(
 @Composable
 private fun DiscoverTab(
     library: List<MediaItemEntity>,
-    networkLogos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     // Networks only. Studios were here behind a pill pair, and they were the weaker half: a studio
@@ -293,7 +292,6 @@ private fun DiscoverTab(
                 NetworkGrid(
                     title = "Networks",
                     facets = brands,
-                    logos = networkLogos,
                     onOpenList = onOpenList
                 )
                 if (genres.isNotEmpty()) GenreGrid(genres, onOpenList)
@@ -305,16 +303,17 @@ private fun DiscoverTab(
 }
 
 /**
- * Networks as tiles: the mark on a plate, and the count in the corner.
+ * Networks as tiles: the name, and the count in the corner.
  *
- * The Mac's DiscoveryCard with `style: .logo`, which is what this is: the mark gets the tile, and
- * the count rides in a corner pill instead of taking a line under it.
+ * The names, not the marks. A logo map is worth having when the marks are the thing you scan by, and
+ * at three to a row on a phone they are not — a wordmark shrunk to ninety points of width is a
+ * smudge you have to read anyway, so it may as well be the word. The count stays in the corner so
+ * the name gets the whole tile, which is the part of the Mac's tile that was actually working.
  */
 @Composable
 private fun NetworkGrid(
     title: String,
     facets: List<Facet>,
-    logos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     M3ESectionHeader(title)
@@ -338,7 +337,6 @@ private fun NetworkGrid(
                 row.forEach { facet ->
                     NetworkTile(
                         facet = facet,
-                        logoUrl = TMDBClient.buildLogoUrl(logos[facet.name.lowercase(Locale.US)]),
                         modifier = Modifier.weight(1f),
                         onClick = {
                             onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
@@ -352,56 +350,34 @@ private fun NetworkGrid(
 }
 
 /**
- * One network: its mark on a light plate, and how many titles it holds in a corner pill.
+ * One network: its name, and how many titles it holds in a corner pill.
  *
- * The plate is not decoration and it is not the palette's colour on purpose. A network mark is a
- * transparent PNG, usually dark — Netflix, HBO, Prime — and on a tonal card in dark mode it simply
- * disappears. The plate is what makes it visible, which is why the Mac draws these the same way and
- * why this is a fixed light surface rather than a themed one.
- *
- * The count moved to the corner so the mark can have the whole tile. Under it, it forced the mark
- * into half the height and made every logo small enough to be guesswork.
+ * The name is inset on the trailing side so a two-line one cannot run under the pill.
  */
 @Composable
 private fun NetworkTile(
     facet: Facet,
-    logoUrl: String?,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Box(modifier = modifier.height(60.dp)) {
-        Surface(
-            onClick = onClick,
-            shape = M3EShape.chip(),
-            color = Color.White,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            modifier = Modifier.fillMaxSize()
-        ) {
+        M3ETonalCard(modifier = Modifier.fillMaxSize(), onClick = onClick) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = M3ESpacing.tightGap, vertical = M3ESpacing.tightGap),
                 contentAlignment = Alignment.Center
             ) {
-                if (logoUrl != null) {
-                    AsyncImage(
-                        model = logoUrl,
-                        contentDescription = facet.name,
-                        // Fit, not Crop: a network mark sits on transparency, and cropping cuts it.
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Text(
-                        text = facet.name,
-                        style = M3EType.rowSupporting(),
-                        fontWeight = FontWeight.SemiBold,
-                        color = NETWORK_PLATE_INK,
-                        textAlign = TextAlign.Center,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Text(
+                    text = facet.name,
+                    style = M3EType.rowSupporting(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = M3EColor.text(),
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
             }
         }
         Surface(
@@ -422,8 +398,7 @@ private fun NetworkTile(
     }
 }
 
-/** Ink for a light plate. Fixed, because the plate is white in both themes. */
-private val NETWORK_PLATE_INK = Color(0xFF1F2933)
+
 
 /** Comma-separated facet counts, most common first. */
 private fun facets(

@@ -387,8 +387,12 @@ fun M3ERoughCalendar(
                         cells = cells,
                         selectedWeekIndex = selectedWeekIndex,
                         collapse = collapse,
-                        // From the width, because the cells keep their aspect ratio.
-                        cellHeight = (maxWidth - CELL_GAP * 6) / 7 / 0.9f,
+                        // From the width the cells actually get — the row's width less the card's
+                        // own padding, not the row's width. Deriving it from the outer width made
+                        // every cell taller than it is, so the month was taller than its contents:
+                        // a white band under the grid, which is what the scroll revealed instead of
+                        // the strip.
+                        cellHeight = (maxWidth - M3ESpacing.cardGap * 2 - CELL_GAP * 6) / 7 / 0.9f,
                         today = today,
                         selectedDay = selectedDay,
                         dayLabel = dayLabel,
