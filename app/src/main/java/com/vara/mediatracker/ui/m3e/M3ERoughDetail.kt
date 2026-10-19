@@ -1322,12 +1322,18 @@ private fun CompactTitleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            // Opaque, because it sits over the section that is fading out. Without a background the
-            // blurred content shows through the row that is replacing it, and the two read as one
-            // muddled thing instead of a hand-off.
+            // The layer comes before the background, and that order is the whole of it.
+            //
+            // Modifiers apply outside-in, so a background written first is painted by a node *outside*
+            // the alpha layer — the fill stayed at full opacity while only its contents faded, and at
+            // rest that was a page-coloured strip sitting over the header. Inside the layer, the fill
+            // fades with the row, which is what makes it opaque at the end and absent at the start.
+            .graphicsLayer { alpha = visible }
+            // Opaque at the end, because it sits over the section that is fading out. Without a
+            // background the blurred content shows through the row replacing it, and the two read as
+            // one muddled thing instead of a hand-off.
             .background(M3EColor.page())
-            .padding(vertical = M3ESpacing.tightGap)
-            .graphicsLayer { alpha = visible },
+            .padding(vertical = M3ESpacing.tightGap),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
