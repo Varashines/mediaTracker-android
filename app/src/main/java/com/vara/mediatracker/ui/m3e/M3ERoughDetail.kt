@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.ExpandMore
@@ -878,35 +879,17 @@ fun M3ERoughDetail(
     }
 
     if (pickingSeason) {
-        AlertDialog(
-            onDismissRequest = { pickingSeason = false },
-            title = { Text("Season") },
-            text = {
-                // The same pills, wrapped and capped.
-                //
-                // Wrapped, because thirty-one of them should read as four lines rather than a
-                // scrubber. Capped and scrollable, because a dialog that grows to fit is a dialog
-                // that runs off the screen — it was showing up to season 22 and simply cutting the
-                // rest off.
-                Box(
-                    modifier = Modifier
-                        .heightIn(max = 300.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    ChoiceRow(
-                        options = seasons.map { "Season $it" },
-                        selected = "Season $currentSeason",
-                        tintFor = { M3EColor.accent() },
-                        onSelect = { label ->
-                            haptics.tap()
-                            label.substringAfter("Season ").toIntOrNull()?.let { season = it }
-                            pickingSeason = false
-                        }
-                    )
-                }
+        // The shared picker, so all three dialogs are the same shape by construction. It had its own
+        // layout before, and that is exactly how two dialogs that look alike drift apart.
+        ChoicePicker(
+            title = "Season",
+            options = seasons.map { "Season $it" },
+            selected = "Season $currentSeason",
+            tintFor = { M3EColor.accent() },
+            onSelect = { label ->
+                label.substringAfter("Season ").toIntOrNull()?.let { season = it }
             },
-            // Empty on purpose: selecting a season closes it, and so does tapping outside.
-            confirmButton = {}
+            onDismiss = { pickingSeason = false }
         )
     }
 
@@ -1060,17 +1043,27 @@ private fun ChoicePicker(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            ChoiceRow(
-                options = options,
-                selected = selected,
-                tintFor = tintFor,
-                onSelect = {
-                    onSelect(it)
-                    // Choosing is the whole interaction. A Done button asks you to confirm a
-                    // decision you made a moment ago and cannot have meant differently.
-                    onDismiss()
-                }
-            )
+            // Capped and scrollable here rather than in one caller, so a list too long for the dialog
+            // scrolls instead of being cut off — and so every picker has the same geometry. The
+            // season list was showing up to season 22 and losing the rest, with nothing to say there
+            // was more.
+            Box(
+                modifier = Modifier
+                    .heightIn(max = 300.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                ChoiceRow(
+                    options = options,
+                    selected = selected,
+                    tintFor = tintFor,
+                    onSelect = {
+                        onSelect(it)
+                        // Choosing is the whole interaction. A Done button asks you to confirm a
+                        // decision you made a moment ago and cannot have meant differently.
+                        onDismiss()
+                    }
+                )
+            }
         },
         // Empty on purpose: selecting closes it, and so does tapping outside.
         confirmButton = {}
@@ -1350,48 +1343,44 @@ private fun ChoiceRow(
     tintFor: @Composable (String) -> Color,
     onSelect: (String) -> Unit
 ) {
-    // Three to a row, and a smaller label to match.
+    // Dynamic, with a floor.
     //
-    // A `FlowRow` packs whatever fits, so "Re-watching" and "On Hold" sat on different lines and the
-    // same list had a different shape every time it opened. Three fixed columns read as a table, and
-    // a season or a status is short enough that a third of the width holds it — at the label size a
-    // chip uses by default, it does not.
-    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
-        options.chunked(3).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
-            ) {
-                row.forEach { option ->
-                    val isSelected = option.equals(selected, ignoreCase = true)
-                    val tint = tintFor(option)
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { onSelect(option) },
-                        label = {
-                            Text(
-                                text = option,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (isSelected) tint else M3EColor.textMuted(),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        },
-                        shape = M3EShape.chip(),
-                        colors = FilterChipDefaults.filterChipColors(
-                            containerColor = Color.Transparent,
-                            labelColor = M3EColor.textMuted(),
-                            selectedContainerColor = tint.copy(alpha = 0.18f),
-                            selectedLabelColor = tint,
-                            selectedLeadingIconColor = tint
-                        ),
-                        modifier = Modifier.weight(1f)
+    // Fixed columns were wrong twice over: three of them made "Season 10" wider than its third of the
+    // dialog, so it ellipsised, and the count that suits "1" does not suit "Re-watching". A `FlowRow`
+    // sizes each chip to its own label and wraps where it runs out — dynamic, and nothing truncates.
+    //
+    // The floor is what keeps it from looking accidental. Without it, a list of one- and two-digit
+    // seasons packs tight and a list with "Re-watching" in it goes ragged; with it, every chip is at
+    // least a comfortable tap and the rows read as rows whatever the labels are.
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+    ) {
+        options.forEach { option ->
+            val isSelected = option.equals(selected, ignoreCase = true)
+            val tint = tintFor(option)
+            FilterChip(
+                selected = isSelected,
+                onClick = { onSelect(option) },
+                label = {
+                    Text(
+                        text = option,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isSelected) tint else M3EColor.textMuted(),
+                        maxLines = 1,
+                        textAlign = TextAlign.Center
                     )
-                }
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-            }
+                },
+                shape = M3EShape.chip(),
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = Color.Transparent,
+                    labelColor = M3EColor.textMuted(),
+                    selectedContainerColor = tint.copy(alpha = 0.18f),
+                    selectedLabelColor = tint,
+                    selectedLeadingIconColor = tint
+                ),
+                modifier = Modifier.widthIn(min = 76.dp)
+            )
         }
     }
 }
