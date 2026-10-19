@@ -709,13 +709,23 @@ fun M3ERoughDetail(
                             // tappable. The pills it opens are the same ones that used to sit on the
                             // page — they were not the problem, the row they occupied was, and a
                             // show with thirty-one seasons turned that row into a scrubber.
+                            // A show with one season has nothing to pick, so the heading stays a
+                            // heading: no caret, and nothing to tap. Offering a picker for a list of
+                            // one is a control that can only disappoint.
+                            val canPickSeason = seasons.size > 1
                             Row(
                                 modifier = Modifier
                                     .clip(M3EShape.chip())
-                                    .clickable {
-                                        haptics.tap()
-                                        pickingSeason = true
-                                    }
+                                    .then(
+                                        if (canPickSeason) {
+                                            Modifier.clickable {
+                                                haptics.tap()
+                                                pickingSeason = true
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
                                     .padding(horizontal = M3ESpacing.tightGap, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -724,13 +734,15 @@ fun M3ERoughDetail(
                                     style = M3EType.sectionTitle(),
                                     color = M3EColor.text()
                                 )
-                                Spacer(Modifier.width(4.dp))
-                                Icon(
-                                    imageVector = Icons.Default.ExpandMore,
-                                    contentDescription = "Change season",
-                                    tint = M3EColor.accent(),
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                if (canPickSeason) {
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.ExpandMore,
+                                        contentDescription = "Change season",
+                                        tint = M3EColor.accent(),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = { setSeasonWatched(!allWatched) }) {
@@ -893,9 +905,8 @@ fun M3ERoughDetail(
                     )
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { pickingSeason = false }) { Text("Done") }
-            }
+            // Empty on purpose: selecting a season closes it, and so does tapping outside.
+            confirmButton = {}
         )
     }
 
@@ -1053,12 +1064,16 @@ private fun ChoicePicker(
                 options = options,
                 selected = selected,
                 tintFor = tintFor,
-                onSelect = onSelect
+                onSelect = {
+                    onSelect(it)
+                    // Choosing is the whole interaction. A Done button asks you to confirm a
+                    // decision you made a moment ago and cannot have meant differently.
+                    onDismiss()
+                }
             )
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Done") }
-        }
+        // Empty on purpose: selecting closes it, and so does tapping outside.
+        confirmButton = {}
     )
 }
 
@@ -1335,32 +1350,48 @@ private fun ChoiceRow(
     tintFor: @Composable (String) -> Color,
     onSelect: (String) -> Unit
 ) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
-        verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
-    ) {
-        options.forEach { option ->
-            val isSelected = option.equals(selected, ignoreCase = true)
-            val tint = tintFor(option)
-            FilterChip(
-                selected = isSelected,
-                onClick = { onSelect(option) },
-                label = {
-                    Text(
-                        text = option,
-                        style = M3EType.action(),
-                        color = if (isSelected) tint else M3EColor.textMuted()
+    // Three to a row, and a smaller label to match.
+    //
+    // A `FlowRow` packs whatever fits, so "Re-watching" and "On Hold" sat on different lines and the
+    // same list had a different shape every time it opened. Three fixed columns read as a table, and
+    // a season or a status is short enough that a third of the width holds it — at the label size a
+    // chip uses by default, it does not.
+    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
+        options.chunked(3).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+            ) {
+                row.forEach { option ->
+                    val isSelected = option.equals(selected, ignoreCase = true)
+                    val tint = tintFor(option)
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { onSelect(option) },
+                        label = {
+                            Text(
+                                text = option,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isSelected) tint else M3EColor.textMuted(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        },
+                        shape = M3EShape.chip(),
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = Color.Transparent,
+                            labelColor = M3EColor.textMuted(),
+                            selectedContainerColor = tint.copy(alpha = 0.18f),
+                            selectedLabelColor = tint,
+                            selectedLeadingIconColor = tint
+                        ),
+                        modifier = Modifier.weight(1f)
                     )
-                },
-                shape = M3EShape.chip(),
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = Color.Transparent,
-                    labelColor = M3EColor.textMuted(),
-                    selectedContainerColor = tint.copy(alpha = 0.18f),
-                    selectedLabelColor = tint,
-                    selectedLeadingIconColor = tint
-                )
-            )
+                }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
         }
     }
 }
