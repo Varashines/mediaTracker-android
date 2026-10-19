@@ -482,28 +482,15 @@ fun M3ERoughDetail(
     val density = LocalDensity.current
     val collapsePx = remember(density) { with(density) { COLLAPSE_DISTANCE.toPx() } }
     val collapseConnection = remember(collapsePx) {
-        // One accumulator, used from both ends of the scroll.
-        //
-        // `onPreScroll` sees the drag and `onPostScroll` sees whatever the list did not take — which
-        // is where a fling's momentum arrives. Handling only the first meant a flick both folded the
-        // header *and* scrolled the list, so the content moved twice for one gesture. The fold should
-        // be the whole of the movement while it lasts, whichever way the scroll arrives.
-        fun take(delta: Float): Float {
-            if (delta == 0f) return 0f
-            val next = (collapse - delta / collapsePx).coerceIn(0f, 1f)
-            val used = (next - collapse) * collapsePx
-            collapse = next
-            return used
-        }
         object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset =
-                Offset(0f, take(available.y))
-
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset = Offset(0f, take(available.y))
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                if (delta == 0f) return Offset.Zero
+                val next = (collapse - delta / collapsePx).coerceIn(0f, 1f)
+                val used = (next - collapse) * collapsePx
+                collapse = next
+                return Offset(0f, used)
+            }
         }
     }
 
