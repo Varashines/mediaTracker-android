@@ -700,9 +700,26 @@ fun M3ERoughDetail(
                             // is a faint wash of the page — you could not tell which tab you were on.
                             // Filled with the accent and labelled on it, the current one is
                             // unambiguous in both modes, and the accent is the poster's own colour.
+                            border = if (pagerState.currentPage == index) {
+                                // The tint alone is what was failing in light mode: the accent at
+                                // container alpha is a wash of the page, and with no border and a
+                                // muted label there was nothing crisp to read. Keeping the tint and
+                                // adding a definite border plus the accent in the label gives the
+                                // selected chip an edge, which is what "distinct" needs — not a
+                                // flood of colour.
+                                FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = true,
+                                    borderColor = Color.Transparent,
+                                    selectedBorderColor = M3EColor.accent(),
+                                    selectedBorderWidth = 1.5.dp
+                                )
+                            } else {
+                                null
+                            },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = M3EColor.accent(),
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                selectedContainerColor = M3EColor.accent().copy(alpha = 0.22f),
+                                selectedLabelColor = M3EColor.accent()
                             )
                         )
                     }
