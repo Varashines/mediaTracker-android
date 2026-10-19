@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -56,6 +58,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,15 +68,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -457,6 +465,29 @@ fun M3ERoughDetail(
         it.isAfter(LocalDate.now()) && !live.state.equals("Completed", ignoreCase = true)
     }
 
+    // The top section folds to a title row as you read, and the fold is safe here for one reason:
+    // the header is *outside* the scroller. Its height cannot change the scroll offset that drives
+    // it, so there is no loop to oscillate against — which is what every version inside a list did.
+    //
+    // The fold consumes the scroll while it runs, so the section closes first and the content only
+    // starts moving once it has. Two motions at once is what reads as broken.
+    var collapse by remember { mutableFloatStateOf(0f) }
+    var expandedHeight by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val collapsePx = remember(density) { with(density) { COLLAPSE_DISTANCE.toPx() } }
+    val collapseConnection = remember(collapsePx) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                if (delta == 0f) return Offset.Zero
+                val next = (collapse - delta / collapsePx).coerceIn(0f, 1f)
+                val used = (next - collapse) * collapsePx
+                collapse = next
+                return Offset(0f, used)
+            }
+        }
+    }
+
     MaterialTheme(colorScheme = detailScheme) {
     Column(
         modifier = Modifier
@@ -464,11 +495,36 @@ fun M3ERoughDetail(
             .background(M3EColor.page())
             .statusBarsPadding()
     ) {
-        // The top section lives inside each tab's scroller now, so it scrolls away like anything
-        // else. What pins is the compact bar and the chips; the bar only appears once the section
-        // has gone, and because the section is an ordinary item rather than a pinned one, a tab with
-        // nothing to scroll simply never loses it — which is the "bring it back" case, for free.
+        // Fixed and shared. A header that scrolls would have to live in each tab's scroller, and
+        // each tab scrolls on its own — so swiping between them would move the top, because there
+        // would be no single top to move. It folds instead, which it can do from here.
         Column(modifier = Modifier.padding(horizontal = M3ESpacing.page)) {
+        // Measured unbounded, so the height it reports is the content's own and not the height this
+        // box is deciding. Measuring a value that is also an output of the same layout is what
+        // jittered the calendar; here the box is outside the scroller as well, so there is nothing
+        // for it to chase.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(
+                    with(density) {
+                        val collapsed = COLLAPSED_HEIGHT.toPx()
+                        (collapsed + (expandedHeight - collapsed) * (1f - collapse)).toDp()
+                    }
+                )
+                .clipToBounds()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight(unbounded = true)
+                    .onGloballyPositioned {
+                        if (collapse == 0f && it.size.height > 0) {
+                            expandedHeight = it.size.height.toFloat()
+                        }
+                    }
+                    .graphicsLayer { alpha = 1f - collapse }
+            ) {
     Spacer(Modifier.height(M3ESpacing.tightGap))
 
     val byline = when {
@@ -551,6 +607,17 @@ fun M3ERoughDetail(
         )
     }
     }
+            }
+            // What it folds into: the title, and the one action worth reaching. Faded in as the
+            // section fades out, so it reads as the same words moving rather than a swap.
+            CompactTitleRow(
+                title = live.title,
+                nextEpisode = nextEpisode,
+                upcoming = upcoming,
+                visible = collapse,
+                onMarkWatched = { nextEpisode?.let { setEpisodeWatched(it, true) } }
+            )
+        }
             Spacer(Modifier.height(M3ESpacing.cardGap))
             // The chips, always here. They are the only way to reach the other two tabs,
             // and a fixed top section is what makes "frozen" true rather than nearly true.
@@ -588,7 +655,8 @@ fun M3ERoughDetail(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = M3ESpacing.page),
+                    .padding(horizontal = M3ESpacing.page)
+                    .nestedScroll(collapseConnection),
                 verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
             ) {
                 // The bar carries the name from the start, and that is deliberate.
@@ -1079,6 +1147,79 @@ private fun UpcomingNotice(
         }
     }
 }
+
+/**
+ * The top section in miniature: the name, and the one thing you might want to do.
+ *
+ * Marking the next episode is the reason half these visits happen, so it rides in the folded row
+ * rather than being scrolled out of reach — a tick with the episode when there is one to mark, a
+ * clock with the episode when it has not aired, and nothing when there is nothing to say. The same
+ * `upcoming` rule decides this and the big action, so the two cannot disagree.
+ */
+@Composable
+private fun CompactTitleRow(
+    title: String,
+    nextEpisode: EpisodeEntity?,
+    upcoming: EpisodeEntity?,
+    visible: Float,
+    onMarkWatched: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = M3ESpacing.tightGap)
+            .graphicsLayer { alpha = visible },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = M3EType.rowTitle(),
+            fontWeight = FontWeight.SemiBold,
+            color = M3EColor.text(),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(M3ESpacing.tightGap))
+        val waiting = upcoming != null
+        val episode = upcoming ?: nextEpisode
+        if (episode != null) {
+            Surface(
+                onClick = { if (!waiting) onMarkWatched() },
+                enabled = !waiting,
+                shape = M3EShape.chip(),
+                color = M3EColor.accent().copy(alpha = if (waiting) 0.12f else 0.18f),
+                contentColor = M3EColor.accent()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = M3ESpacing.rowGap, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (waiting) Icons.Default.Schedule else Icons.Default.Check,
+                        contentDescription = if (waiting) {
+                            "Next episode not aired yet"
+                        } else {
+                            "Mark S${episode.seasonNumber} E${episode.episodeNumber} watched"
+                        },
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "S${episode.seasonNumber} E${episode.episodeNumber}",
+                        style = M3EType.action()
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** How far the finger travels to fold the top section. */
+private val COLLAPSE_DISTANCE = 96.dp
+
+/** What the folded row is worth. A constant, because the fold needs a number to move between. */
+private val COLLAPSED_HEIGHT = 52.dp
 
 /** One emphasised action, deliberately the largest element on the screen. */
 @Composable
