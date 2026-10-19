@@ -56,6 +56,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -640,31 +642,57 @@ private fun MonthGrid(
     intensityOf: (LocalDate) -> Float,
     onSelect: (LocalDate) -> Unit
 ) {
-    // A month is five rows or six, and which one depends on the weekday it starts on: a 31-day
-    // month beginning on a Thursday needs five. Assuming six left a whole row's worth of card under
-    // a five-row month, which is the band that was showing below the grid.
+    // Measured, not derived.
+    //
+    // Three attempts at computing this from the width, the row count and the gaps all produced a
+    // number that agreed with itself and disagreed with what Compose actually laid out — a band
+    // under the grid, and then a strip with nothing in it. So the geometry is taken from the layout
+    // instead: how far the selected row sits from the card's top, how tall it is, and how tall the
+    // month is. Everything below is a measurement, and none of it can drift.
+    //
+    // Only taken while the month is open, because while it is closing it is moving.
+    // Five rows or six, whichever the month needs — used for the gaps between them.
     val rows = cells.size / 7
 
-    // Where the selected week sits in the open month, which is how far it has to travel.
-    val rowOffset = WEEKDAY_HEIGHT + M3ESpacing.tightGap + (cellHeight + CELL_GAP) * selectedWeekIndex
-    val gridHeight = M3ESpacing.cardGap * 2 + WEEKDAY_HEIGHT + M3ESpacing.tightGap +
-        (cellHeight + CELL_GAP) * rows - CELL_GAP
-    val stripHeight = M3ESpacing.cardGap * 2 + cellHeight
-    val height = stripHeight + (gridHeight - stripHeight) * (1f - collapse)
+    val density = LocalDensity.current
+    var cardTop by remember { mutableFloatStateOf(0f) }
+    var rowTop by remember { mutableFloatStateOf(0f) }
+    var rowHeight by remember { mutableFloatStateOf(0f) }
+    var monthHeight by remember { mutableFloatStateOf(0f) }
+    // Less the card's own padding. The row has to land *inside* the card, not flush with its top
+    // edge — travelling the full distance put it at y=0 and left the padding below it as a strip of
+    // bare card, which is what showed.
+    val cardPadPx = with(density) { M3ESpacing.cardGap.toPx() }
+    val travelPx = (rowTop - cardTop - cardPadPx).coerceAtLeast(0f)
+
+    val stripHeight = if (rowHeight > 0f) M3ESpacing.cardGap * 2 + with(density) { rowHeight.toDp() }
+        else M3ESpacing.cardGap * 2 + cellHeight
+    val openHeight = if (monthHeight > 0f) with(density) { monthHeight.toDp() } else stripHeight
+    val height = stripHeight + (openHeight - stripHeight) * (1f - collapse)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(height)
             .clip(M3EShape.card())
-            .background(M3EColor.card())
+            .onGloballyPositioned { if (collapse == 0f) cardTop = it.positionInRoot().y }
     ) {
+        // The card's own plane, and it goes as the month folds. An empty day's fill is the same
+        // tone as the card, deliberately, so a strip of cells that have nothing on them is
+        // invisible against it — which is a white bar. On the page they read as cells.
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(M3EColor.card())
+                .graphicsLayer { alpha = 1f - collapse }
+        )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 // Read in the layout phase, so the row travels without recomposing anything.
-                .offset { IntOffset(0, -(rowOffset.toPx() * collapse).roundToInt()) }
+                .offset { IntOffset(0, -(travelPx * collapse).roundToInt()) }
                 .padding(M3ESpacing.cardGap)
+                .onGloballyPositioned { if (collapse == 0f) monthHeight = it.size.height.toFloat() }
         ) {
             Box(
                 modifier = Modifier
@@ -680,6 +708,12 @@ private fun MonthGrid(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .onGloballyPositioned {
+                            if (collapse == 0f && index == selectedWeekIndex) {
+                                rowTop = it.positionInRoot().y
+                                rowHeight = it.size.height.toFloat()
+                            }
+                        }
                         .graphicsLayer {
                             alpha = if (collapse > 0f && index != selectedWeekIndex) 0f else 1f
                         },
