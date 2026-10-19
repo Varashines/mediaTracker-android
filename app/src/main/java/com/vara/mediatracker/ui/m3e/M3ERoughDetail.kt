@@ -543,11 +543,14 @@ fun M3ERoughDetail(
                             expandedHeight = it.size.height.toFloat()
                         }
                     }
-                    // Blurred rather than faded, which is the right way round for a section that is
-                    // still on screen: a fade says "this is going away", a blur says "this is behind
-                    // what you are reading now". The shape stays legible while the row above takes
-                    // over, so the hand-off reads as depth rather than as a disappearance.
-                    .blur(BLUR_MAX * collapse)
+                    // Faded the whole way, and blurred only while it is in motion.
+                    //
+                    // The fade is what actually takes the section away, so it runs from the first
+                    // pixel of the drag to the last. The blur is a transition effect and nothing
+                    // else: it peaks halfway through and returns to zero as the section finishes
+                    // leaving, because blurring something that is already gone is work for nothing.
+                    .graphicsLayer { alpha = 1f - collapse }
+                    .blur(BLUR_MAX * (4f * collapse * (1f - collapse)))
             ) {
     Spacer(Modifier.height(M3ESpacing.tightGap))
 
@@ -1319,6 +1322,10 @@ private fun CompactTitleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // Opaque, because it sits over the section that is fading out. Without a background the
+            // blurred content shows through the row that is replacing it, and the two read as one
+            // muddled thing instead of a hand-off.
+            .background(M3EColor.page())
             .padding(vertical = M3ESpacing.tightGap)
             .graphicsLayer { alpha = visible },
         verticalAlignment = Alignment.CenterVertically
