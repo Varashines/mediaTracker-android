@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -51,9 +52,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -438,6 +441,15 @@ fun M3ERoughDetail(
     //
     // Declared here rather than inside the action because the compact bar shows the same answer in
     // miniature, and two copies of this rule would eventually disagree.
+    // The poster's grow, hoisted out of the tab it is drawn in.
+    //
+    // It lived inside `Title`, which now sits in each tab's scroller — so scrolling it out of view or
+    // switching tabs disposed it, and `remember` came back empty and replayed the whole animation.
+    // The poster grew again every time you looked at it. Hoisted, it plays once, when the screen
+    // opens, and never again.
+    val heroGrow = remember { Animatable(if (heroFrom == null) 1f else 0f) }
+    val heroPlayed = remember { mutableStateOf(false) }
+
     val now = Date()
     val upcoming = nextEpisode?.takeIf {
         HomeEligibility.episodeInstant(live, it)?.after(now) == true
@@ -465,26 +477,33 @@ fun M3ERoughDetail(
                 .graphicsLayer { alpha = revealStage(reveal.value, 0.5f, 1f) }
         ) { page ->
             val section = sections.getOrElse(page) { sections.first() }
+            val pageList = rememberLazyGridState()
+            // Drives the two alphas only. Nothing about the layout reads it, which is what keeps it
+            // from oscillating — the earlier version had it deciding a height.
+            val headerGone by remember {
+                derivedStateOf { pageList.layoutInfo.visibleItemsInfo.none { it.key == "header" } }
+            }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
+                state = pageList,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = M3ESpacing.page),
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
                 verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
             ) {
-                // Always rendered, never gated.
+                // Always the same height, and only its alpha moves.
                 //
-                // It was gated on "the section has scrolled away", and that could not work: the bar
-                // flipping between zero height and its own height moves the content, which brings the
-                // section back into view, which flips the gate back. The poster shook and nothing
-                // ever settled. A bar that is always there changes no layout, so there is nothing to
-                // oscillate against.
+                // Gating its *height* on "the section has scrolled away" is what shook the screen:
+                // the bar growing from nothing moved the content, which brought the section back,
+                // which shrank the bar again. An alpha has no such problem — it is a draw, not a
+                // layout — so the bar can appear as the section leaves and still be stable.
                 stickyHeader(key = "bar") {
                     CompactBar(
                         title = live.title,
                         nextEpisode = nextEpisode,
                         upcoming = upcoming,
+                        visible = headerGone,
                         onMarkWatched = { nextEpisode?.let { setEpisodeWatched(it, true) } }
                     )
                 }
@@ -500,7 +519,17 @@ fun M3ERoughDetail(
             // All of it beside the poster. In the controls row, status takes 70% of the width,
             // taste 25%, and the last 5% is left as space: a reaction is a glyph and does not need
             // the room a state does, but the tenth that was reserved for nothing read as a gap.
-            Title(live, byline, heroFrom, reveal, sheetRise, sheetHeight) {
+            Title(
+                item = live,
+                byline = byline,
+                heroFrom = heroFrom,
+                reveal = reveal,
+                heroGrow = heroGrow,
+                heroPlayed = heroPlayed,
+                titleAlpha = if (headerGone) 0f else 1f,
+                sheetRise = sheetRise,
+                sheetHeight = sheetHeight
+            ) {
                 Row(
                     modifier = Modifier.height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
@@ -916,6 +945,9 @@ private fun Title(
     byline: String? = null,
     heroFrom: Rect? = null,
     reveal: Animatable<Float, *>? = null,
+    heroGrow: Animatable<Float, *>? = null,
+    heroPlayed: MutableState<Boolean>? = null,
+    titleAlpha: Float = 1f,
     sheetRise: State<Float>? = null,
     sheetHeight: Dp = 0.dp,
     below: @Composable (() -> Unit)? = null
@@ -928,12 +960,16 @@ private fun Title(
     // and scale to start from. Where the target is not known yet (first frame) or the origin is not
     // this title's, the animation is skipped and the poster simply appears.
     var target by remember { mutableStateOf(Rect.Zero) }
-    val grow = remember { Animatable(if (heroFrom == null) 1f else 0f) }
+    val grow = heroGrow ?: remember { Animatable(1f) }
+    // Only ever plays once, and the flag that says so lives above the tabs rather than in here —
+    // otherwise leaving and returning to the tab would start it again.
     LaunchedEffect(heroFrom, target) {
-        if (heroFrom != null && target != Rect.Zero && target.width > 0f) {
+        val played = heroPlayed?.value == true
+        if (heroFrom != null && target != Rect.Zero && target.width > 0f && !played) {
+            heroPlayed?.value = true
             grow.snapTo(0f)
             grow.animateTo(1f, tween(durationMillis = M3E_DETAIL_ARRIVAL_MILLIS))
-        } else {
+        } else if (grow.value == 0f) {
             grow.snapTo(1f)
         }
     }
@@ -971,7 +1007,12 @@ private fun Title(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .graphicsLayer { alpha = revealStage(reveal?.value ?: 1f, 0f, 0.45f) }
+                // Two fades: the reveal as the sheet arrives, and the hand-off to the compact bar as
+                // the section leaves. The title beside the poster is what becomes the title at the
+                // top, so they cross rather than one replacing the other.
+                .graphicsLayer {
+                    alpha = revealStage(reveal?.value ?: 1f, 0f, 0.45f) * titleAlpha
+                }
         ) {
             Text(
                 text = item.title,
@@ -1064,13 +1105,16 @@ private fun CompactBar(
     title: String,
     nextEpisode: EpisodeEntity?,
     upcoming: EpisodeEntity?,
+    visible: Boolean,
     onMarkWatched: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(M3EColor.page())
-            .padding(vertical = M3ESpacing.tightGap),
+            .padding(vertical = M3ESpacing.tightGap)
+            // The whole bar fades as one, and its height is the same either way.
+            .graphicsLayer { alpha = if (visible) 1f else 0f },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
