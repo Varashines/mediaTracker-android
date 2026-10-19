@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -34,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +60,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.vara.mediatracker.data.model.EpisodeEntity
@@ -75,6 +80,7 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.ln
+import kotlin.math.roundToInt
 
 /**
  * Release Radar, in two states.
@@ -126,21 +132,6 @@ fun M3ERoughCalendar(
     // the content only starts moving once it has. Reading the offset instead would scroll and
     // collapse at the same time, which is the version that looks broken.
     var collapse by remember { mutableFloatStateOf(0f) }
-    val collapseDistancePx = remember(density) { with(density) { COLLAPSE_DISTANCE.toPx() } }
-    val collapseConnection = remember(collapseDistancePx) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                val delta = available.y
-                if (delta == 0f) return Offset.Zero
-                val next = (collapse - delta / collapseDistancePx).coerceIn(0f, 1f)
-                // Consume exactly what the collapse used. When it is already at an end, nothing is
-                // consumed and the list scrolls as it normally would.
-                val used = (next - collapse) * collapseDistancePx
-                collapse = next
-                return Offset(0f, used)
-            }
-        }
-    }
 
     // Back leaves the list, not the section. Without this the shell's handler would take back to
     // Home, because the mode is not part of the overlay stack.
@@ -238,6 +229,38 @@ fun M3ERoughCalendar(
         byDay.entries
             .filter { YearMonth.from(it.key) == monthValue }
             .sortedBy { it.key }
+    }
+
+    // The month only folds when the day under it is long enough to be worth the room. Three
+    // releases still fit below a full month; past that the grid is what is in the way. Below the
+    // threshold nothing collapses, the month is not pinned, and the page scrolls exactly as it did
+    // before any of this existed.
+    val collapsible = releases.size > 3
+    LaunchedEffect(collapsible) { if (!collapsible) collapse = 0f }
+
+    // Which row the selected day is in, so the collapse can slide that one to the top.
+    val selectedWeekIndex = remember(cells, selectedDay) {
+        val index = cells.indexOf(selectedDay)
+        if (index < 0) 0 else index / 7
+    }
+
+    val collapseDistancePx = remember(density) { with(density) { COLLAPSE_DISTANCE.toPx() } }
+    // Keyed on `collapsible` as well, so the connection always reads the current answer rather than
+    // the one it was built with.
+    val collapseConnection = remember(collapseDistancePx, collapsible) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (!collapsible) return Offset.Zero
+                val delta = available.y
+                if (delta == 0f) return Offset.Zero
+                val next = (collapse - delta / collapseDistancePx).coerceIn(0f, 1f)
+                // Consume exactly what the collapse used. When it is already at an end, nothing is
+                // consumed and the list scrolls as it normally would.
+                val used = (next - collapse) * collapseDistancePx
+                collapse = next
+                return Offset(0f, used)
+            }
+        }
     }
 
     fun stepMonth(delta: Long) {
@@ -356,77 +379,31 @@ fun M3ERoughCalendar(
                 }
             }
         } else {
-            // Pinned, and the thing the scroll collapses. The grid inside is laid out once at its
-            // own height and *clipped* by this box rather than squeezed into it — so collapsing
-            // changes one box's height and never re-lays-out the forty-two cells inside it. That is
-            // the difference between a collapse that is cheap and one that stutters.
-            stickyHeader(key = "month") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(STRIP_HEIGHT + (GRID_HEIGHT - STRIP_HEIGHT) * (1f - collapse))
-                        .clipToBounds()
-                        .background(M3EColor.page())
-                ) {
-                    // Read in the draw phase, so the fade costs a redraw and not a recomposition of
-                    // the month.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(GRID_HEIGHT)
-                            .graphicsLayer { alpha = 1f - collapse }
-                    ) {
-                        M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier.padding(M3ESpacing.cardGap),
-                                verticalArrangement = Arrangement.spacedBy(CELL_GAP)
-                            ) {
-                                WeekdayHeader()
-                                Spacer(Modifier.height(M3ESpacing.tightGap))
-                                cells.chunked(7).forEach { week ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(CELL_GAP)
-                                    ) {
-                                        week.forEach { day ->
-                                            DayCell(
-                                                day = day,
-                                                today = today,
-                                                selected = selectedDay,
-                                                intensity = day?.let { intensityOf(it) } ?: 0f,
-                                                label = dayLabel,
-                                                onSelect = {
-                                                    haptics.tap()
-                                                    selected = it.toString()
-                                                },
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+            // Pinned only when it can fold. A month that cannot collapse has no business staying on
+            // screen while its own releases scroll under it — it would just be a wall at the top.
+            val month: @Composable () -> Unit = {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    MonthGrid(
+                        cells = cells,
+                        selectedWeekIndex = selectedWeekIndex,
+                        collapse = collapse,
+                        // From the width, because the cells keep their aspect ratio.
+                        cellHeight = (maxWidth - CELL_GAP * 6) / 7 / 0.9f,
+                        today = today,
+                        selectedDay = selectedDay,
+                        dayLabel = dayLabel,
+                        intensityOf = { intensityOf(it) },
+                        onSelect = {
+                            haptics.tap()
+                            selected = it.toString()
                         }
-                    }
-
-                    // Always composed, so the fade is the only thing that changes.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(STRIP_HEIGHT)
-                            .graphicsLayer { alpha = collapse }
-                    ) {
-                        WeekStrip(
-                            selectedDay = selectedDay,
-                            today = today,
-                            dayLabel = dayLabel,
-                            intensityOf = { intensityOf(it) },
-                            onSelect = {
-                                haptics.tap()
-                                selected = it.toString()
-                            }
-                        )
-                    }
+                    )
                 }
+            }
+            if (collapsible) {
+                stickyHeader(key = "month") { month() }
+            } else {
+                item(key = "month") { month() }
             }
 
             item {
@@ -636,39 +613,82 @@ private fun dayTextColor(intensity: Float): Color =
     if (intensity > 0.4f) Color.White.copy(alpha = 0.9f) else M3EColor.text().copy(alpha = 0.7f)
 
 /**
- * The week containing the selection, as one row.
+ * The month, and the fold.
  *
- * What the month collapses into. It carries the same fill, the same today dot and the same ring as a
- * grid cell, so the collapse reads as the month folding rather than as one thing being swapped for
- * another.
+ * The collapse is a translation, not a cross-fade. The selected week is the one strip that stays
+ * solid, and it slides up to the top of the card; every other week and the weekday row are gone the
+ * instant the fold starts, so the gap closes behind the row that is moving rather than through a
+ * second grid fading out underneath it. Two grids on screen at once was the thing that read wrong —
+ * it looked like one month being swapped for another rather than one month closing.
+ *
+ * The height is the other half: the card shrinks to the strip and the row travels exactly as far as
+ * the height gave up, so the two arrive together and nothing is left dangling.
  */
 @Composable
-private fun WeekStrip(
-    selectedDay: LocalDate,
+private fun MonthGrid(
+    cells: List<LocalDate?>,
+    selectedWeekIndex: Int,
+    collapse: Float,
+    cellHeight: Dp,
     today: LocalDate,
+    selectedDay: LocalDate,
     dayLabel: DateTimeFormatter,
     intensityOf: (LocalDate) -> Float,
     onSelect: (LocalDate) -> Unit
 ) {
-    val weekStart = remember(selectedDay) { selectedDay.minusDays((selectedDay.dayOfWeek.value - 1).toLong()) }
-    M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
+    // Where the selected week sits in the open month, which is how far it has to travel.
+    val rowOffset = WEEKDAY_HEIGHT + M3ESpacing.tightGap + (cellHeight + CELL_GAP) * selectedWeekIndex
+    val gridHeight = M3ESpacing.cardGap * 2 + WEEKDAY_HEIGHT + M3ESpacing.tightGap +
+        (cellHeight + CELL_GAP) * 6 - CELL_GAP
+    val stripHeight = M3ESpacing.cardGap * 2 + cellHeight
+    val height = stripHeight + (gridHeight - stripHeight) * (1f - collapse)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .clip(M3EShape.card())
+            .background(M3EColor.card())
+    ) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.cardGap),
-            horizontalArrangement = Arrangement.spacedBy(CELL_GAP)
+                // Read in the layout phase, so the row travels without recomposing anything.
+                .offset { IntOffset(0, -(rowOffset.toPx() * collapse).roundToInt()) }
+                .padding(M3ESpacing.cardGap)
         ) {
-            repeat(7) { offset ->
-                val day = weekStart.plusDays(offset.toLong())
-                DayCell(
-                    day = day,
-                    today = today,
-                    selected = selectedDay,
-                    intensity = intensityOf(day),
-                    label = dayLabel,
-                    onSelect = onSelect,
-                    modifier = Modifier.weight(1f)
-                )
+            Box(
+                modifier = Modifier
+                    .height(WEEKDAY_HEIGHT)
+                    // Gone immediately, not faded: the weekday row is not part of the strip, and
+                    // fading it left two of them on screen at once.
+                    .graphicsLayer { alpha = if (collapse > 0f) 0f else 1f }
+            ) {
+                WeekdayHeader()
+            }
+            Spacer(Modifier.height(M3ESpacing.tightGap))
+            cells.chunked(7).forEachIndexed { index, week ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            alpha = if (collapse > 0f && index != selectedWeekIndex) 0f else 1f
+                        },
+                    horizontalArrangement = Arrangement.spacedBy(CELL_GAP)
+                ) {
+                    week.forEach { day ->
+                        DayCell(
+                            day = day,
+                            today = today,
+                            selected = selectedDay,
+                            intensity = day?.let(intensityOf) ?: 0f,
+                            label = dayLabel,
+                            onSelect = onSelect,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                if (index < 5) Spacer(Modifier.height(CELL_GAP))
             }
         }
     }
@@ -678,20 +698,15 @@ private fun WeekStrip(
 private val RING_WIDTH = 2.dp
 
 /**
- * Cell height, fixed rather than derived from the width.
+ * The gap between cells, and the weekday row's height.
  *
- * The collapse has to animate the month's height, and it needs a number to animate between. With
- * `aspectRatio` the month's height depends on the screen width, so it would have to be measured —
- * and it cannot be measured while it is being shrunk. A fixed cell makes the month's height a fact.
+ * The cells keep their aspect ratio — the month's shape is the month's shape, and squashing it to a
+ * fixed height made the whole grid look pinched. So the grid's height is derived from the width
+ * where it is drawn. The weekday row is the one number that cannot be derived: it is text, and the
+ * collapse needs a number.
  */
-private val CELL_HEIGHT = 40.dp
 private val CELL_GAP = 4.dp
-
-/** Weekday label + gap + six rows + the card's own padding. */
-private val GRID_HEIGHT = 320.dp
-
-/** One row of cells + the card's own padding. */
-private val STRIP_HEIGHT = 72.dp
+private val WEEKDAY_HEIGHT = 20.dp
 
 /** How far the finger travels to collapse the month. Short enough to feel like a flick. */
 private val COLLAPSE_DISTANCE = 110.dp
@@ -758,7 +773,7 @@ private fun DayCell(
     modifier: Modifier = Modifier
 ) {
     if (day == null) {
-        Spacer(modifier = modifier.height(CELL_HEIGHT))
+        Spacer(modifier = modifier.aspectRatio(0.9f))
         return
     }
 
@@ -768,7 +783,7 @@ private fun DayCell(
     val textColor = dayTextColor(intensity)
     val onDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
-    Box(modifier = modifier.height(CELL_HEIGHT), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.aspectRatio(0.9f), contentAlignment = Alignment.Center) {
         Surface(
             onClick = { onSelect(day) },
             shape = M3EShape.chip(),

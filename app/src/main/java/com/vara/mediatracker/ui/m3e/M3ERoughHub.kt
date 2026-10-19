@@ -308,8 +308,7 @@ private fun DiscoverTab(
  * Networks as tiles: the mark on a plate, and the count in the corner.
  *
  * The Mac's DiscoveryCard with `style: .logo`, which is what this is: the mark gets the tile, and
- * the count rides in a corner pill instead of taking a line under it. Two to a row rather than
- * three, because a mark needs width to be recognisable in a way a name does not.
+ * the count rides in a corner pill instead of taking a line under it.
  */
 @Composable
 private fun NetworkGrid(
@@ -327,11 +326,14 @@ private fun NetworkGrid(
         )
         return
     }
-    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-        facets.chunked(2).forEach { row ->
+    // Three to a row, and small. A mark is a wordmark, not a poster: it needs width and almost no
+    // height, so a tall tile was mostly plate. Smaller is also more of them on screen, which is the
+    // point of a browse grid.
+    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
+        facets.chunked(3).forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
             ) {
                 row.forEach { facet ->
                     NetworkTile(
@@ -343,7 +345,7 @@ private fun NetworkGrid(
                         }
                     )
                 }
-                repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -367,10 +369,10 @@ private fun NetworkTile(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Box(modifier = modifier.height(84.dp)) {
+    Box(modifier = modifier.height(60.dp)) {
         Surface(
             onClick = onClick,
-            shape = M3EShape.card(),
+            shape = M3EShape.chip(),
             color = Color.White,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             modifier = Modifier.fillMaxSize()
@@ -378,7 +380,7 @@ private fun NetworkTile(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.inlineGap),
+                    .padding(horizontal = M3ESpacing.tightGap, vertical = M3ESpacing.tightGap),
                 contentAlignment = Alignment.Center
             ) {
                 if (logoUrl != null) {
@@ -408,13 +410,13 @@ private fun NetworkTile(
             contentColor = MaterialTheme.colorScheme.onPrimary,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(M3ESpacing.tightGap)
+                .padding(3.dp)
         ) {
             Text(
                 text = "${facet.count}",
                 style = M3EType.rowSupporting(),
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                modifier = Modifier.padding(horizontal = 5.dp)
             )
         }
     }
