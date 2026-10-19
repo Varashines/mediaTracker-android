@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -542,7 +543,11 @@ fun M3ERoughDetail(
                             expandedHeight = it.size.height.toFloat()
                         }
                     }
-                    .graphicsLayer { alpha = 1f - collapse }
+                    // Blurred rather than faded, which is the right way round for a section that is
+                    // still on screen: a fade says "this is going away", a blur says "this is behind
+                    // what you are reading now". The shape stays legible while the row above takes
+                    // over, so the hand-off reads as depth rather than as a disappearance.
+                    .blur(BLUR_MAX * collapse)
             ) {
     Spacer(Modifier.height(M3ESpacing.tightGap))
 
@@ -888,7 +893,14 @@ fun M3ERoughDetail(
             options = seasons.map { it.toString() },
             selected = currentSeason.toString(),
             tintFor = { M3EColor.accent() },
-            onSelect = { label -> label.toIntOrNull()?.let { season = it } },
+            onSelect = { label ->
+                label.toIntOrNull()?.let {
+                    // The dialog closes on the tap, so the confirmation has to be felt rather than
+                    // seen — there is no moment afterwards in which to show anything.
+                    haptics.toggle()
+                    season = it
+                }
+            },
             onDismiss = { pickingSeason = false },
             columns = 5
         )
@@ -1354,6 +1366,9 @@ private fun CompactTitleRow(
         }
     }
 }
+
+/** How far the top section blurs as it folds. Enough to read as depth, not as damage. */
+private val BLUR_MAX = 10.dp
 
 /** How far the finger travels to fold the top section. */
 private val COLLAPSE_DISTANCE = 96.dp
