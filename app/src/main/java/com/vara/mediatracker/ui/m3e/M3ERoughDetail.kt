@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -56,7 +55,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -470,10 +468,114 @@ fun M3ERoughDetail(
         // else. What pins is the compact bar and the chips; the bar only appears once the section
         // has gone, and because the section is an ordinary item rather than a pinned one, a tab with
         // nothing to scroll simply never loses it — which is the "bring it back" case, for free.
+        Column(modifier = Modifier.padding(horizontal = M3ESpacing.page)) {
+    Spacer(Modifier.height(M3ESpacing.tightGap))
+
+    val byline = when {
+        isTv && creators.isNotEmpty() -> "Created by ${creators.joinToString(", ")}"
+        !isTv && directors.isNotEmpty() -> "Directed by ${directors.joinToString(", ")}"
+        else -> null
+    }
+    // All of it beside the poster. In the controls row, status takes 70% of the width,
+    // taste 25%, and the last 5% is left as space: a reaction is a glyph and does not need
+    // the room a state does, but the tenth that was reserved for nothing read as a gap.
+    Title(
+        item = live,
+        byline = byline,
+        heroFrom = heroFrom,
+        reveal = reveal,
+        heroGrow = heroGrow,
+        heroPlayed = heroPlayed,
+        sheetRise = sheetRise,
+        sheetHeight = sheetHeight
+    ) {
+        Row(
+            modifier = Modifier.height(IntrinsicSize.Min),
+            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+        ) {
+            PickerPill(
+                label = "Status",
+                value = live.state,
+                tint = statusTint(live.state),
+                modifier = Modifier.weight(0.7f).fillMaxHeight(),
+                onClick = { statusPickerOpen = true }
+            )
+            TastePill(
+                taste = live.taste,
+                modifier = Modifier.weight(0.25f).fillMaxHeight(),
+                onClick = { tastePickerOpen = true }
+            )
+            Spacer(Modifier.weight(0.05f))
+        }
+    }
+    Spacer(Modifier.height(M3ESpacing.cardGap))
+
+    // A Column, not a Box: this is a spacer, an action and a row of chips, and a Box draws
+    // its children at the same offset — which is what put the watch button on top of the
+    // section chips.
+    Column(modifier = Modifier.graphicsLayer { alpha = revealStage(reveal.value, 0.4f, 0.85f) }) {
+    if (upcoming != null) {
+        // One line, and no "Upcoming": the clock says when, which is the whole message. The
+        // word only repeated what the glyph and the position already had.
+        UpcomingNotice(
+            icon = Icons.Default.Schedule,
+            text = listOfNotNull(
+                "S${upcoming.seasonNumber} E${upcoming.episodeNumber}",
+                landingLabel(upcoming.airDate ?: upcoming.airstamp, upcomingAt)
+            ).joinToString(" · ")
+        )
+    } else if (unreleased != null) {
+        // Same shape for a film, and for a show with no episodes at all — where the first
+        // air date is the date that matters. No time is known for either, so it is just the
+        // day.
+        UpcomingNotice(
+            icon = Icons.Default.Schedule,
+            text = landingLabel(live.releaseDate, null).orEmpty()
+        )
+    } else if (isTv) {
+        PrimaryAction(
+            label = nextEpisode
+                ?.let { "Mark S${it.seasonNumber} · E${it.episodeNumber} watched" }
+                ?: "Everything watched",
+            icon = Icons.Default.Check,
+            enabled = nextEpisode != null,
+            onClick = { nextEpisode?.let { setEpisodeWatched(it, true) } }
+        )
+    } else {
+        val watched = live.state.equals("Completed", ignoreCase = true)
+        PrimaryAction(
+            label = if (watched) "Watched" else "Mark watched",
+            icon = if (watched) Icons.Default.Check else Icons.Default.Bookmark,
+            enabled = true,
+            onClick = { toggleMovie() }
+        )
+    }
+    }
+            Spacer(Modifier.height(M3ESpacing.cardGap))
+            // The chips, always here. They are the only way to reach the other two tabs,
+            // and a fixed top section is what makes "frozen" true rather than nearly true.
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
+                    verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+                ) {
+                    sections.forEachIndexed { index, candidate ->
+                        FilterChip(
+                            selected = pagerState.currentPage == index,
+                            onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
+                            label = { Text(candidate.label, style = M3EType.action()) },
+                            shape = M3EShape.chip()
+                        )
+                    }
+                }
+        }
+
+        // Only this slides. The top section above it is fixed and shared, which is what keeps the
+        // top from moving when the tabs change — each tab scrolls on its own, so a header inside one
+        // would be a different header in each.
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
                 .graphicsLayer { alpha = revealStage(reveal.value, 0.5f, 1f) }
         ) { page ->
             val section = sections.getOrElse(page) { sections.first() }
@@ -496,126 +598,6 @@ fun M3ERoughDetail(
                 // shrank the bar again. Gating only its alpha left the space reserved and empty,
                 // which is a blank strip above the poster. Showing the name in it is the one version
                 // that is neither: no layout change, and nothing empty.
-                stickyHeader(key = "bar") {
-                    CompactBar(
-                        title = live.title,
-                        nextEpisode = nextEpisode,
-                        upcoming = upcoming,
-                        onMarkWatched = { nextEpisode?.let { setEpisodeWatched(it, true) } }
-                    )
-                }
-                item(key = "header") {
-                Column {
-            Spacer(Modifier.height(M3ESpacing.tightGap))
-
-            val byline = when {
-                isTv && creators.isNotEmpty() -> "Created by ${creators.joinToString(", ")}"
-                !isTv && directors.isNotEmpty() -> "Directed by ${directors.joinToString(", ")}"
-                else -> null
-            }
-            // All of it beside the poster. In the controls row, status takes 70% of the width,
-            // taste 25%, and the last 5% is left as space: a reaction is a glyph and does not need
-            // the room a state does, but the tenth that was reserved for nothing read as a gap.
-            Title(
-                item = live,
-                byline = byline,
-                heroFrom = heroFrom,
-                reveal = reveal,
-                heroGrow = heroGrow,
-                heroPlayed = heroPlayed,
-                sheetRise = sheetRise,
-                sheetHeight = sheetHeight
-            ) {
-                Row(
-                    modifier = Modifier.height(IntrinsicSize.Min),
-                    horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
-                ) {
-                    PickerPill(
-                        label = "Status",
-                        value = live.state,
-                        tint = statusTint(live.state),
-                        modifier = Modifier.weight(0.7f).fillMaxHeight(),
-                        onClick = { statusPickerOpen = true }
-                    )
-                    TastePill(
-                        taste = live.taste,
-                        modifier = Modifier.weight(0.25f).fillMaxHeight(),
-                        onClick = { tastePickerOpen = true }
-                    )
-                    Spacer(Modifier.weight(0.05f))
-                }
-            }
-            Spacer(Modifier.height(M3ESpacing.cardGap))
-
-            // A Column, not a Box: this is a spacer, an action and a row of chips, and a Box draws
-            // its children at the same offset — which is what put the watch button on top of the
-            // section chips.
-            Column(modifier = Modifier.graphicsLayer { alpha = revealStage(reveal.value, 0.4f, 0.85f) }) {
-            if (upcoming != null) {
-                // One line, and no "Upcoming": the clock says when, which is the whole message. The
-                // word only repeated what the glyph and the position already had.
-                UpcomingNotice(
-                    icon = Icons.Default.Schedule,
-                    text = listOfNotNull(
-                        "S${upcoming.seasonNumber} E${upcoming.episodeNumber}",
-                        landingLabel(upcoming.airDate ?: upcoming.airstamp, upcomingAt)
-                    ).joinToString(" · ")
-                )
-            } else if (unreleased != null) {
-                // Same shape for a film, and for a show with no episodes at all — where the first
-                // air date is the date that matters. No time is known for either, so it is just the
-                // day.
-                UpcomingNotice(
-                    icon = Icons.Default.Schedule,
-                    text = landingLabel(live.releaseDate, null).orEmpty()
-                )
-            } else if (isTv) {
-                PrimaryAction(
-                    label = nextEpisode
-                        ?.let { "Mark S${it.seasonNumber} · E${it.episodeNumber} watched" }
-                        ?: "Everything watched",
-                    icon = Icons.Default.Check,
-                    enabled = nextEpisode != null,
-                    onClick = { nextEpisode?.let { setEpisodeWatched(it, true) } }
-                )
-            } else {
-                val watched = live.state.equals("Completed", ignoreCase = true)
-                PrimaryAction(
-                    label = if (watched) "Watched" else "Mark watched",
-                    icon = if (watched) Icons.Default.Check else Icons.Default.Bookmark,
-                    enabled = true,
-                    onClick = { toggleMovie() }
-                )
-            }
-            }
-                }
-                }
-
-                // The chips pin. They are the only way to reach the other two tabs, so they cannot
-                // be allowed to scroll away — the one part of the top section that has to stay.
-                stickyHeader(key = "chips") {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(M3EColor.page())
-                            .padding(vertical = M3ESpacing.tightGap)
-                    ) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap),
-                            verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
-                        ) {
-                            sections.forEachIndexed { index, candidate ->
-                                FilterChip(
-                                    selected = pagerState.currentPage == index,
-                                    onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
-                                    label = { Text(candidate.label, style = M3EType.action()) },
-                                    shape = M3EShape.chip()
-                                )
-                            }
-                        }
-                    }
-                }
-
         when (section) {
             DetailSection.Seasons -> {
                 // The heading and its button pin, so the season you are reading is never a
@@ -1094,72 +1076,6 @@ private fun UpcomingNotice(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-        }
-    }
-}
-
-/**
- * The top section in miniature: the name, and the one thing you might want to do.
- *
- * The action could not simply scroll away with the rest — marking the next episode is the reason
- * half the visits happen, and needing to scroll to the top to do it would be a regression. So it
- * rides in the bar: a tick with the episode when there is one to mark, a clock with the episode when
- * it has not aired yet, and nothing at all when there is nothing to say.
- */
-@Composable
-private fun CompactBar(
-    title: String,
-    nextEpisode: EpisodeEntity?,
-    upcoming: EpisodeEntity?,
-    onMarkWatched: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(M3EColor.page())
-            .padding(vertical = M3ESpacing.tightGap),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            style = M3EType.rowTitle(),
-            fontWeight = FontWeight.SemiBold,
-            color = M3EColor.text(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-        Spacer(Modifier.width(M3ESpacing.tightGap))
-        val waiting = upcoming != null
-        val episode = upcoming ?: nextEpisode
-        if (episode != null) {
-            Surface(
-                onClick = { if (!waiting) onMarkWatched() },
-                enabled = !waiting,
-                shape = M3EShape.chip(),
-                color = M3EColor.accent().copy(alpha = if (waiting) 0.12f else 0.18f),
-                contentColor = M3EColor.accent()
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = M3ESpacing.rowGap, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = if (waiting) Icons.Default.Schedule else Icons.Default.Check,
-                        contentDescription = if (waiting) {
-                            "Next episode not aired yet"
-                        } else {
-                            "Mark S${episode.seasonNumber} E${episode.episodeNumber} watched"
-                        },
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = "S${episode.seasonNumber} E${episode.episodeNumber}",
-                        style = M3EType.action()
-                    )
-                }
-            }
         }
     }
 }
