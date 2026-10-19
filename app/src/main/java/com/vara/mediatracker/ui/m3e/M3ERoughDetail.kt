@@ -641,7 +641,13 @@ fun M3ERoughDetail(
                 title = live.title,
                 nextEpisode = nextEpisode,
                 upcoming = upcoming,
-                visible = collapse,
+                // It waits for the header to be most of the way gone.
+                //
+                // Fading in from the first pixel meant the title row sat over the poster for the
+                // first half of the fold — both visible, one on top of the other. Holding it back
+                // until the header has faded to a third turns the overlap into a hand-off: by the
+                // time this appears there is nothing behind it to obscure.
+                visible = ((collapse - 0.5f) * 2f).coerceIn(0f, 1f),
                 onMarkWatched = { nextEpisode?.let { setEpisodeWatched(it, true) } }
             )
         }
