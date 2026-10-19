@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -36,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -224,7 +226,16 @@ fun M3ERoughCalendar(
         selected = next.atDay(selectedDay.dayOfMonth.coerceAtMost(next.lengthOfMonth())).toString()
     }
 
+    val listState = rememberLazyListState()
+    // Whether the month has left the screen. Read from the layout rather than from a scroll offset,
+    // because "the month is gone" is a question about what is on screen, and this answers exactly
+    // that however tall the month turned out to be.
+    val monthGone by remember {
+        derivedStateOf { listState.layoutInfo.visibleItemsInfo.none { it.key == "month" } }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .background(M3EColor.page())
@@ -351,18 +362,26 @@ fun M3ERoughCalendar(
 
             // Only when the day is long. Below the threshold nothing pins, and the page scrolls
             // exactly as it did before any of this existed.
+            //
+            // And it renders nothing at all while the month is still on screen. A strip that replaces
+            // the month should not be sitting under it — and a phone is tall enough to show both, so
+            // without this you got two calendars at once. Empty, it takes no space; once the month
+            // has gone it appears, and because a sticky header overlays rather than pushes, the
+            // releases below are not shoved down when it arrives.
             if (collapsible) {
                 stickyHeader(key = "strip") {
-                    WeekStrip(
-                        selectedDay = selectedDay,
-                        today = today,
-                        dayLabel = dayLabel,
-                        intensityOf = { intensityOf(it) },
-                        onSelect = {
-                            haptics.tap()
-                            selected = it.toString()
-                        }
-                    )
+                    if (monthGone) {
+                        WeekStrip(
+                            selectedDay = selectedDay,
+                            today = today,
+                            dayLabel = dayLabel,
+                            intensityOf = { intensityOf(it) },
+                            onSelect = {
+                                haptics.tap()
+                                selected = it.toString()
+                            }
+                        )
+                    }
                 }
             }
 
