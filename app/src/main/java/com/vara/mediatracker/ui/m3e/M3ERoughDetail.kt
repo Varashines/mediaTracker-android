@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -867,18 +870,28 @@ fun M3ERoughDetail(
             onDismissRequest = { pickingSeason = false },
             title = { Text("Season") },
             text = {
-                // The same pills, wrapped. They fill a dialog instead of a row, which is the whole
-                // change: thirty-one of them wrap into four lines here and take a scrubber there.
-                ChoiceRow(
-                    options = seasons.map { "Season $it" },
-                    selected = "Season $currentSeason",
-                    tintFor = { M3EColor.accent() },
-                    onSelect = { label ->
-                        haptics.tap()
-                        label.substringAfter("Season ").toIntOrNull()?.let { season = it }
-                        pickingSeason = false
-                    }
-                )
+                // The same pills, wrapped and capped.
+                //
+                // Wrapped, because thirty-one of them should read as four lines rather than a
+                // scrubber. Capped and scrollable, because a dialog that grows to fit is a dialog
+                // that runs off the screen — it was showing up to season 22 and simply cutting the
+                // rest off.
+                Box(
+                    modifier = Modifier
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    ChoiceRow(
+                        options = seasons.map { "Season $it" },
+                        selected = "Season $currentSeason",
+                        tintFor = { M3EColor.accent() },
+                        onSelect = { label ->
+                            haptics.tap()
+                            label.substringAfter("Season ").toIntOrNull()?.let { season = it }
+                            pickingSeason = false
+                        }
+                    )
+                }
             },
             confirmButton = {
                 TextButton(onClick = { pickingSeason = false }) { Text("Done") }
