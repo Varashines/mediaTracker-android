@@ -125,24 +125,11 @@ import com.vara.mediatracker.ui.library.LibraryQuery
 import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.di.AppContainer
 
-/**
- * A rough M3E shell, for looking at the design language on a device.
- *
- * Three content sections — Home, Library and Finished — switched by the floating capsule
- * navigation, with Search and Settings as overlay screens opened from the header, and the detail
- * as an overlay from any title. Everything is built only from the vocabulary in [M3E] and driven
- * by the real library. Actions are inert on purpose: this is the language, not the wiring.
- *
- * Flip [M3ERoughPreview] to false to get the existing UI back.
- */
-const val M3ERoughPreview = true
-
 /** Section indices, so the bar can name the three it shows and the three it hides. */
 private const val HOME = 0
 private const val CALENDAR = 1
 private const val LIBRARY = 2
 private const val SETTINGS = 3
-
 
 /**
  * What is open over the sections, or nothing.
@@ -513,7 +500,18 @@ private fun HomeSection(
             M3EScreenHeader(eyebrow = "Explore", title = "MediaTracker")
             }
         }
-        item { EmphasisBanner(count = inProgress.size) }
+        item {
+            // It says "pick up where you left off", which is an instruction — so it goes there.
+            // A card that reads as a call to action and does nothing is worse than no card.
+            EmphasisBanner(
+                count = inProgress.size,
+                onClick = if (inProgress.isNotEmpty()) {
+                    { onSeeAll("Continue watching", inProgress, ListSubtitle.Episode) }
+                } else {
+                    null
+                }
+            )
+        }
         item { MetricRow(core.items.size, inProgress.size, completed) }
 
         if (inProgress.isNotEmpty()) {
@@ -912,8 +910,10 @@ private fun FadeIn(key: Any?, rise: Dp = 0.dp, content: @Composable () -> Unit) 
 
 /** The emphasised container: the single thing on a screen meant to be noticed. */
 @Composable
-private fun EmphasisBanner(count: Int) {
+private fun EmphasisBanner(count: Int, onClick: (() -> Unit)? = null) {
     Card(
+        onClick = { onClick?.invoke() },
+        enabled = onClick != null,
         modifier = Modifier.fillMaxWidth(),
         shape = M3EShape.hero(),
         colors = CardDefaults.cardColors(

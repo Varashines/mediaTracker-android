@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -69,6 +70,8 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.ln
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Release Radar, in two states.
@@ -126,7 +129,14 @@ fun M3ERoughCalendar(
     // Every dated episode of every show, and the release date of every film — aired, watched,
     // upcoming alike. Each gets its own entry, so the month is a schedule rather than a countdown
     // and checking an episode off elsewhere moves it in place instead of making the show vanish.
-    val events = remember(core) {
+    // Off the main thread.
+    //
+    // This walks every title and every episode, and it used to run inside a `remember` during
+    // composition — on the frame that opened the tab, on every DB change. The view model already
+    // builds `core` on `Dispatchers.Default`; this derivation was the one piece still doing its work
+    // on the main thread, and the most expensive one in the app.
+    val events by produceState(initialValue = emptyList<CalendarEvent>(), core) {
+        value = withContext(Dispatchers.Default) {
         buildList {
             for (item in core.items) {
                 val isTv = item.type.contains("TV", ignoreCase = true)
@@ -167,6 +177,7 @@ fun M3ERoughCalendar(
                     )
                 }
             }
+        }
         }
     }
     val byDay: Map<LocalDate, List<CalendarEvent>> = remember(events) { events.groupBy { it.day } }
