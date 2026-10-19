@@ -1,5 +1,6 @@
 package com.vara.mediatracker.ui.m3e
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -8,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -226,44 +228,67 @@ fun M3ERoughCalendar(
         selected = next.atDay(selectedDay.dayOfMonth.coerceAtMost(next.lengthOfMonth())).toString()
     }
 
+    // The releases are the only thing that scrolls. The calendar is a fixed header above them, and
+    // that is the whole reason this works: a calendar whose height changes *inside* the scrolling
+    // container fights the scroll every frame, and that fight is what produced a band under the grid,
+    // a stray strip and then a jitter across four attempts. Outside it, changing its height cannot
+    // disturb anything.
     val listState = rememberLazyListState()
-    // Whether the month has left the screen. Read from the layout rather than from a scroll offset,
-    // because "the month is gone" is a question about what is on screen, and this answers exactly
-    // that however tall the month turned out to be.
-    val monthGone by remember {
-        derivedStateOf { listState.layoutInfo.visibleItemsInfo.none { it.key == "month" } }
+
+    // Whether the releases have been scrolled at all. The list merely starting to move counts.
+    val scrolledPastTop by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24
+        }
     }
 
-    LazyColumn(
-        state = listState,
+    // null = follow the scroll; true/false = the user pinned Week or Month. The pin resets when the
+    // month changes, so the automatic behaviour resumes afterwards.
+    var manualWeekMode by rememberSaveable { mutableStateOf<Boolean?>(null) }
+
+    // Latched, not direct. Set once the list has been scrolled while the day has more than two
+    // releases, and released only when the scroll comes back to the top. A fraction that tracks the
+    // finger would change sixty times a second and flicker; this changes twice.
+    var autoWeek by remember { mutableStateOf(false) }
+    LaunchedEffect(scrolledPastTop, releases.size) {
+        if (!scrolledPastTop) autoWeek = false
+        else if (releases.size > 2) autoWeek = true
+    }
+    val isCompactWeek = manualWeekMode ?: autoWeek
+
+    // One row or five, and that is the whole of the week/month difference. A row count cannot be
+    // wrong; a height or a travel distance can, and mine was, repeatedly.
+    val weeks = remember(cells, isCompactWeek, selectedDay) {
+        val all = cells.chunked(7)
+        if (!isCompactWeek) all
+        else listOf(all.firstOrNull { it.contains(selectedDay) } ?: all.first())
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(M3EColor.page())
             .statusBarsPadding()
-            .padding(horizontal = M3ESpacing.page),
-        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
-        item {
-            Column {
-                Spacer(Modifier.height(M3ESpacing.pageVertical))
-                M3EScreenHeader(
-                    title = "Calendar",
-                    eyebrow = "Release radar",
-                    trailing = {
-                        ModeToggle(list = listMode, onSelect = { list ->
-                            if (list != listMode) haptics.tap()
-                            listMode = list
-                        })
-                    }
-                )
-            }
-        }
+        Column(modifier = Modifier.padding(horizontal = M3ESpacing.page)) {
+            Spacer(Modifier.height(M3ESpacing.pageVertical))
+            M3EScreenHeader(
+                title = "Calendar",
+                eyebrow = "Release radar",
+                trailing = {
+                    WeekMonthToggle(
+                        week = isCompactWeek,
+                        onSelect = { week ->
+                            haptics.tap()
+                            manualWeekMode = week
+                        }
+                    )
+                }
+            )
 
-        // The month and its navigation, in one row. The chevrons mean the same thing in both modes —
-        // step one month — so they are not the mode switch and do not move between modes. The label
-        // is one too, with a caret to say so: tapping it is the shortcut into the month list, and the
-        // toggle above is the discoverable version of the same thing.
-        item {
+            // The month and its navigation. The chevrons step a month; the label is a switch into
+            // the month as a list, with a caret to say so — a title that is secretly a button is a
+            // button nobody presses.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -300,55 +325,10 @@ fun M3ERoughCalendar(
                     Icon(Icons.Default.ChevronRight, contentDescription = "Next month", tint = M3EColor.text())
                 }
             }
-        }
 
-        if (listMode) {
-            // No month header in list mode: the agenda is the month, and a grid above it would be
-            // the same information twice.
-            if (agenda.isEmpty()) {
-                item {
-                    M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "Nothing lands this month.",
-                            style = M3EType.rowSupporting(),
-                            color = M3EColor.textMuted(),
-                            modifier = Modifier.padding(M3ESpacing.cardGap)
-                        )
-                    }
-                }
-            } else {
-                agenda.forEach { (day, dayEvents) ->
-                    // Pinned while its own releases scroll, so the day is never lost — which is the
-                    // one thing the grid could not do, because it scrolled away above the content.
-                    stickyHeader(key = "header_$day") {
-                        DateHeader(
-                            day = day,
-                            count = dayEvents.size,
-                            intensity = intensityOf(day),
-                            today = today,
-                            label = fullLabel,
-                            number = dayLabel
-                        )
-                    }
-                    items(dayEvents, key = { "event_${day}_${it.item.id}" }) { event ->
-                        ReleaseRow(
-                            item = event.item,
-                            episodes = event.episodes,
-                            time = event.time,
-                            onClick = { onOpen(event.item) }
-                        )
-                    }
-                }
-            }
-        } else {
-            // The month is a plain item: it scrolls away like anything else, and the strip below
-            // pins when it reaches the top. That is the whole of the collapse — no height to
-            // animate, no geometry to measure, and the scroll does the work. Four attempts at
-            // folding the grid in place all came down to the layout's arithmetic rather than the
-            // animation, and this removes the arithmetic instead of fixing it again.
-            item(key = "month") {
+            if (!listMode) {
                 MonthGrid(
-                    cells = cells,
+                    weeks = weeks,
                     today = today,
                     selectedDay = selectedDay,
                     dayLabel = dayLabel,
@@ -358,35 +338,52 @@ fun M3ERoughCalendar(
                         selected = it.toString()
                     }
                 )
+                Spacer(Modifier.height(M3ESpacing.cardGap))
             }
+        }
 
-            // Only when the day is long. Below the threshold nothing pins, and the page scrolls
-            // exactly as it did before any of this existed.
-            //
-            // And it renders nothing at all while the month is still on screen. A strip that replaces
-            // the month should not be sitting under it — and a phone is tall enough to show both, so
-            // without this you got two calendars at once. Empty, it takes no space; once the month
-            // has gone it appears, and because a sticky header overlays rather than pushes, the
-            // releases below are not shoved down when it arrives.
-            if (collapsible) {
-                stickyHeader(key = "strip") {
-                    if (monthGone) {
-                        WeekStrip(
-                            selectedDay = selectedDay,
-                            today = today,
-                            dayLabel = dayLabel,
-                            intensityOf = { intensityOf(it) },
-                            onSelect = {
-                                haptics.tap()
-                                selected = it.toString()
-                            }
-                        )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = M3ESpacing.page),
+            verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+        ) {
+            if (listMode) {
+                if (agenda.isEmpty()) {
+                    item {
+                        M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Nothing lands this month.",
+                                style = M3EType.rowSupporting(),
+                                color = M3EColor.textMuted(),
+                                modifier = Modifier.padding(M3ESpacing.cardGap)
+                            )
+                        }
+                    }
+                } else {
+                    agenda.forEach { (day, dayEvents) ->
+                        stickyHeader(key = "header_$day") {
+                            DateHeader(
+                                day = day,
+                                count = dayEvents.size,
+                                intensity = intensityOf(day),
+                                today = today,
+                                label = fullLabel,
+                                number = dayLabel
+                            )
+                        }
+                        items(dayEvents, key = { "event_${day}_${it.item.id}" }) { event ->
+                            ReleaseRow(
+                                item = event.item,
+                                episodes = event.episodes,
+                                time = event.time,
+                                onClick = { onOpen(event.item) }
+                            )
+                        }
                     }
                 }
-            }
-
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+            } else {
+                item {
                     M3ESectionHeader(
                         title = fullLabel.format(selectedDay),
                         trailing = {
@@ -397,7 +394,9 @@ fun M3ERoughCalendar(
                             )
                         }
                     )
-                    if (releases.isEmpty()) {
+                }
+                if (releases.isEmpty()) {
+                    item {
                         M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                             Text(
                                 text = "Nothing lands on this day.",
@@ -406,34 +405,35 @@ fun M3ERoughCalendar(
                                 modifier = Modifier.padding(M3ESpacing.cardGap)
                             )
                         }
-                    } else {
-                        // Ordered by the resolved air time, so a day reads as a running order.
-                        releases.sortedBy { it.time ?: LocalTime.MIDNIGHT }.forEach { event ->
-                            ReleaseRow(
-                                item = event.item,
-                                episodes = event.episodes,
-                                time = event.time,
-                                onClick = { onOpen(event.item) }
-                            )
-                        }
+                    }
+                } else {
+                    items(
+                        releases.sortedBy { it.time ?: LocalTime.MIDNIGHT },
+                        key = { "release_${it.item.id}" }
+                    ) { event ->
+                        ReleaseRow(
+                            item = event.item,
+                            episodes = event.episodes,
+                            time = event.time,
+                            onClick = { onOpen(event.item) }
+                        )
                     }
                 }
             }
+            item { Spacer(Modifier.height(LocalNavClearance.current)) }
         }
-
-        item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
 
 /**
- * Grid or list, as one control: they are one choice, not two actions.
+ * Week or Month, as one control.
  *
- * Symbols only, and the state is always visible — which is the point. When the month label was the
- * switch, entering the list meant tapping a title, and leaving it meant tapping the same title with
- * the opposite meaning. Nothing about the text said either.
+ * The words, not symbols: it is a two-way choice about time, and "Week" and "Month" are the two
+ * shortest things that say it. It also carries the manual override — the scroll decides, until the
+ * user says otherwise.
  */
 @Composable
-private fun ModeToggle(list: Boolean, onSelect: (Boolean) -> Unit) {
+private fun WeekMonthToggle(week: Boolean, onSelect: (Boolean) -> Unit) {
     Surface(
         shape = M3EShape.chip(),
         color = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -442,39 +442,25 @@ private fun ModeToggle(list: Boolean, onSelect: (Boolean) -> Unit) {
             modifier = Modifier.padding(3.dp),
             horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            ModeButton(
-                icon = Icons.Default.CalendarMonth,
-                description = "Month grid",
-                selected = !list
-            ) { onSelect(false) }
-            ModeButton(
-                icon = Icons.Default.ViewList,
-                description = "Month list",
-                selected = list
-            ) { onSelect(true) }
+            WeekMonthSegment("Week", selected = week) { onSelect(true) }
+            WeekMonthSegment("Month", selected = !week) { onSelect(false) }
         }
     }
 }
 
 @Composable
-private fun ModeButton(
-    icon: ImageVector,
-    description: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
+private fun WeekMonthSegment(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = M3EShape.chip(),
         color = if (selected) M3EColor.accent() else Color.Transparent,
         contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
     ) {
-        Box(
-            modifier = Modifier.padding(horizontal = M3ESpacing.rowGap, vertical = M3ESpacing.tightGap),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(imageVector = icon, contentDescription = description, modifier = Modifier.size(18.dp))
-        }
+        Text(
+            text = label,
+            style = M3EType.action(),
+            modifier = Modifier.padding(horizontal = M3ESpacing.rowGap, vertical = M3ESpacing.tightGap)
+        )
     }
 }
 
@@ -594,29 +580,29 @@ private fun dayTextColor(intensity: Float): Color =
 /**
  * The month, as a card. Nothing clever.
  *
- * The cells keep their aspect ratio, so the card is exactly as tall as what it draws and there is no
- * height to work out. An earlier version tried to fold this in place and needed the month's height,
- * the selected row's offset and the row's height — three numbers derived from a layout that was also
- * being decided by them, which is how it ended up jittering against itself.
+ * Takes the weeks to draw rather than a month, so week mode is one row and month mode is five or six
+ * — the same composable, the same cells, one list that is shorter. The card carries
+ * `animateContentSize`, so when the row count changes Compose animates the height. It asks the layout
+ * how big it is and moves between the answers, which is the part I kept getting wrong by computing
+ * the answers myself.
  */
 @Composable
 private fun MonthGrid(
-    cells: List<LocalDate?>,
+    weeks: List<List<LocalDate?>>,
     today: LocalDate,
     selectedDay: LocalDate,
     dayLabel: DateTimeFormatter,
     intensityOf: (LocalDate) -> Float,
     onSelect: (LocalDate) -> Unit
 ) {
-    val rows = cells.size / 7
-    M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+    M3ETonalCard(modifier = Modifier.fillMaxWidth().animateContentSize()) {
         Column(
             modifier = Modifier.padding(M3ESpacing.cardGap),
             verticalArrangement = Arrangement.spacedBy(CELL_GAP)
         ) {
             WeekdayHeader()
             Spacer(Modifier.height(M3ESpacing.tightGap))
-            cells.chunked(7).forEachIndexed { index, week ->
+            weeks.forEachIndexed { index, week ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(CELL_GAP)
@@ -633,53 +619,7 @@ private fun MonthGrid(
                         )
                     }
                 }
-                if (index < rows - 1) Spacer(Modifier.height(CELL_GAP))
-            }
-        }
-    }
-}
-
-/**
- * The week containing the selection, as one row that pins once the month has scrolled past.
- *
- * The same cells, the same fill, the same today dot and the same ring — so what stays on screen is
- * recognisably the row that was in the grid, not a different thing wearing the same week. It carries
- * the page colour because it pins: a header the rows show through is worse than no header.
- */
-@Composable
-private fun WeekStrip(
-    selectedDay: LocalDate,
-    today: LocalDate,
-    dayLabel: DateTimeFormatter,
-    intensityOf: (LocalDate) -> Float,
-    onSelect: (LocalDate) -> Unit
-) {
-    val weekStart = remember(selectedDay) {
-        selectedDay.minusDays((selectedDay.dayOfWeek.value - 1).toLong())
-    }
-    Box(modifier = Modifier.fillMaxWidth().background(M3EColor.page())) {
-        M3ETonalCard(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = M3ESpacing.tightGap)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(M3ESpacing.cardGap),
-                horizontalArrangement = Arrangement.spacedBy(CELL_GAP)
-            ) {
-                repeat(7) { offset ->
-                    DayCell(
-                        day = weekStart.plusDays(offset.toLong()),
-                        today = today,
-                        selected = selectedDay,
-                        intensity = intensityOf(weekStart.plusDays(offset.toLong())),
-                        label = dayLabel,
-                        onSelect = onSelect,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                if (index < weeks.size - 1) Spacer(Modifier.height(CELL_GAP))
             }
         }
     }
