@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -39,10 +43,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -106,6 +117,30 @@ fun M3ERoughCalendar(
     var selected by rememberSaveable { mutableStateOf(today.toString()) }
     var listMode by rememberSaveable { mutableStateOf(false) }
     val haptics = rememberHaptics()
+    val density = LocalDensity.current
+
+    // 0 is the full month, 1 is the week strip.
+    //
+    // Driven by a nested-scroll connection rather than by the list's own offset, and that is the
+    // whole trick: the collapse *consumes* the scroll while it runs, so the month folds first and
+    // the content only starts moving once it has. Reading the offset instead would scroll and
+    // collapse at the same time, which is the version that looks broken.
+    var collapse by remember { mutableFloatStateOf(0f) }
+    val collapseDistancePx = remember(density) { with(density) { COLLAPSE_DISTANCE.toPx() } }
+    val collapseConnection = remember(collapseDistancePx) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                if (delta == 0f) return Offset.Zero
+                val next = (collapse - delta / collapseDistancePx).coerceIn(0f, 1f)
+                // Consume exactly what the collapse used. When it is already at an end, nothing is
+                // consumed and the list scrolls as it normally would.
+                val used = (next - collapse) * collapseDistancePx
+                collapse = next
+                return Offset(0f, used)
+            }
+        }
+    }
 
     // Back leaves the list, not the section. Without this the shell's handler would take back to
     // Home, because the mode is not part of the overlay stack.
@@ -219,7 +254,8 @@ fun M3ERoughCalendar(
             .fillMaxSize()
             .background(M3EColor.page())
             .statusBarsPadding()
-            .padding(horizontal = M3ESpacing.page),
+            .padding(horizontal = M3ESpacing.page)
+            .nestedScroll(collapseConnection),
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
         item {
@@ -239,7 +275,9 @@ fun M3ERoughCalendar(
         }
 
         // The month and its navigation, in one row. The chevrons mean the same thing in both modes —
-        // step one month — so they are not the mode switch and do not move between modes.
+        // step one month — so they are not the mode switch and do not move between modes. The label
+        // is one too, with a caret to say so: tapping it is the shortcut into the month list, and the
+        // toggle above is the discoverable version of the same thing.
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -249,12 +287,30 @@ fun M3ERoughCalendar(
                 IconButton(onClick = { stepMonth(-1) }) {
                     Icon(Icons.Default.ChevronLeft, contentDescription = "Previous month", tint = M3EColor.text())
                 }
-                Text(
-                    text = monthLabel.format(monthValue),
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
-                    color = M3EColor.text()
-                )
+                Row(
+                    modifier = Modifier
+                        .clip(M3EShape.chip())
+                        .clickable {
+                            haptics.tap()
+                            listMode = !listMode
+                        }
+                        .padding(horizontal = M3ESpacing.rowGap, vertical = M3ESpacing.tightGap),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = monthLabel.format(monthValue),
+                        style = M3EType.rowTitle(),
+                        fontWeight = FontWeight.SemiBold,
+                        color = M3EColor.text()
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (listMode) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (listMode) "Back to the month grid" else "See the whole month as a list",
+                        tint = M3EColor.accent(),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
                 IconButton(onClick = { stepMonth(1) }) {
                     Icon(Icons.Default.ChevronRight, contentDescription = "Next month", tint = M3EColor.text())
                 }
@@ -262,6 +318,8 @@ fun M3ERoughCalendar(
         }
 
         if (listMode) {
+            // No month header in list mode: the agenda is the month, and a grid above it would be
+            // the same information twice.
             if (agenda.isEmpty()) {
                 item {
                     M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
@@ -298,35 +356,75 @@ fun M3ERoughCalendar(
                 }
             }
         } else {
-            item {
-                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(M3ESpacing.cardGap),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+            // Pinned, and the thing the scroll collapses. The grid inside is laid out once at its
+            // own height and *clipped* by this box rather than squeezed into it — so collapsing
+            // changes one box's height and never re-lays-out the forty-two cells inside it. That is
+            // the difference between a collapse that is cheap and one that stutters.
+            stickyHeader(key = "month") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(STRIP_HEIGHT + (GRID_HEIGHT - STRIP_HEIGHT) * (1f - collapse))
+                        .clipToBounds()
+                        .background(M3EColor.page())
+                ) {
+                    // Read in the draw phase, so the fade costs a redraw and not a recomposition of
+                    // the month.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(GRID_HEIGHT)
+                            .graphicsLayer { alpha = 1f - collapse }
                     ) {
-                        WeekdayHeader()
-                        Spacer(Modifier.height(M3ESpacing.tightGap))
-                        cells.chunked(7).forEach { week ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(M3ESpacing.cardGap),
+                                verticalArrangement = Arrangement.spacedBy(CELL_GAP)
                             ) {
-                                week.forEach { day ->
-                                    DayCell(
-                                        day = day,
-                                        today = today,
-                                        selected = selectedDay,
-                                        intensity = day?.let { intensityOf(it) } ?: 0f,
-                                        label = dayLabel,
-                                        onSelect = {
-                                            haptics.tap()
-                                            selected = it.toString()
-                                        },
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                WeekdayHeader()
+                                Spacer(Modifier.height(M3ESpacing.tightGap))
+                                cells.chunked(7).forEach { week ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(CELL_GAP)
+                                    ) {
+                                        week.forEach { day ->
+                                            DayCell(
+                                                day = day,
+                                                today = today,
+                                                selected = selectedDay,
+                                                intensity = day?.let { intensityOf(it) } ?: 0f,
+                                                label = dayLabel,
+                                                onSelect = {
+                                                    haptics.tap()
+                                                    selected = it.toString()
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
+                    }
+
+                    // Always composed, so the fade is the only thing that changes.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(STRIP_HEIGHT)
+                            .graphicsLayer { alpha = collapse }
+                    ) {
+                        WeekStrip(
+                            selectedDay = selectedDay,
+                            today = today,
+                            dayLabel = dayLabel,
+                            intensityOf = { intensityOf(it) },
+                            onSelect = {
+                                haptics.tap()
+                                selected = it.toString()
+                            }
+                        )
                     }
                 }
             }
@@ -537,8 +635,66 @@ private fun dayFill(intensity: Float): Color {
 private fun dayTextColor(intensity: Float): Color =
     if (intensity > 0.4f) Color.White.copy(alpha = 0.9f) else M3EColor.text().copy(alpha = 0.7f)
 
+/**
+ * The week containing the selection, as one row.
+ *
+ * What the month collapses into. It carries the same fill, the same today dot and the same ring as a
+ * grid cell, so the collapse reads as the month folding rather than as one thing being swapped for
+ * another.
+ */
+@Composable
+private fun WeekStrip(
+    selectedDay: LocalDate,
+    today: LocalDate,
+    dayLabel: DateTimeFormatter,
+    intensityOf: (LocalDate) -> Float,
+    onSelect: (LocalDate) -> Unit
+) {
+    val weekStart = remember(selectedDay) { selectedDay.minusDays((selectedDay.dayOfWeek.value - 1).toLong()) }
+    M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.cardGap),
+            horizontalArrangement = Arrangement.spacedBy(CELL_GAP)
+        ) {
+            repeat(7) { offset ->
+                val day = weekStart.plusDays(offset.toLong())
+                DayCell(
+                    day = day,
+                    today = today,
+                    selected = selectedDay,
+                    intensity = intensityOf(day),
+                    label = dayLabel,
+                    onSelect = onSelect,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
 /** The width of the selection ring. */
 private val RING_WIDTH = 2.dp
+
+/**
+ * Cell height, fixed rather than derived from the width.
+ *
+ * The collapse has to animate the month's height, and it needs a number to animate between. With
+ * `aspectRatio` the month's height depends on the screen width, so it would have to be measured —
+ * and it cannot be measured while it is being shrunk. A fixed cell makes the month's height a fact.
+ */
+private val CELL_HEIGHT = 40.dp
+private val CELL_GAP = 4.dp
+
+/** Weekday label + gap + six rows + the card's own padding. */
+private val GRID_HEIGHT = 320.dp
+
+/** One row of cells + the card's own padding. */
+private val STRIP_HEIGHT = 72.dp
+
+/** How far the finger travels to collapse the month. Short enough to feel like a flick. */
+private val COLLAPSE_DISTANCE = 110.dp
 
 /**
  * One dated release: the title, the day it lands, its resolved local air time, and the episodes it
@@ -602,7 +758,7 @@ private fun DayCell(
     modifier: Modifier = Modifier
 ) {
     if (day == null) {
-        Spacer(modifier = modifier.aspectRatio(0.9f))
+        Spacer(modifier = modifier.height(CELL_HEIGHT))
         return
     }
 
@@ -612,7 +768,7 @@ private fun DayCell(
     val textColor = dayTextColor(intensity)
     val onDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
-    Box(modifier = modifier.aspectRatio(0.9f), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.height(CELL_HEIGHT), contentAlignment = Alignment.Center) {
         Surface(
             onClick = { onSelect(day) },
             shape = M3EShape.chip(),

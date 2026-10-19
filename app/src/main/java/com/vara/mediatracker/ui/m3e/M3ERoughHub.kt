@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.lazy.LazyColumn
@@ -43,15 +44,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.vara.mediatracker.data.api.TMDBClient
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.util.NetworkResolver
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.LibraryCore
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 /**
@@ -112,7 +116,7 @@ internal fun M3ERoughHub(
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
             when (page) {
                 0 -> SmartTab(library, onOpenList)
-                1 -> DiscoverTab(library, onOpenList)
+                1 -> DiscoverTab(library, core.networkLogos, onOpenList)
                 else -> M3ERoughCollections(
                     container = container,
                     core = core,
@@ -252,21 +256,16 @@ private data class Facet(
 @Composable
 private fun DiscoverTab(
     library: List<MediaItemEntity>,
+    networkLogos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
-    // Networks and studios are different things — one airs a show, one makes it — so they sit
-    // behind a pill pair rather than pooled into one list of "brands", which is how the Mac splits
-    // them and why it has a Networks/Studios switch.
-    var brand by rememberSaveable { mutableStateOf(BrandTab.Networks) }
-    val brands = remember(library, brand) {
-        // A network airs a show, a studio makes a film — so the two tabs read different titles, not
-        // just different fields of the same ones. A show's studio and a film's network are both
-        // populated by TMDB and neither belongs here.
-        val source = when (brand) {
-            BrandTab.Networks -> library.filter { it.type.contains("TV", ignoreCase = true) }
-            BrandTab.Studios -> library.filter { it.type.contains("Movie", ignoreCase = true) }
-        }
-        facets(source) { if (brand == BrandTab.Networks) it.network else it.studios }.take(12)
+    // Networks only. Studios were here behind a pill pair, and they were the weaker half: a studio
+    // is a production credit, and browsing by it answers a question almost nobody asks — who made
+    // this — while a network answers the one people do, where can I watch it. The Mac carries both
+    // because it has the room; on a phone one of them had to go, and it was the one you cannot
+    // recognise by its mark.
+    val brands = remember(library) {
+        facets(library.filter { it.type.contains("TV", ignoreCase = true) }) { it.network }.take(12)
     }
     val genres = remember(library) { facets(library) { it.genres }.take(8) }
     val languages = remember(library) { facets(library) { it.language }.take(6) }
@@ -291,19 +290,10 @@ private fun DiscoverTab(
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
-                    BrandTab.all.forEach { candidate ->
-                        FilterChip(
-                            selected = brand == candidate,
-                            onClick = { brand = candidate },
-                            label = { Text(candidate.label, style = M3EType.action()) },
-                            shape = M3EShape.chip()
-                        )
-                    }
-                }
-                BrandGrid(
-                    title = brand.label,
+                NetworkGrid(
+                    title = "Networks",
                     facets = brands,
+                    logos = networkLogos,
                     onOpenList = onOpenList
                 )
                 if (genres.isNotEmpty()) GenreGrid(genres, onOpenList)
@@ -315,31 +305,17 @@ private fun DiscoverTab(
 }
 
 /**
- * Which brand list Discover is showing.
+ * Networks as tiles: the mark on a plate, and the count in the corner.
  *
- * A network airs a title, a studio makes it, and a library holds both — so they are separated the
- * way the Mac separates them rather than merged into one list of names.
- */
-private enum class BrandTab(val label: String) {
-    Networks("Networks"),
-    Studios("Studios");
-
-    companion object {
-        val all = listOf(Networks, Studios)
-    }
-}
-
-/**
- * Brands as tiles: the name, and the count underneath.
- *
- * The marks these once drew are gone — a transparent logo disappears on a dark page, and the white
- * plate that fixed that fought whatever palette was in use. Nothing here reads the logo maps any
- * more, which is why they no longer travel this far.
+ * The Mac's DiscoveryCard with `style: .logo`, which is what this is: the mark gets the tile, and
+ * the count rides in a corner pill instead of taking a line under it. Two to a row rather than
+ * three, because a mark needs width to be recognisable in a way a name does not.
  */
 @Composable
-private fun BrandGrid(
+private fun NetworkGrid(
     title: String,
     facets: List<Facet>,
+    logos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     M3ESectionHeader(title)
@@ -351,69 +327,101 @@ private fun BrandGrid(
         )
         return
     }
-    // Three to a row rather than two: these are names, not posters, and a phone does not need a wide
-    // card to read one. Smaller is also more of them on screen, which is the point of a browse grid.
     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-        facets.chunked(3).forEach { row ->
+        facets.chunked(2).forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
             ) {
                 row.forEach { facet ->
-                    BrandTile(
+                    NetworkTile(
                         facet = facet,
+                        logoUrl = TMDBClient.buildLogoUrl(logos[facet.name.lowercase(Locale.US)]),
                         modifier = Modifier.weight(1f),
                         onClick = {
                             onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
                         }
                     )
                 }
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
 }
 
-/** One brand: its name, and how many titles it holds. */
+/**
+ * One network: its mark on a light plate, and how many titles it holds in a corner pill.
+ *
+ * The plate is not decoration and it is not the palette's colour on purpose. A network mark is a
+ * transparent PNG, usually dark — Netflix, HBO, Prime — and on a tonal card in dark mode it simply
+ * disappears. The plate is what makes it visible, which is why the Mac draws these the same way and
+ * why this is a fixed light surface rather than a themed one.
+ *
+ * The count moved to the corner so the mark can have the whole tile. Under it, it forced the mark
+ * into half the height and made every logo small enough to be guesswork.
+ */
 @Composable
-private fun BrandTile(
+private fun NetworkTile(
     facet: Facet,
+    logoUrl: String?,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    // Text, in the theme's own colours.
-    //
-    // The logos were the wrong answer twice over: a mark on transparency disappears on a dark page,
-    // and the white plate that fixed it fought whatever palette the user had chosen. Text takes the
-    // theme's colours, so the tile is legible in both modes and belongs to the palette in use
-    // rather than to a third scheme invented for it.
-    M3ETonalCard(modifier = modifier.height(76.dp), onClick = onClick) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(M3ESpacing.tightGap),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+    Box(modifier = modifier.height(84.dp)) {
+        Surface(
+            onClick = onClick,
+            shape = M3EShape.card(),
+            color = Color.White,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.fillMaxSize()
         ) {
-            Text(
-                text = facet.name,
-                style = M3EType.rowTitle(),
-                fontWeight = FontWeight.SemiBold,
-                color = M3EColor.text(),
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.height(M3ESpacing.tightGap))
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.inlineGap),
+                contentAlignment = Alignment.Center
+            ) {
+                if (logoUrl != null) {
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = facet.name,
+                        // Fit, not Crop: a network mark sits on transparency, and cropping cuts it.
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        text = facet.name,
+                        style = M3EType.rowSupporting(),
+                        fontWeight = FontWeight.SemiBold,
+                        color = NETWORK_PLATE_INK,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+        Surface(
+            shape = CircleShape,
+            color = M3EColor.accent(),
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(M3ESpacing.tightGap)
+        ) {
             Text(
                 text = "${facet.count}",
                 style = M3EType.rowSupporting(),
-                color = M3EColor.accent()
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
             )
         }
     }
 }
+
+/** Ink for a light plate. Fixed, because the plate is white in both themes. */
+private val NETWORK_PLATE_INK = Color(0xFF1F2933)
 
 /** Comma-separated facet counts, most common first. */
 private fun facets(
