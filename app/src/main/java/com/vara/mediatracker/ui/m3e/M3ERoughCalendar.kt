@@ -640,10 +640,15 @@ private fun MonthGrid(
     intensityOf: (LocalDate) -> Float,
     onSelect: (LocalDate) -> Unit
 ) {
+    // A month is five rows or six, and which one depends on the weekday it starts on: a 31-day
+    // month beginning on a Thursday needs five. Assuming six left a whole row's worth of card under
+    // a five-row month, which is the band that was showing below the grid.
+    val rows = cells.size / 7
+
     // Where the selected week sits in the open month, which is how far it has to travel.
     val rowOffset = WEEKDAY_HEIGHT + M3ESpacing.tightGap + (cellHeight + CELL_GAP) * selectedWeekIndex
     val gridHeight = M3ESpacing.cardGap * 2 + WEEKDAY_HEIGHT + M3ESpacing.tightGap +
-        (cellHeight + CELL_GAP) * 6 - CELL_GAP
+        (cellHeight + CELL_GAP) * rows - CELL_GAP
     val stripHeight = M3ESpacing.cardGap * 2 + cellHeight
     val height = stripHeight + (gridHeight - stripHeight) * (1f - collapse)
 
@@ -692,7 +697,7 @@ private fun MonthGrid(
                         )
                     }
                 }
-                if (index < 5) Spacer(Modifier.height(CELL_GAP))
+                if (index < rows - 1) Spacer(Modifier.height(CELL_GAP))
             }
         }
     }
