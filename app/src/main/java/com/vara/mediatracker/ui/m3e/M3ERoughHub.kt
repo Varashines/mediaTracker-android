@@ -303,12 +303,12 @@ private fun DiscoverTab(
 }
 
 /**
- * Networks as tiles: the name, and the count in the corner.
+ * Networks as tiles: the count as the headline, the name beneath.
  *
- * The names, not the marks. A logo map is worth having when the marks are the thing you scan by, and
- * at three to a row on a phone they are not — a wordmark shrunk to ninety points of width is a
- * smudge you have to read anyway, so it may as well be the word. The count stays in the corner so
- * the name gets the whole tile, which is the part of the Mac's tile that was actually working.
+ * The same tile the genres use. Networks had their own — a plate, a mark, a corner pill — and each
+ * version of it was a different argument about where the number should go. The answer was already on
+ * this screen: put the count where it is the largest thing on the tile and let the name sit under
+ * it. A name is what you scan for, and a number is what tells you whether it is worth opening.
  */
 @Composable
 private fun NetworkGrid(
@@ -325,17 +325,14 @@ private fun NetworkGrid(
         )
         return
     }
-    // Three to a row, and small. A mark is a wordmark, not a poster: it needs width and almost no
-    // height, so a tall tile was mostly plate. Smaller is also more of them on screen, which is the
-    // point of a browse grid.
-    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
-        facets.chunked(3).forEach { row ->
+    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+        facets.chunked(2).forEach { pair ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
             ) {
-                row.forEach { facet ->
-                    NetworkTile(
+                pair.forEach { facet ->
+                    GenreTile(
                         facet = facet,
                         modifier = Modifier.weight(1f),
                         onClick = {
@@ -343,62 +340,11 @@ private fun NetworkGrid(
                         }
                     )
                 }
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
 }
-
-/**
- * One network: its name, and how many titles it holds in a corner pill.
- *
- * The name is inset on the trailing side so a two-line one cannot run under the pill.
- */
-@Composable
-private fun NetworkTile(
-    facet: Facet,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(modifier = modifier.height(60.dp)) {
-        M3ETonalCard(modifier = Modifier.fillMaxSize(), onClick = onClick) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = M3ESpacing.tightGap, vertical = M3ESpacing.tightGap),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = facet.name,
-                    style = M3EType.rowSupporting(),
-                    fontWeight = FontWeight.SemiBold,
-                    color = M3EColor.text(),
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 2.dp)
-                )
-            }
-        }
-        Surface(
-            shape = CircleShape,
-            color = M3EColor.accent(),
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(3.dp)
-        ) {
-            Text(
-                text = "${facet.count}",
-                style = M3EType.rowSupporting(),
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 5.dp)
-            )
-        }
-    }
-}
-
-
 
 /** Comma-separated facet counts, most common first. */
 private fun facets(

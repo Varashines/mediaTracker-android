@@ -26,7 +26,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandLess
@@ -50,7 +49,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -235,26 +233,30 @@ fun M3ERoughCalendar(
     // disturb anything.
     val listState = rememberLazyListState()
 
-    // Whether the releases have been scrolled at all. The list merely starting to move counts.
+    // Whether the releases have been scrolled at all. The list merely starting to move counts — a
+    // small threshold on purpose, because a day with three releases only scrolls a little, and the
+    // old 24 was enough to miss it.
     val scrolledPastTop by remember {
         derivedStateOf {
-            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 8
         }
     }
-
-    // null = follow the scroll; true/false = the user pinned Week or Month. The pin resets when the
-    // month changes, so the automatic behaviour resumes afterwards.
-    var manualWeekMode by rememberSaveable { mutableStateOf<Boolean?>(null) }
 
     // Latched, not direct. Set once the list has been scrolled while the day has more than two
     // releases, and released only when the scroll comes back to the top. A fraction that tracks the
     // finger would change sixty times a second and flicker; this changes twice.
-    var autoWeek by remember { mutableStateOf(false) }
+    //
+    // No control, deliberately. The state is a consequence of where you are, not a setting — and a
+    // control for something the scroll already decides is a control that will mostly be wrong about
+    // what you wanted. If the list is too short to scroll, it never compacts, which is correct: a
+    // short list does not need the room.
+    var isCompactWeek by remember { mutableStateOf(false) }
     LaunchedEffect(scrolledPastTop, releases.size) {
-        if (!scrolledPastTop) autoWeek = false
-        else if (releases.size > 2) autoWeek = true
+        if (!scrolledPastTop) isCompactWeek = false
+        // Three or more. Three rows plus a section heading is where a full month stops fitting, and
+        // the day is the thing you are reading.
+        else if (releases.size >= 3) isCompactWeek = true
     }
-    val isCompactWeek = manualWeekMode ?: autoWeek
 
     // One row or five, and that is the whole of the week/month difference. A row count cannot be
     // wrong; a height or a travel distance can, and mine was, repeatedly.
@@ -272,59 +274,69 @@ fun M3ERoughCalendar(
     ) {
         Column(modifier = Modifier.padding(horizontal = M3ESpacing.page)) {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
+            // The month sits with the title, where it is read, and the whole thing is one control:
+            // step a month either way, or tap the name to open the month as a list. The caret is
+            // what says the name is tappable — a title that is secretly a button is a button nobody
+            // presses.
             M3EScreenHeader(
                 title = "Calendar",
                 eyebrow = "Release radar",
                 trailing = {
-                    WeekMonthToggle(
-                        week = isCompactWeek,
-                        onSelect = { week ->
-                            haptics.tap()
-                            manualWeekMode = week
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { stepMonth(-1) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ChevronLeft,
+                                contentDescription = "Previous month",
+                                tint = M3EColor.text(),
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
-                    )
+                        Row(
+                            modifier = Modifier
+                                .clip(M3EShape.chip())
+                                .clickable {
+                                    haptics.tap()
+                                    listMode = !listMode
+                                }
+                                .padding(horizontal = M3ESpacing.tightGap, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = monthLabel.format(monthValue),
+                                style = M3EType.rowTitle(),
+                                fontWeight = FontWeight.SemiBold,
+                                color = M3EColor.text(),
+                                maxLines = 1
+                            )
+                            Spacer(Modifier.width(2.dp))
+                            Icon(
+                                imageVector = if (listMode) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = if (listMode) {
+                                    "Back to the month grid"
+                                } else {
+                                    "See the whole month as a list"
+                                },
+                                tint = M3EColor.accent(),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        IconButton(
+                            onClick = { stepMonth(1) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = "Next month",
+                                tint = M3EColor.text(),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                 }
             )
-
-            // The month and its navigation. The chevrons step a month; the label is a switch into
-            // the month as a list, with a caret to say so — a title that is secretly a button is a
-            // button nobody presses.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { stepMonth(-1) }) {
-                    Icon(Icons.Default.ChevronLeft, contentDescription = "Previous month", tint = M3EColor.text())
-                }
-                Row(
-                    modifier = Modifier
-                        .clip(M3EShape.chip())
-                        .clickable {
-                            haptics.tap()
-                            listMode = !listMode
-                        }
-                        .padding(horizontal = M3ESpacing.rowGap, vertical = M3ESpacing.tightGap),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = monthLabel.format(monthValue),
-                        style = M3EType.rowTitle(),
-                        fontWeight = FontWeight.SemiBold,
-                        color = M3EColor.text()
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Icon(
-                        imageVector = if (listMode) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (listMode) "Back to the month grid" else "See the whole month as a list",
-                        tint = M3EColor.accent(),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                IconButton(onClick = { stepMonth(1) }) {
-                    Icon(Icons.Default.ChevronRight, contentDescription = "Next month", tint = M3EColor.text())
-                }
-            }
 
             if (!listMode) {
                 MonthGrid(
@@ -422,45 +434,6 @@ fun M3ERoughCalendar(
             }
             item { Spacer(Modifier.height(LocalNavClearance.current)) }
         }
-    }
-}
-
-/**
- * Week or Month, as one control.
- *
- * The words, not symbols: it is a two-way choice about time, and "Week" and "Month" are the two
- * shortest things that say it. It also carries the manual override — the scroll decides, until the
- * user says otherwise.
- */
-@Composable
-private fun WeekMonthToggle(week: Boolean, onSelect: (Boolean) -> Unit) {
-    Surface(
-        shape = M3EShape.chip(),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh
-    ) {
-        Row(
-            modifier = Modifier.padding(3.dp),
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            WeekMonthSegment("Week", selected = week) { onSelect(true) }
-            WeekMonthSegment("Month", selected = !week) { onSelect(false) }
-        }
-    }
-}
-
-@Composable
-private fun WeekMonthSegment(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = M3EShape.chip(),
-        color = if (selected) M3EColor.accent() else Color.Transparent,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
-    ) {
-        Text(
-            text = label,
-            style = M3EType.action(),
-            modifier = Modifier.padding(horizontal = M3ESpacing.rowGap, vertical = M3ESpacing.tightGap)
-        )
     }
 }
 
