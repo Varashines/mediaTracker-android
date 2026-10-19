@@ -1,6 +1,7 @@
 package com.vara.mediatracker.ui.m3e
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -17,11 +18,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -46,10 +50,12 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
+import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.common.LibraryCore
 import com.vara.mediatracker.ui.common.LocalNowMillis
+import com.vara.mediatracker.ui.common.OverlayAwareBackHandler
+import com.vara.mediatracker.ui.common.rememberHaptics
 import com.vara.mediatracker.ui.home.HomeEligibility
-import com.vara.mediatracker.data.model.MediaItemEntity
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -60,28 +66,32 @@ import java.util.Locale
 import kotlin.math.ln
 
 /**
- * Release Radar as a month, in the [M3E] vocabulary.
+ * Release Radar, in two states.
  *
- * A week of dates in a row tells you what is next; a month tells you the shape of it — which
- * weeks are busy, which are bare — and that is what a radar is for. Days carrying a release are
- * tinted, the selected day is filled with the emphasis tone, and the day's releases sit
- * underneath, so a tap always lands on something.
+ * **Grid** is the default: the month's days, and the selected day's releases under them. It answers
+ * "what is on today", which is the question a radar is asked most.
  *
- * Days are shaded by how much lands on them. The weight is episodes plus films, run through
- * log1p against the busiest day of the month, so one busy Friday does not flatten every other day
- * to nothing — the same scale the Mac's radar uses, including its opacity bounds.
+ * **List** is the whole month as an agenda — every dated release, grouped by day, days with nothing
+ * skipped. It answers "what does this month look like", which the grid only ever drew in heat.
  *
- * A release is a *resolved* date, not a stored one. The stored date is the show's first-air date —
- * years old for anything still running — so reading it left every month empty; resolving each
- * episode instead gives the whole run its real dates and its air times.
+ * They are two states rather than one that collapses. A grid that shrinks into a week strip as you
+ * scroll reads well and costs a continuous height animation over forty-two tinted cells — the
+ * classic source of scroll jank — and it would have left the header with three states and two
+ * meanings on one label. Two honest states and one switch is the version that can be trusted.
  *
- * Everything is placed, not only what is still to come. A calendar you cannot look back through
- * is a countdown, and the question "when did this air" is asked as often as "when does it air".
+ * The mode switch is the only control that changes mode. The month label is a label: a title that is
+ * secretly a button is a button nobody presses.
  *
- * Dates are compared as day strings rather than resolved instants. Deliberately crude: the real
- * screen resolves an air time to the minute through the streaming rules the app already has, and
- * this is here to judge the layout, not the timekeeping.
+ * Days are shaded by how much lands on them. The weight is episodes plus films, run through log1p
+ * against the busiest day of the month, so one busy Friday does not flatten every other day to
+ * nothing — the Mac's scale, including its opacity bounds. In list mode the same shading appears on
+ * each date's day chip, which is how the radar's shape survives without the grid.
+ *
+ * A release is a *resolved* date, not a stored one: the stored date is the show's first-air date,
+ * years old for anything still running. Everything is placed, not only what is still to come — a
+ * calendar you cannot look back through is a countdown.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun M3ERoughCalendar(
     core: LibraryCore,
@@ -94,6 +104,12 @@ fun M3ERoughCalendar(
     val today = remember(nowMillis / 60_000) { LocalDate.now() }
     var month by rememberSaveable { mutableStateOf(YearMonth.from(today).toString()) }
     var selected by rememberSaveable { mutableStateOf(today.toString()) }
+    var listMode by rememberSaveable { mutableStateOf(false) }
+    val haptics = rememberHaptics()
+
+    // Back leaves the list, not the section. Without this the shell's handler would take back to
+    // Home, because the mode is not part of the overlay stack.
+    OverlayAwareBackHandler(enabled = listMode) { listMode = false }
 
     val zone = remember { ZoneId.systemDefault() }
     val monthLabel = remember { DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US) }
@@ -176,9 +192,27 @@ fun M3ERoughCalendar(
         if (weight == 0 || logMax == 0.0) return 0f
         return (ln(1.0 + weight) / logMax).toFloat()
     }
+
     val selectedDay = remember(selected) { LocalDate.parse(selected) }
     val cells = remember(monthValue) { monthCells(monthValue) }
     val releases = remember(byDay, selectedDay) { byDay[selectedDay].orEmpty() }
+
+    // The month as an agenda: only the days that carry something, in order. Empty days are skipped
+    // deliberately — an agenda that lists "nothing" nineteen times is the grid with extra steps.
+    val agenda = remember(byDay, monthValue) {
+        byDay.entries
+            .filter { YearMonth.from(it.key) == monthValue }
+            .sortedBy { it.key }
+    }
+
+    fun stepMonth(delta: Long) {
+        haptics.tap()
+        val next = monthValue.plusMonths(delta)
+        month = next.toString()
+        // Carry the day across, clamped: stepping from the 31st to a 30-day month should land on
+        // the 30th, not vanish.
+        selected = next.atDay(selectedDay.dayOfMonth.coerceAtMost(next.lengthOfMonth())).toString()
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -186,82 +220,74 @@ fun M3ERoughCalendar(
             .background(M3EColor.page())
             .statusBarsPadding()
             .padding(horizontal = M3ESpacing.page),
-        verticalArrangement = Arrangement.spacedBy(M3ESpacing.sectionGap)
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
         item {
             Column {
-            Spacer(Modifier.height(M3ESpacing.pageVertical))
-            M3EScreenHeader(
-                eyebrow = monthLabel.format(monthValue),
-                title = "Calendar",
-                trailing = {
-                    Row {
-                        IconButton(onClick = { month = monthValue.minusMonths(1).toString() }) {
-                            Icon(Icons.Default.ChevronLeft, contentDescription = "Previous month", tint = M3EColor.text())
-                        }
-                        IconButton(onClick = { month = monthValue.plusMonths(1).toString() }) {
-                            Icon(Icons.Default.ChevronRight, contentDescription = "Next month", tint = M3EColor.text())
-                        }
-                    }
-                }
-            )
-            }
-        }
-
-        item {
-            M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(M3ESpacing.cardGap),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    WeekdayHeader()
-                    Spacer(Modifier.height(M3ESpacing.tightGap))
-                    cells.chunked(7).forEach { week ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            week.forEach { day ->
-                                DayCell(
-                                    day = day,
-                                    today = today,
-                                    selected = selectedDay,
-                                    intensity = day?.let { intensityOf(it) } ?: 0f,
-                                    label = dayLabel,
-                                    onSelect = { selected = it.toString() },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                M3ESectionHeader(
-                    title = fullLabel.format(selectedDay),
+                Spacer(Modifier.height(M3ESpacing.pageVertical))
+                M3EScreenHeader(
+                    title = "Calendar",
+                    eyebrow = "Release radar",
                     trailing = {
-                        Text(
-                            text = "${releases.size} ${if (releases.size == 1) "release" else "releases"}",
-                            style = M3EType.rowSupporting(),
-                            color = M3EColor.textMuted()
-                        )
+                        ModeToggle(list = listMode, onSelect = { list ->
+                            if (list != listMode) haptics.tap()
+                            listMode = list
+                        })
                     }
                 )
-                if (releases.isEmpty()) {
+            }
+        }
+
+        // The month and its navigation, in one row. The chevrons mean the same thing in both modes —
+        // step one month — so they are not the mode switch and do not move between modes.
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { stepMonth(-1) }) {
+                    Icon(Icons.Default.ChevronLeft, contentDescription = "Previous month", tint = M3EColor.text())
+                }
+                Text(
+                    text = monthLabel.format(monthValue),
+                    style = M3EType.rowTitle(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = M3EColor.text()
+                )
+                IconButton(onClick = { stepMonth(1) }) {
+                    Icon(Icons.Default.ChevronRight, contentDescription = "Next month", tint = M3EColor.text())
+                }
+            }
+        }
+
+        if (listMode) {
+            if (agenda.isEmpty()) {
+                item {
                     M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            text = "Nothing lands on this day.",
+                            text = "Nothing lands this month.",
                             style = M3EType.rowSupporting(),
                             color = M3EColor.textMuted(),
                             modifier = Modifier.padding(M3ESpacing.cardGap)
                         )
                     }
-                } else {
-                    // Ordered by the resolved air time, so a day reads as a running order.
-                    releases.sortedBy { it.time ?: LocalTime.MIDNIGHT }.forEach { event ->
+                }
+            } else {
+                agenda.forEach { (day, dayEvents) ->
+                    // Pinned while its own releases scroll, so the day is never lost — which is the
+                    // one thing the grid could not do, because it scrolled away above the content.
+                    stickyHeader(key = "header_$day") {
+                        DateHeader(
+                            day = day,
+                            count = dayEvents.size,
+                            intensity = intensityOf(day),
+                            today = today,
+                            label = fullLabel,
+                            number = dayLabel
+                        )
+                    }
+                    items(dayEvents, key = { "event_${day}_${it.item.id}" }) { event ->
                         ReleaseRow(
                             item = event.item,
                             episodes = event.episodes,
@@ -271,11 +297,245 @@ fun M3ERoughCalendar(
                     }
                 }
             }
+        } else {
+            item {
+                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(M3ESpacing.cardGap),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        WeekdayHeader()
+                        Spacer(Modifier.height(M3ESpacing.tightGap))
+                        cells.chunked(7).forEach { week ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                week.forEach { day ->
+                                    DayCell(
+                                        day = day,
+                                        today = today,
+                                        selected = selectedDay,
+                                        intensity = day?.let { intensityOf(it) } ?: 0f,
+                                        label = dayLabel,
+                                        onSelect = {
+                                            haptics.tap()
+                                            selected = it.toString()
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+                    M3ESectionHeader(
+                        title = fullLabel.format(selectedDay),
+                        trailing = {
+                            Text(
+                                text = "${releases.size} ${if (releases.size == 1) "release" else "releases"}",
+                                style = M3EType.rowSupporting(),
+                                color = M3EColor.textMuted()
+                            )
+                        }
+                    )
+                    if (releases.isEmpty()) {
+                        M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Nothing lands on this day.",
+                                style = M3EType.rowSupporting(),
+                                color = M3EColor.textMuted(),
+                                modifier = Modifier.padding(M3ESpacing.cardGap)
+                            )
+                        }
+                    } else {
+                        // Ordered by the resolved air time, so a day reads as a running order.
+                        releases.sortedBy { it.time ?: LocalTime.MIDNIGHT }.forEach { event ->
+                            ReleaseRow(
+                                item = event.item,
+                                episodes = event.episodes,
+                                time = event.time,
+                                onClick = { onOpen(event.item) }
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
+
+/**
+ * Grid or list, as one control: they are one choice, not two actions.
+ *
+ * Symbols only, and the state is always visible — which is the point. When the month label was the
+ * switch, entering the list meant tapping a title, and leaving it meant tapping the same title with
+ * the opposite meaning. Nothing about the text said either.
+ */
+@Composable
+private fun ModeToggle(list: Boolean, onSelect: (Boolean) -> Unit) {
+    Surface(
+        shape = M3EShape.chip(),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
+    ) {
+        Row(
+            modifier = Modifier.padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            ModeButton(
+                icon = Icons.Default.CalendarMonth,
+                description = "Month grid",
+                selected = !list
+            ) { onSelect(false) }
+            ModeButton(
+                icon = Icons.Default.ViewList,
+                description = "Month list",
+                selected = list
+            ) { onSelect(true) }
+        }
+    }
+}
+
+@Composable
+private fun ModeButton(
+    icon: ImageVector,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = M3EShape.chip(),
+        color = if (selected) M3EColor.accent() else Color.Transparent,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = M3ESpacing.rowGap, vertical = M3ESpacing.tightGap),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(imageVector = icon, contentDescription = description, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+/**
+ * A day's heading in the agenda: its chip, its full date, and how much lands on it.
+ *
+ * Opaque background because it pins — a sticky header the rows show through is worse than no header.
+ */
+@Composable
+private fun DateHeader(
+    day: LocalDate,
+    count: Int,
+    intensity: Float,
+    today: LocalDate,
+    label: DateTimeFormatter,
+    number: DateTimeFormatter
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(M3EColor.page())
+            .padding(vertical = M3ESpacing.tightGap),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        DayChip(day = day, today = today, intensity = intensity, label = number)
+        Spacer(Modifier.width(M3ESpacing.inlineGap))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label.format(day),
+                style = M3EType.rowTitle(),
+                fontWeight = FontWeight.SemiBold,
+                color = M3EColor.text(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "$count ${if (count == 1) "release" else "releases"}",
+                style = M3EType.rowSupporting(),
+                color = M3EColor.textMuted()
+            )
+        }
+    }
+}
+
+/**
+ * The grid cell, shrunk to a badge.
+ *
+ * This is how the radar survives without the grid: the same fill from the same weight, so a heavy
+ * day still reads as heavy while the rows carry what the grid never could. No selection ring here —
+ * nothing is selected in the agenda, and a ring would imply a state that has no meaning in this
+ * mode.
+ */
+@Composable
+private fun DayChip(
+    day: LocalDate,
+    today: LocalDate,
+    intensity: Float,
+    label: DateTimeFormatter
+) {
+    val fill = dayFill(intensity)
+    val textColor = dayTextColor(intensity)
+    val onDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    Box(modifier = Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+        Surface(
+            shape = M3EShape.chip(),
+            color = fill,
+            contentColor = textColor,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = label.format(day),
+                    style = M3EType.rowSupporting(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = textColor
+                )
+                if (day == today) {
+                    Spacer(Modifier.height(2.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(4.dp)
+                            .clip(CircleShape)
+                            .background(if (onDark) Color.White else Color.Black)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The fill for a day, from how much lands on it.
+ *
+ * The Mac's opacity bounds, chosen from the palette in use rather than the system setting so a
+ * forced light or dark theme still shades correctly. Shared by the cell and the chip so the two can
+ * never disagree about what "busy" looks like.
+ */
+@Composable
+private fun dayFill(intensity: Float): Color {
+    if (intensity <= 0f) return MaterialTheme.colorScheme.surfaceContainerHigh
+    val onDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val base = if (onDark) 0.20f else 0.16f
+    val extra = if (onDark) 0.65f else 0.70f
+    return M3EColor.accent().copy(alpha = base + intensity * extra)
+}
+
+/** The Mac's label rule, matched: white once the fill is heavy, otherwise on-surface held back. */
+@Composable
+private fun dayTextColor(intensity: Float): Color =
+    if (intensity > 0.4f) Color.White.copy(alpha = 0.9f) else M3EColor.text().copy(alpha = 0.7f)
 
 /** The width of the selection ring. */
 private val RING_WIDTH = 2.dp
@@ -322,7 +582,7 @@ private fun WeekdayHeader() {
 }
 
 /**
- * One day.
+ * One day in the grid.
  *
  * Three states, matching the Mac's radar cell: a day carrying releases is tinted by how much lands
  * on it, today carries a dot beneath its number, and the selected day is ringed.
@@ -348,24 +608,9 @@ private fun DayCell(
 
     val isSelected = day == selected
     val isToday = day == today
-    val hasReleases = intensity > 0f
-
-    // The Mac's opacity bounds, chosen from the palette in use rather than the system setting so a
-    // forced light or dark theme still shades correctly.
+    val fill = dayFill(intensity)
+    val textColor = dayTextColor(intensity)
     val onDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val baseOpacity = if (onDark) 0.20f else 0.16f
-    val maxExtra = if (onDark) 0.65f else 0.70f
-    val fill = when {
-        hasReleases -> M3EColor.accent().copy(alpha = baseOpacity + intensity * maxExtra)
-        else -> MaterialTheme.colorScheme.surfaceContainerHigh
-    }
-    // The Mac's label rule, matched: white on a heavy fill, otherwise on-surface held back so the
-    // number sits inside the colour rather than on top of it.
-    val textColor = if (intensity > 0.4f) {
-        Color.White.copy(alpha = 0.9f)
-    } else {
-        M3EColor.text().copy(alpha = 0.7f)
-    }
 
     Box(modifier = modifier.aspectRatio(0.9f), contentAlignment = Alignment.Center) {
         Surface(
