@@ -54,6 +54,10 @@ interface MediaDao {
     @Query("UPDATE media_items SET isSoftDeleted = 1, lastStateChangeDate = :now, lastInteractionDate = :now WHERE id IN (:ids)")
     suspend fun softDeleteForIds(ids: List<String>, now: String)
 
+    /** Puts a soft-deleted row back. The counterpart to [softDelete], for Undo. */
+    @Query("UPDATE media_items SET isSoftDeleted = 0, lastStateChangeDate = :now, lastInteractionDate = :now WHERE id = :id")
+    suspend fun restore(id: String, now: String)
+
     /**
      * Taste change (like/love). Stamps `lastInteractionDate` too — a like is a user edit and
      * the sync keys on it, so without this an Android like never looked newer than the Mac.

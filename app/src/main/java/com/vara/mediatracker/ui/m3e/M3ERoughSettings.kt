@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.app.TimePickerDialog
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,6 +67,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,6 +93,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import com.vara.mediatracker.data.sync.ReleaseReminderPlanner
 import com.vara.mediatracker.data.sync.CloudSyncManager
@@ -154,6 +156,9 @@ fun M3ERoughSettings(
     var digestWeekday by rememberSaveable { mutableIntStateOf(prefs.digestWeekday) }
     var digestTime by rememberSaveable { mutableIntStateOf(prefs.digestTime) }
     var pickingWeekday by rememberSaveable { mutableStateOf(false) }
+    // 0 = notification delivery, 1 = digest time, null = closed. One slot, like the overlay stack:
+    // two pickers cannot be open at once by construction.
+    var timePicker by rememberSaveable { mutableStateOf<Int?>(null) }
     var notificationsAllowed by remember { mutableStateOf(hasNotificationPermission(context)) }
 
     // ── Sync ─────────────────────────────────────────────────────────────────────────────────
@@ -428,18 +433,7 @@ fun M3ERoughSettings(
                             label = "Delivery time",
                             value = clockLabel(deliverySeconds)
                         ) {
-                            TimePickerDialog(
-                                context,
-                                { _, hour, minute ->
-                                    val seconds = hour * 3600 + minute * 60
-                                    deliverySeconds = seconds
-                                    prefs.notificationsTime = seconds
-                                    reschedule()
-                                },
-                                deliverySeconds / 3600,
-                                (deliverySeconds % 3600) / 60,
-                                false
-                            ).show()
+                            timePicker = 0
                         }
                         if (digestEnabled) {
                             IconValueRow(
@@ -455,18 +449,7 @@ fun M3ERoughSettings(
                                 label = "Digest time",
                                 value = clockLabel(digestTime)
                             ) {
-                                TimePickerDialog(
-                                    context,
-                                    { _, hour, minute ->
-                                        val seconds = hour * 3600 + minute * 60
-                                        digestTime = seconds
-                                        prefs.digestTime = seconds
-                                        applyDigest(true, digestWeekday, seconds)
-                                    },
-                                    digestTime / 3600,
-                                    (digestTime % 3600) / 60,
-                                    false
-                                ).show()
+                                timePicker = 1
                             }
                         }
                     }
@@ -642,6 +625,25 @@ fun M3ERoughSettings(
             },
             confirmButton = {
                 TextButton(onClick = { keysShown = false }) { Text("Done") }
+            }
+        )
+    }
+
+    timePicker?.let { which ->
+        TimePickerPopup(
+            title = if (which == 0) "Delivery time" else "Digest time",
+            initialSeconds = if (which == 0) deliverySeconds else digestTime,
+            onDismiss = { timePicker = null },
+            onConfirm = { seconds ->
+                if (which == 0) {
+                    deliverySeconds = seconds
+                    prefs.notificationsTime = seconds
+                    reschedule()
+                } else {
+                    digestTime = seconds
+                    prefs.digestTime = seconds
+                    applyDigest(true, digestWeekday, seconds)
+                }
             }
         )
     }
@@ -1295,6 +1297,48 @@ private fun CredentialField(
             .fillMaxWidth()
             .padding(top = M3ESpacing.tightGap)
     )
+}
+
+/**
+ * The M3 time picker, in a dialog.
+ *
+ * It was the platform `TimePickerDialog` — the one thing in this screen that was not Material at all,
+ * in the screen that is otherwise the most deliberately M3E. The platform dialog is a 2014 widget: no
+ * theme, no shape, no relation to anything around it.
+ */
+@Composable
+private fun TimePickerPopup(
+    title: String,
+    initialSeconds: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    val state = rememberTimePickerState(
+        initialHour = initialSeconds / 3600,
+        initialMinute = (initialSeconds % 3600) / 60,
+        is24Hour = true
+    )
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = M3EShape.hero(), color = M3EColor.card()) {
+            Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
+                Text(title, style = M3EType.rowTitle(), fontWeight = FontWeight.SemiBold, color = M3EColor.text())
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                TimePicker(state = state)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) { Text("Cancel", style = M3EType.action()) }
+                    TextButton(
+                        onClick = {
+                            onConfirm(state.hour * 3600 + state.minute * 60)
+                            onDismiss()
+                        }
+                    ) { Text("Set", style = M3EType.action(), color = M3EColor.accent()) }
+                }
+            }
+        }
+    }
 }
 
 /** The Mac stores weekdays 1..7 starting at Sunday; this reads them in that order. */

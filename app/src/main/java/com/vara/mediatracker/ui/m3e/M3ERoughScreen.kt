@@ -51,9 +51,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
@@ -73,6 +76,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -185,6 +195,9 @@ fun M3ERoughScreen(
     val detail = overlay as? Overlay.Detail
     val haptics = rememberHaptics()
     val context = LocalContext.current
+    // Delete is the one action here with a real undo — the row is soft-deleted, not gone — so it gets
+    // a Snackbar with an action rather than the fire-and-forget toast used everywhere else.
+    val snackbar = remember { SnackbarHostState() }
 
     val density = LocalDensity.current
 
@@ -344,9 +357,30 @@ fun M3ERoughScreen(
                         deleteTarget = null
                         haptics.toggle()
                         scope.launch {
-                            container.database.mediaDao().softDelete(target.id, TrackingLogic.isoNow())
+                            val removedAt = TrackingLogic.isoNow()
+                            container.database.mediaDao().softDelete(target.id, removedAt)
                             container.syncManager().pushMediaDeletes(listOf(target))
-                            AppToast.show("Removed \u201C${target.title}\u201D")
+                            val result = snackbar.showSnackbar(
+                                message = "Removed \u201C${target.title}\u201D",
+                                actionLabel = "Undo",
+                                duration = SnackbarDuration.Short
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                val restoredAt = TrackingLogic.isoNow()
+                                container.database.mediaDao().restore(target.id, restoredAt)
+                                // The row goes back up with the flag cleared, so the other device
+                                // sees a normal title again rather than a tombstone.
+                                container.syncManager().pushMediaBatch(
+                                    listOf(
+                                        target.copy(
+                                            isSoftDeleted = false,
+                                            lastInteractionDate = restoredAt,
+                                            lastStateChangeDate = restoredAt
+                                        )
+                                    )
+                                )
+                                AppToast.show("Restored \u201C${target.title}\u201D")
+                            }
                         }
                         // Leave after the dialog has gone. Dismissing in the same frame as the
                         // content change is the jitter the rest of the app avoids.
@@ -361,6 +395,15 @@ fun M3ERoughScreen(
                 }
             )
         }
+
+        // Above the bar, so it never covers the thing it is talking about.
+        SnackbarHost(
+            hostState = snackbar,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 96.dp)
+        )
 
         // While an overlay is open no section is current — Settings was being lit *alongside* Home,
         // which made it look like a child of whichever section you happened to be in.
@@ -612,6 +655,10 @@ private fun LibrarySection(
     // the composition, which opening any title does.
     var filterType by rememberSaveable { mutableStateOf(LibraryFilters.TYPE_ALL) }
     var filterSort by rememberSaveable { mutableStateOf(LibraryFilters.SORT_RECENT) }
+    // Posters alone fail for titles whose artwork tells you nothing. The list is one column of the
+    // same grid rather than a second screen, so the filters, the sort and the scroll position cannot
+    // diverge between the two.
+    var listView by rememberSaveable { mutableStateOf(false) }
     val filters = remember(filterType, filterSort) {
         LibraryFilters(type = filterType, sort = filterSort)
     }
@@ -621,7 +668,7 @@ private fun LibrarySection(
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
+        columns = if (listView) GridCells.Fixed(1) else GridCells.Fixed(3),
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
@@ -634,7 +681,28 @@ private fun LibrarySection(
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
                 Spacer(Modifier.height(M3ESpacing.pageVertical))
-                M3EScreenHeader(eyebrow = "${library.size} titles", title = "Library")
+                M3EScreenHeader(
+                    eyebrow = "${library.size} titles",
+                    title = "Library",
+                    trailing = {
+                        SingleChoiceSegmentedButtonRow {
+                            SegmentedButton(
+                                selected = !listView,
+                                onClick = { listView = false },
+                                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                                icon = { Icon(Icons.Default.GridView, contentDescription = "Grid") }
+                            ) {}
+                            SegmentedButton(
+                                selected = listView,
+                                onClick = { listView = true },
+                                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                                icon = {
+                                    Icon(Icons.AutoMirrored.Filled.List, contentDescription = "List")
+                                }
+                            ) {}
+                        }
+                    }
+                )
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 // The two views that are not sections. They live here because Library is where you
                 // are when you want either of them, and because a screen you open is a screen back
@@ -659,15 +727,24 @@ private fun LibrarySection(
             }
         }
         items(library, key = { it.id }) { item ->
-            val hero = rememberTileOrigin(item.id)
-            M3EArtworkCard(title = item.title, onClick = { hero.record(); onOpen(item) }) {
-                Poster(
-                    item,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(2f / 3f)
-                        .then(hero.modifier)
+            if (listView) {
+                TitleRow(
+                    item = item,
+                    trailing = Icons.Default.ChevronRight,
+                    onClick = { onOpen(item) },
+                    subtitle = "${item.type} · ${item.state}"
                 )
+            } else {
+                val hero = rememberTileOrigin(item.id)
+                M3EArtworkCard(title = item.title, onClick = { hero.record(); onOpen(item) }) {
+                    Poster(
+                        item,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(2f / 3f)
+                            .then(hero.modifier)
+                    )
+                }
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
