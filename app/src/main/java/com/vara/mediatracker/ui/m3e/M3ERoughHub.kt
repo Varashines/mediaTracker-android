@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.carousel.HorizontalCenteredHeroCarousel
 import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -52,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -214,7 +217,18 @@ private fun SmartTab(
                 }
             }
         }
-        if (groups.isNotEmpty()) item { FacetCarousel("Your shelf", groups, onOpenList) }
+        if (groups.isNotEmpty()) {
+            // The cookie shape is the app's one playful shape — the emphasis card on Home has it —
+            // so it marks the section that is about you rather than about the catalogue.
+            item {
+                FacetCarousel(
+                    title = "Your shelf",
+                    facets = groups,
+                    shape = MaterialShapes.Cookie9Sided.toShape(),
+                    onOpenList = onOpenList
+                )
+            }
+        }
         if (brands.isNotEmpty()) item { FacetCarousel("Networks", brands, onOpenList) }
         if (genres.isNotEmpty()) item { FacetCarousel("Genres", genres, onOpenList) }
         if (languages.isNotEmpty()) item { FacetCarousel("Languages", languages, onOpenList) }
@@ -234,7 +248,8 @@ private fun SmartTab(
 private fun FacetCarousel(
     title: String,
     facets: List<Facet>,
-    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit,
+    shape: Shape = M3EShape.hero()
 ) {
     M3ESectionHeader(title)
     val state = rememberCarouselState { facets.size }
@@ -247,9 +262,16 @@ private fun FacetCarousel(
         itemSpacing = M3ESpacing.cardGap
     ) { index ->
         val facet = facets[index]
-        PosterFacetCard(facet) {
-            onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
-        }
+        // `maskClip` shapes the carousel's mask rather than the item, so the corners stay consistent
+        // between the item that is peeking and the one that is centred. Clipping the item instead
+        // gives every card its own round edge and the row ends up with paired corners in each gap.
+        PosterFacetCard(
+            facet = facet,
+            modifier = Modifier.maskClip(shape),
+            onClick = {
+                onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
+            }
+        )
     }
 }
 
@@ -261,10 +283,10 @@ private fun FacetCarousel(
  * stays because it is the reason to open one over another.
  */
 @Composable
-private fun PosterFacetCard(facet: Facet, onClick: () -> Unit) {
+private fun PosterFacetCard(facet: Facet, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val poster = facet.items.firstOrNull()?.posterUrl
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .clickable(onClick = onClick)
     ) {
@@ -292,8 +314,9 @@ private fun PosterFacetCard(facet: Facet, onClick: () -> Unit) {
         )
         Column(
             modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(M3ESpacing.inlineGap)
+                .align(Alignment.BottomCenter)
+                .padding(M3ESpacing.inlineGap),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = facet.name,
