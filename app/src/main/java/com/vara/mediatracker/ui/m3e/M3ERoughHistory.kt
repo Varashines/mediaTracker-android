@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -27,13 +26,10 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.WatchCycleEntity
-import com.vara.mediatracker.data.model.WatchEventEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.LibraryCore
 import java.time.YearMonth
@@ -43,12 +39,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * What has been watched, newest first.
+ * What has been watched, one row per title.
  *
- * The Mac has had this as a sidebar screen for a while; the rows underneath — cycles and events —
- * have been syncing to this device the whole time and were never shown. A cycle is one sitting (a
- * film, or one run through a season); the events are the individual viewings inside it, so the
- * count in the row is what was actually watched rather than what the state column says.
+ * The first version printed a row per cycle, which is one row per sitting — so a show watched weekly
+ * for three months was a screenful of the same name, and the interesting fact (you have been
+ * watching this since June) was nowhere. A title is the unit you think in; the sessions and the
+ * episode count are the supporting line, and the last date says when.
+ *
+ * The rows underneath are the Mac's `WatchCycle`/`WatchEvent`: cycles are sittings, events are the
+ * individual viewings. Counting events rather than trusting the state column is what makes the
+ * episode number the number actually watched.
  */
 @Composable
 internal fun M3ERoughHistory(
@@ -57,32 +57,41 @@ internal fun M3ERoughHistory(
     onOpen: (MediaItemEntity) -> Unit = {}
 ) {
     val byId = remember(core) { core.items.associateBy { it.id } }
-    val history by produceState(emptyList<WatchCycleRow>(), core.items) {
+    val rows by produceState(emptyList<TitleHistory>(), core.items) {
         value = withContext(Dispatchers.Default) {
-            val db = container.database
-            val cycles = db.watchHistoryDao().getAllCycles()
-            val events = db.watchHistoryDao().getAllEvents()
-                .filter { it.voidedAt == null }
-                .groupBy { it.cycleId }
+            val dao = container.database.watchHistoryDao()
+            val cycles = dao.getAllCycles()
+            val events = dao.getAllEvents().filter { it.voidedAt == null }.groupBy { it.cycleId }
+
             cycles
-                .map { cycle ->
-                    WatchCycleRow(
-                        cycle = cycle,
-                        title = byId[cycle.mediaId]?.title ?: cycle.mediaId,
-                        item = byId[cycle.mediaId],
-                        watched = events[cycle.id].orEmpty().size,
-                        lastWatched = events[cycle.id].orEmpty()
-                            .maxOfOrNull { it.watchedAt }
-                            ?: cycle.startedAt
+                .groupBy { it.mediaId }
+                .map { (mediaId, titleCycles) ->
+                    val watched = titleCycles.sumOf { events[it.id].orEmpty().size }
+                    val last = titleCycles
+                        .flatMap { cycle -> events[cycle.id].orEmpty().map { it.watchedAt } }
+                        .maxOrNull()
+                        ?: titleCycles.maxOfOrNull { it.startedAt }
+                        ?: ""
+                    TitleHistory(
+                        mediaId = mediaId,
+                        item = byId[mediaId],
+                        title = byId[mediaId]?.title ?: mediaId,
+                        isShow = titleCycles.any { it.kind != "movie" },
+                        sessions = titleCycles.size,
+                        watched = watched,
+                        rewatch = titleCycles.any { it.isRewatch },
+                        last = last
                     )
                 }
-                .sortedByDescending { it.lastWatched }
+                // Titles that have since left the library are history too, but they are not what a
+                // glance at this screen is for.
+                .filter { it.item != null && it.last.isNotBlank() }
+                .sortedByDescending { it.last }
+                .take(100)
         }
     }
 
-    val byMonth = remember(history) {
-        history.groupBy { it.lastWatched.take(7) }
-    }
+    val byMonth = remember(rows) { rows.groupBy { it.last.take(7) } }
 
     LazyColumn(
         modifier = Modifier
@@ -95,17 +104,17 @@ internal fun M3ERoughHistory(
         item {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
             M3EScreenHeader(
-                eyebrow = if (history.isEmpty()) "Nothing watched yet" else "${history.size} sessions",
+                eyebrow = if (rows.isEmpty()) "Nothing watched yet" else "${rows.size} titles",
                 title = "Watch history"
             )
             Spacer(Modifier.height(M3ESpacing.cardGap))
         }
 
-        if (history.isEmpty()) {
+        if (rows.isEmpty()) {
             item {
                 M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "Mark something watched and it appears here, with the date it happened.",
+                        text = "Mark something watched and it appears here, newest first.",
                         style = M3EType.rowSupporting(),
                         color = M3EColor.textMuted(),
                         modifier = Modifier.padding(M3ESpacing.cardGap)
@@ -114,7 +123,7 @@ internal fun M3ERoughHistory(
             }
         }
 
-        byMonth.forEach { (month, rows) ->
+        byMonth.forEach { (month, monthRows) ->
             item(key = "month_$month") {
                 Spacer(Modifier.height(M3ESpacing.cardGap))
                 M3ESectionHeader(
@@ -123,29 +132,27 @@ internal fun M3ERoughHistory(
                     tint = M3EColor.accent()
                 )
             }
-            items(rows, key = { it.cycle.id }) { row ->
-                HistoryRow(row) { row.item?.let(onOpen) }
-            }
+            items(monthRows, key = { it.mediaId }) { row -> HistoryRow(row) { row.item?.let(onOpen) } }
         }
 
         item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
 
-private data class WatchCycleRow(
-    val cycle: WatchCycleEntity,
-    val title: String,
+private data class TitleHistory(
+    val mediaId: String,
     val item: MediaItemEntity?,
+    val title: String,
+    val isShow: Boolean,
+    val sessions: Int,
     val watched: Int,
-    val lastWatched: String
+    val rewatch: Boolean,
+    val last: String
 )
 
 @Composable
-private fun HistoryRow(row: WatchCycleRow, onClick: () -> Unit) {
-    M3ETonalCard(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = if (row.item != null) onClick else null
-    ) {
+private fun HistoryRow(row: TitleHistory, onClick: () -> Unit) {
+    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -153,7 +160,7 @@ private fun HistoryRow(row: WatchCycleRow, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = if (row.cycle.kind == "movie") Icons.Default.Movie else Icons.Default.Tv,
+                imageVector = if (row.isShow) Icons.Default.Tv else Icons.Default.Movie,
                 contentDescription = null,
                 tint = M3EColor.textMuted(),
                 modifier = Modifier.size(20.dp)
@@ -169,31 +176,27 @@ private fun HistoryRow(row: WatchCycleRow, onClick: () -> Unit) {
                 )
                 Text(
                     text = buildString {
-                        append(dayLabel(row.lastWatched))
-                        if (row.cycle.kind != "movie" && row.watched > 0) {
-                            append(" · ")
+                        if (row.isShow && row.watched > 0) {
                             append(if (row.watched == 1) "1 episode" else "${row.watched} episodes")
+                            if (row.sessions > 1) append(" · ${row.sessions} sittings")
+                        } else {
+                            append(if (row.sessions == 1) "Watched" else "${row.sessions} viewings")
                         }
-                        if (row.cycle.isRewatch) append(" · rewatch")
+                        if (row.rewatch) append(" · rewatch")
+                        append(" · ")
+                        append(dayLabel(row.last))
                     },
                     style = M3EType.rowSupporting(),
                     color = M3EColor.textMuted()
                 )
             }
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = null,
-                tint = M3EColor.accent(),
-                modifier = Modifier.size(18.dp)
-            )
         }
     }
 }
 
 /** "2026-10" → "October 2026", falling back to the raw group when it is not a month. */
 private fun monthLabel(group: String): String = runCatching {
-    val parsed = YearMonth.parse(group)
-    parsed.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US))
+    YearMonth.parse(group).format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US))
 }.getOrDefault(group)
 
 /** "2026-10-20T05:41:04Z" → "20 Oct". */
