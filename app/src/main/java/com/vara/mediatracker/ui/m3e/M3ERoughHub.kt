@@ -35,6 +35,9 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.carousel.HorizontalCenteredHeroCarousel
+import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
+import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -203,34 +206,20 @@ private fun SmartTab(
             .padding(horizontal = M3ESpacing.page),
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
-        // One hero and a grid of the rest.
+        // A centred hero carousel of the groups.
         //
-        // Six equal cards is a wall: every tile has the same weight, so nothing is the thing you came
-        // for. Continue watching is why this tab exists, so it gets the width and a poster; the other
-        // five are a set and read as one.
-        tiles.firstOrNull()?.let { first ->
-            item {
-                SmartHero(first) {
-                    onOpenList(first.label, first.items, ListSubtitle.Episode, ListLayout.Grid)
-                }
-            }
-        }
+        // Six equal cards was a wall: every tile had the same weight, so nothing was the thing you
+        // came for. A hero carousel makes the groups a set you move through — one at full size, the
+        // next showing at the edge so it is obvious there is more.
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                tiles.drop(1).chunked(2).forEach { pair ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
-                    ) {
-                        pair.forEach { tile ->
-                            SmartCard(
-                                tile = tile,
-                                modifier = Modifier.weight(1f),
-                                onClick = { onOpenList(tile.label, tile.items, ListSubtitle.Episode, ListLayout.Grid) }
-                            )
-                        }
-                        if (pair.size == 1) Spacer(Modifier.weight(1f))
-                    }
+            val carouselState = rememberCarouselState { tiles.size }
+            HorizontalCenteredHeroCarousel(
+                state = carouselState,
+                modifier = Modifier.fillMaxWidth()
+            ) { index ->
+                val tile = tiles[index]
+                SmartHero(tile) {
+                    onOpenList(tile.label, tile.items, ListSubtitle.Episode, ListLayout.Grid)
                 }
             }
         }
@@ -384,24 +373,29 @@ private fun NetworkGrid(
         )
         return
     }
-    // A rail, not a grid.
+    // A multi-browse carousel, not a grid.
     //
     // Discover was three walls of the same tile stacked — networks, genres, languages — with nothing
-    // saying where one ended. A rail is a different shape, so the tab reads as two ideas instead of
-    // one long one. Fixed size, because a rail of tiles that are each as tall as their label is a
-    // rail that wobbles.
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-        items(facets, key = { it.name }) { facet ->
-            GenreTile(
-                facet = facet,
-                modifier = Modifier
-                    .width(140.dp)
-                    .height(96.dp),
-                onClick = {
-                    onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
-                }
-            )
-        }
+    // saying where one ended. The carousel gives the networks a shape of their own: the first large,
+    // the next ones browsable at the edge — which is what "browse" means and what a grid of equal
+    // cards never said.
+    val networkState = rememberCarouselState { facets.size }
+    HorizontalMultiBrowseCarousel(
+        state = networkState,
+        preferredItemWidth = 140.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(96.dp),
+        itemSpacing = M3ESpacing.cardGap
+    ) { index ->
+        val facet = facets[index]
+        GenreTile(
+            facet = facet,
+            modifier = Modifier.fillMaxSize(),
+            onClick = {
+                onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
+            }
+        )
     }
 }
 
