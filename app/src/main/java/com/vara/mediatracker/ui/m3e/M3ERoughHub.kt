@@ -343,14 +343,24 @@ private fun PosterFacetCard(
             if (logoUrl != null) {
                 // The mark instead of the word: on a poster, a network's logo is what you
                 // recognise, and a name under it was the same information at a lower signal.
-                AsyncImage(
-                    model = logoUrl,
-                    contentDescription = facet.name,
-                    contentScale = ContentScale.Fit,
+                //
+                // On a white plate, because most marks are transparent PNGs of white or black type
+                // and a poster is neither. Without it an Apple TV+ logo on a dark poster is a
+                // smudge, and a Netflix one on a bright poster is nothing at all.
+                Box(
                     modifier = Modifier
-                        .height(22.dp)
-                        .widthIn(max = 96.dp)
-                )
+                        .background(Color.White.copy(alpha = 0.92f), M3EShape.chip())
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = facet.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .height(20.dp)
+                            .widthIn(max = 88.dp)
+                    )
+                }
             } else {
                 Text(
                     text = facet.name,
@@ -358,13 +368,16 @@ private fun PosterFacetCard(
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.widthIn(max = 100.dp)
                 )
             }
             Text(
                 text = "${facet.count}",
                 style = M3EType.rowSupporting(),
-                color = Color.White.copy(alpha = 0.8f)
+                color = Color.White.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center
             )
         }
     }
