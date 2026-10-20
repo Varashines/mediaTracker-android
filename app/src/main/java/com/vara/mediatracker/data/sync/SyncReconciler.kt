@@ -273,6 +273,9 @@ object SyncReconciler {
         val since = WireTime.parseInstant(watermark) ?: return true
         val edited = WireTime.parseInstant(local.lastInteractionDate)
             ?: WireTime.parseInstant(local.lastStateChangeDate)
-        return edited == null || edited.after(since)
+            ?: WireTime.parseInstant(local.dateAdded)
+        // A row with no edit time at all has nothing to say that the cloud is missing. It used to
+        // return true, which pushed every undated row on every sync, forever.
+        return edited != null && edited.after(since)
     }
 }

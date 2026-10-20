@@ -291,6 +291,10 @@ class CloudSyncManager(
                 isSoftDeleted = rem.is_soft_deleted,
                 lastInteractionDate = rem.last_interaction_date,
                 lastStateChangeDate = rem.last_state_change_date,
+                // Without this the rebuilt row carried a null, `upsertMedia` wrote it over the
+                // local value, and "Recently added" reset itself on every pull — then the next
+                // push sent the null back and cleared the cloud's copy of the same date.
+                dateAdded = existing?.dateAdded ?: rem.date_added,
                 updatedAt = rem.updated_at,
                 // The Mac's palette, per field: a null remote never clears a colour we already hold.
                 themeColorHex = rem.theme_color_hex ?: existing?.themeColorHex,
@@ -451,9 +455,20 @@ class CloudSyncManager(
             taste = Taste.normalize(taste),
             custom_poster_url = existing?.customPosterUrl,
             is_soft_deleted = existing?.isSoftDeleted ?: false,
-            last_interaction_date = now,
-            last_state_change_date = if (isStateChange) now else null,
-            date_added = dateAdded,
+            // The row's own edit times, not `now`.
+            //
+            // Stamping the push time here rewrote the cloud's `last_interaction_date` on every
+            // push. The pull then adopted it locally, which made the title look edited since the
+            // last sync, so the next sync pushed it again — one title per sync, cycling through
+            // whichever was written most recently. `updated_at` is the write time and is the only
+            // thing a push should advance.
+            last_interaction_date = existing?.lastInteractionDate ?: now,
+            last_state_change_date = if (isStateChange) {
+                existing?.lastStateChangeDate ?: now
+            } else {
+                existing?.lastStateChangeDate
+            },
+            date_added = dateAdded ?: existing?.dateAdded,
             updated_at = now
         )
 
