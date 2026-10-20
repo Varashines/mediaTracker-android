@@ -129,11 +129,6 @@ internal fun M3ERoughCollections(
                     icon = Icons.Default.AutoAwesome,
                     tint = M3EColor.accent()
                 )
-                Text(
-                    text = "Kept up to date from your ratings and progress.",
-                    style = M3EType.rowSupporting(),
-                    color = M3EColor.textMuted()
-                )
             }
         }
         if (smart.isEmpty()) {
@@ -164,11 +159,6 @@ internal fun M3ERoughCollections(
                     "Your collections (${mine.size})",
                     icon = Icons.Default.Bookmark,
                     tint = M3EColor.positive()
-                )
-                Text(
-                    text = "Made by hand, on either device.",
-                    style = M3EType.rowSupporting(),
-                    color = M3EColor.textMuted()
                 )
             }
         }
@@ -239,8 +229,7 @@ private fun CollectionCard(
             Spacer(Modifier.height(M3ESpacing.tightGap))
             Text(
                 text = name,
-                style = M3EType.rowTitle(),
-                fontWeight = FontWeight.SemiBold,
+                style = M3EType.rowTitleStrong(),
                 color = M3EColor.text(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

@@ -1099,8 +1099,7 @@ private fun IconValueRow(
         )
         Text(
             text = value,
-            style = M3EType.rowTitle(),
-            fontWeight = FontWeight.SemiBold,
+            style = M3EType.rowTitleStrong(),
             color = M3EColor.accent()
         )
     }
@@ -1176,8 +1175,7 @@ private fun ImpactSection(
                 Spacer(Modifier.width(M3ESpacing.inlineGap))
                 Text(
                     text = title,
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
+                    style = M3EType.rowTitleStrong(),
                     color = M3EColor.text()
                 )
                 Spacer(Modifier.weight(1f))

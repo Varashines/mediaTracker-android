@@ -295,8 +295,7 @@ fun M3ERoughCalendar(
                         ) {
                             Text(
                                 text = monthLabel.format(monthValue),
-                                style = M3EType.rowTitle(),
-                                fontWeight = FontWeight.SemiBold,
+                                style = M3EType.rowTitleStrong(),
                                 color = M3EColor.text(),
                                 maxLines = 1
                             )
@@ -473,8 +472,7 @@ private fun DateHeader(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = label.format(day),
-                style = M3EType.rowTitle(),
-                fontWeight = FontWeight.SemiBold,
+                style = M3EType.rowTitleStrong(),
                 color = M3EColor.text(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -779,8 +777,7 @@ private fun ReleaseRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.title,
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
+                    style = M3EType.rowTitleStrong(),
                     color = M3EColor.text(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

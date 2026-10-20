@@ -372,7 +372,7 @@ private fun PosterFacetCard(
                 .background(
                     Brush.verticalGradient(
                         0.55f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.86f)
+                        1f to M3EColor.artworkScrim.copy(alpha = 0.86f)
                     )
                 )
         )
@@ -391,7 +391,7 @@ private fun PosterFacetCard(
                 // smudge, and a Netflix one on a bright poster is nothing at all.
                 Box(
                     modifier = Modifier
-                        .background(Color.White.copy(alpha = 0.92f), M3EShape.chip())
+                        .background(M3EColor.onArtwork.copy(alpha = 0.92f), M3EShape.chip())
                         .padding(horizontal = 6.dp, vertical = 3.dp)
                 ) {
                     AsyncImage(
@@ -406,9 +406,8 @@ private fun PosterFacetCard(
             } else {
                 Text(
                     text = facet.name,
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
+                    style = M3EType.rowTitleStrong(),
+                    color = M3EColor.onArtwork,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
@@ -418,7 +417,7 @@ private fun PosterFacetCard(
             Text(
                 text = "${facet.count}",
                 style = M3EType.rowSupporting(),
-                color = Color.White.copy(alpha = 0.8f),
+                color = M3EColor.onArtwork.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center
             )
         }

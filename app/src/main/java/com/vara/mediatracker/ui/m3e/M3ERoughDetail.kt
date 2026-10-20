@@ -186,7 +186,6 @@ fun M3ERoughDetail(
     var season by remember(item.id) { mutableStateOf<Int?>(null) }
     var statusPickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
     var pickingSeason by rememberSaveable(item.id) { mutableStateOf(false) }
-    var seasonMenu by rememberSaveable(item.id) { mutableStateOf(false) }
     var tastePickerOpen by rememberSaveable(item.id) { mutableStateOf(false) }
     // The sheet fills in rather than arriving complete: the poster lands, then the title, then the
     // controls, then the content. Only when arriving from a tile — a detail pushed on top of another
@@ -822,47 +821,15 @@ fun M3ERoughDetail(
                             // direction of it in the menu. The primary is what you mean nine times
                             // in ten, so it gets the face; "the opposite of this" is a menu item,
                             // not a second button competing with it.
-                            Box {
-                                // A floating toolbar rather than a split button: it is the only
-                                // control on the row, it belongs to the season above it rather than
-                                // to the page, and a rounded bar that sits apart from the list says
-                                // that better than two buttons stapled together.
-                                HorizontalFloatingToolbar(
-                                    expanded = true,
-                                    contentPadding = PaddingValues(horizontal = 6.dp)
-                                ) {
-                                    Button(onClick = { setSeasonWatched(!allWatched) }) {
-                                        Text(
-                                            text = if (allWatched) "Clear season" else "Watch season",
-                                            style = M3EType.action()
-                                        )
-                                    }
-                                    FilledTonalIconButton(onClick = { seasonMenu = true }) {
-                                        Icon(
-                                            imageVector = Icons.Default.ArrowDropDown,
-                                            contentDescription = "More season actions"
-                                        )
-                                    }
-                                }
-                                DropdownMenu(
-                                    expanded = seasonMenu,
-                                    onDismissRequest = { seasonMenu = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Mark all watched") },
-                                        onClick = {
-                                            seasonMenu = false
-                                            setSeasonWatched(true)
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Clear all") },
-                                        onClick = {
-                                            seasonMenu = false
-                                            setSeasonWatched(false)
-                                        }
-                                    )
-                                }
+                            // One button, not two. The menu held the opposite of the button that
+                            // was already on screen, so it offered "mark all watched" beside a
+                            // "watch season" button and "clear all" beside a "clear season" one:
+                            // the same action, twice, with the second hidden behind a chevron.
+                            Button(onClick = { setSeasonWatched(!allWatched) }) {
+                                Text(
+                                    text = if (allWatched) "Clear season" else "Watch season",
+                                    style = M3EType.action()
+                                )
                             }
                         }
                     }
@@ -1078,8 +1045,7 @@ private fun PickerPill(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = value,
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
+                    style = M3EType.rowTitleStrong(),
                     color = tint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1235,8 +1201,7 @@ private fun NumberGrid(
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
                                 text = option,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
+                                style = M3EType.rowTitleStrong()
                             )
                         }
                     }
@@ -1441,8 +1406,7 @@ private fun CompactTitleRow(
     ) {
         Text(
             text = title,
-            style = M3EType.rowTitle(),
-            fontWeight = FontWeight.SemiBold,
+            style = M3EType.rowTitleStrong(),
             color = M3EColor.text(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1555,7 +1519,7 @@ private fun ChoiceRow(
                 label = {
                     Text(
                         text = option,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = M3EType.action(),
                         color = if (isSelected) tint else M3EColor.textMuted(),
                         maxLines = 1,
                         textAlign = TextAlign.Center
@@ -1744,8 +1708,7 @@ private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Bool
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = episode.name.ifBlank { "Episode ${episode.episodeNumber}" },
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
+                    style = M3EType.rowTitleStrong(),
                     color = M3EColor.text(),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -1846,8 +1809,7 @@ private fun DetailRow(label: String, value: String, divider: Boolean = true, lin
             )
             Text(
                 text = value,
-                style = M3EType.rowTitle(),
-                fontWeight = FontWeight.SemiBold,
+                style = M3EType.rowTitleStrong(),
                 color = M3EColor.text(),
                 maxLines = lines,
                 textAlign = TextAlign.End,

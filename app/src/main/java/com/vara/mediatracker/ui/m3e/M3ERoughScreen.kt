@@ -504,6 +504,8 @@ private fun DetailSheet(
     // the poster's flight is in screen coordinates, and the sheet's own travel would otherwise be
     // added on top of it — which put the poster a full screen below the tile it came from.
     var height by remember { mutableStateOf(0.dp) }
+    // Hoisted out of `graphicsLayer`: its lambda is not composable, and a shape token is.
+    val sheetShape = M3EShape.sheet()
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -522,7 +524,7 @@ private fun DetailSheet(
                 .graphicsLayer {
                     translationY = (1f - rise.value) * size.height
                     if (rise.value < 1f) {
-                        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+                        shape = sheetShape
                         clip = true
                     }
                 }
@@ -1068,8 +1070,7 @@ private fun EmphasisBanner(count: Int, onClick: (() -> Unit)? = null) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (count > 0) "$count titles in progress" else "Your library is up to date",
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
+                    style = M3EType.rowTitleStrong(),
                     color = M3EColor.onEmphasis()
                 )
                 Text(
@@ -1110,8 +1111,7 @@ private fun TitleRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.title,
-                    style = M3EType.rowTitle(),
-                    fontWeight = FontWeight.SemiBold,
+                    style = M3EType.rowTitleStrong(),
                     color = M3EColor.text(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

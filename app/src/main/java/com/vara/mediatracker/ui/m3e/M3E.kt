@@ -5,7 +5,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
 
@@ -156,6 +158,15 @@ object M3EType {
     @Composable
     fun rowTitle(): TextStyle = MaterialTheme.typography.bodyLarge
 
+    /**
+     * A row title that has to hold its own — over artwork, or against a supporting line that shares
+     * its size. The weight lives here rather than at twenty call sites, where it was re-stated (and
+     * sometimes contradicted) instead of asked for.
+     */
+    @Composable
+    fun rowTitleStrong(): TextStyle =
+        MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
+
     /** The supporting line of a row or card. */
     @Composable
     fun rowSupporting(): TextStyle = MaterialTheme.typography.bodyMedium
@@ -236,4 +247,10 @@ object M3EColor {
     /** A completed or positive value. */
     @Composable
     fun positive() = LocalSemanticColors.current.success
+
+    /** Text and icons drawn on artwork, where the theme's surface roles mean nothing. */
+    val onArtwork: Color get() = Color.White
+
+    /** The shadow that makes [onArtwork] legible on a poster of any brightness. */
+    val artworkScrim: Color get() = Color.Black
 }
