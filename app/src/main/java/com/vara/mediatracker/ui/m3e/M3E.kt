@@ -146,11 +146,11 @@ const val M3E_DETAIL_ARRIVAL_MILLIS = 200
 object M3EType {
     /** A screen's own title: the editorial heading at the top of a tab. */
     @Composable
-    fun screenTitle(): TextStyle = MaterialTheme.typography.displayLargeEmphasized
+    fun screenTitle(): TextStyle = MaterialTheme.typography.displayLarge
 
     /** A section heading inside a screen: "In Progress", "Up Next For You". */
     @Composable
-    fun sectionTitle(): TextStyle = MaterialTheme.typography.headlineSmallEmphasized
+    fun sectionTitle(): TextStyle = MaterialTheme.typography.headlineSmall
 
     /** The primary line of a row or card. */
     @Composable
@@ -162,11 +162,11 @@ object M3EType {
 
     /** A large number: a stat, a count, a runtime. */
     @Composable
-    fun metric(): TextStyle = MaterialTheme.typography.headlineMediumEmphasized
+    fun metric(): TextStyle = MaterialTheme.typography.headlineMedium
 
     /** Button and chip labels. */
     @Composable
-    fun action(): TextStyle = MaterialTheme.typography.labelLargeEmphasized
+    fun action(): TextStyle = MaterialTheme.typography.labelLarge
 }
 
 /**
