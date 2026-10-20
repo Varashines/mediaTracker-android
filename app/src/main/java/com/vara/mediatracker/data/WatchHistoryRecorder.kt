@@ -54,7 +54,11 @@ object WatchHistoryRecorder {
             source = source,
             timezoneIdentifier = timezone,
             runtimeMinutes = runtimeMinutes,
-            deduplicationKey = "${cycle.id}:${episodeId ?: "movie"}",
+            // Canonical, like the lookup above. The Mac writes `{show}_{season}_{episode}` and this
+            // device `tv_{show}_s{season}_e{episode}`; keyed on the raw string the two spellings
+            // were two different events, so the cloud merge kept both and one viewing appeared
+            // twice in the history.
+            deduplicationKey = "${cycle.id}:${MediaIds.canonicalEpisodeIdOrNull(episodeId) ?: "movie"}",
             updatedAt = watchedAt
         )
         dao.upsertEvents(listOf(event))
