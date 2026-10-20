@@ -23,7 +23,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -237,6 +240,8 @@ private fun SmartTab(
                     title = "Your shelf",
                     facets = groups,
                     shape = MaterialShapes.Cookie9Sided.toShape(),
+                    icon = Icons.Default.AutoAwesome,
+                    tint = M3EColor.accent(),
                     onOpenList = onOpenList
                 )
             }
@@ -248,6 +253,8 @@ private fun SmartTab(
                 FacetCarousel(
                     title = "Networks",
                     facets = brands,
+                    icon = Icons.Default.LiveTv,
+                    tint = M3EColor.positive(),
                     onOpenList = onOpenList,
                     logoFor = { name ->
                         networkLogos[name.lowercase(Locale.US)]?.let(TMDBClient::buildLogoUrl)
@@ -255,8 +262,28 @@ private fun SmartTab(
                 )
             }
         }
-        if (genres.isNotEmpty()) item { FacetCarousel("Genres", genres, onOpenList) }
-        if (languages.isNotEmpty()) item { FacetCarousel("Languages", languages, onOpenList) }
+        if (genres.isNotEmpty()) {
+            item {
+                FacetCarousel(
+                    "Genres",
+                    genres,
+                    onOpenList,
+                    icon = Icons.Default.Category,
+                    tint = M3EColor.warning()
+                )
+            }
+        }
+        if (languages.isNotEmpty()) {
+            item {
+                FacetCarousel(
+                    "Languages",
+                    languages,
+                    onOpenList,
+                    icon = Icons.Default.Language,
+                    tint = M3EColor.accent()
+                )
+            }
+        }
         item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
@@ -275,9 +302,14 @@ private fun FacetCarousel(
     facets: List<Facet>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit,
     shape: Shape = M3EShape.hero(),
+    icon: ImageVector? = null,
+    tint: Color = M3EColor.accent(),
     logoFor: (String) -> String? = { null }
 ) {
-    M3ESectionHeader(title)
+    M3ESectionHeader(title, icon = icon, tint = tint)
+    // A breath between the heading and the row, the same one Home puts before each of its
+    // sections. Without it the heading reads as part of the card it is sitting on.
+    Spacer(Modifier.height(M3ESpacing.tightGap))
     val state = rememberCarouselState { facets.size }
     HorizontalMultiBrowseCarousel(
         state = state,

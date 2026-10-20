@@ -22,7 +22,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
@@ -893,14 +896,14 @@ fun M3ERoughDetail(
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
                         if (live.overview.isNotBlank()) {
-                            M3ESectionHeader("Overview")
+                            M3ESectionHeader("Overview", icon = Icons.Default.Info, tint = M3EColor.accent())
                             Text(
                                 text = live.overview,
                                 style = M3EType.rowSupporting(),
                                 color = M3EColor.textMuted()
                             )
                         }
-                        M3ESectionHeader("Details")
+                        M3ESectionHeader("Details", icon = Icons.Default.Info, tint = M3EColor.textMuted())
                         M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(vertical = M3ESpacing.tightGap)) {
                                 // Read once: `live` is a delegated property, so its fields cannot
@@ -925,7 +928,7 @@ fun M3ERoughDetail(
                         }
 
                         if (cast.isNotEmpty()) {
-                            M3ESectionHeader("Cast")
+                            M3ESectionHeader("Cast", icon = Icons.Default.People, tint = M3EColor.positive())
                             // A strip, because a cast is browsed sideways: you are looking for a
                             // face, not reading a list, and a horizontal run shows far more of them
                             // in the same height.
@@ -941,7 +944,7 @@ fun M3ERoughDetail(
 
             DetailSection.Related -> {
                 item {
-                    M3ESectionHeader("More like this")
+                    M3ESectionHeader("More like this", icon = Icons.Default.AutoAwesome, tint = M3EColor.warning())
                 }
                 if (related.isEmpty()) {
                     item {

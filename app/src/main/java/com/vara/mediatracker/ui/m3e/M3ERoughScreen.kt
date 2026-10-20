@@ -66,6 +66,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
@@ -588,6 +589,8 @@ private fun HomeSection(
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ESectionHeader(
                     "Continue watching",
+                    icon = Icons.Default.PlayArrow,
+                    tint = M3EColor.accent(),
                     trailing = {
                         TextButton(onClick = { onSeeAll("Continue watching", inProgress, ListSubtitle.Episode) }) {
                             Text("See all")
@@ -612,6 +615,8 @@ private fun HomeSection(
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ESectionHeader(
                     "Coming soon",
+                    icon = Icons.Default.Schedule,
+                    tint = M3EColor.warning(),
                     trailing = {
                         TextButton(onClick = { onSeeAll("Coming soon", comingSoon, ListSubtitle.Arrival) }) {
                             Text("See all")
@@ -633,6 +638,8 @@ private fun HomeSection(
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 M3ESectionHeader(
                     "Recently added",
+                    icon = Icons.Default.Update,
+                    tint = M3EColor.positive(),
                     trailing = {
                         TextButton(onClick = { onSeeAll("Recently added", recentlyAdded, ListSubtitle.None) }) {
                             Text("See all")

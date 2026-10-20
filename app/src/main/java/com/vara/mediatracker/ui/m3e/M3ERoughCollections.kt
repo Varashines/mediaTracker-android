@@ -17,6 +17,9 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -121,7 +124,11 @@ internal fun M3ERoughCollections(
 
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
-                M3ESectionHeader("Smart playlists (${smart.size})")
+                M3ESectionHeader(
+                    "Smart playlists (${smart.size})",
+                    icon = Icons.Default.AutoAwesome,
+                    tint = M3EColor.accent()
+                )
                 Text(
                     text = "Kept up to date from your ratings and progress.",
                     style = M3EType.rowSupporting(),
@@ -153,7 +160,11 @@ internal fun M3ERoughCollections(
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
                 Spacer(Modifier.height(M3ESpacing.tightGap))
-                M3ESectionHeader("Your collections (${mine.size})")
+                M3ESectionHeader(
+                    "Your collections (${mine.size})",
+                    icon = Icons.Default.Bookmark,
+                    tint = M3EColor.positive()
+                )
                 Text(
                     text = "Made by hand, on either device.",
                     style = M3EType.rowSupporting(),

@@ -20,8 +20,11 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
@@ -231,7 +234,11 @@ fun M3ERoughSearch(
                         )
                         if (trending.isNotEmpty()) {
                             Spacer(Modifier.height(M3ESpacing.cardGap))
-                            M3ESectionHeader("Trending this week")
+                            M3ESectionHeader(
+                                "Trending this week",
+                                icon = Icons.Default.TrendingUp,
+                                tint = M3EColor.warning()
+                            )
                         }
                     }
                 }
@@ -292,7 +299,7 @@ fun M3ERoughSearch(
             ) {
                 if (local.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        M3ESectionHeader("In your library")
+                        M3ESectionHeader("In your library", icon = Icons.Default.Bookmark, tint = M3EColor.accent())
                     }
                     // Namespaced: a lazy grid's key space is shared by every `items` block in it,
                     // and the TMDB block below keys on "<media_type>_<id>" — which for a TV result
@@ -309,7 +316,7 @@ fun M3ERoughSearch(
                 }
                 if (remote.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        M3ESectionHeader("On TMDB")
+                        M3ESectionHeader("On TMDB", icon = Icons.Default.Public, tint = M3EColor.positive())
                     }
                     items(remote, key = { "remote_${it.media_type}_${it.id}" }) { result ->
                         val mediaId = (if (result.media_type == "movie") "movie_" else "tv_") + result.id
