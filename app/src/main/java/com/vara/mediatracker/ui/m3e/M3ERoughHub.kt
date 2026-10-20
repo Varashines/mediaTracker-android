@@ -46,6 +46,7 @@ import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -90,15 +91,22 @@ import kotlinx.coroutines.launch
 internal fun M3ERoughHub(
     container: AppContainer,
     core: LibraryCore,
+    /** Held by the shell, because the control that changes it is in the nav bar. */
+    tab: Int = 0,
+    onTabChange: (Int) -> Unit = {},
     onOpen: (MediaItemEntity) -> Unit = {},
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit = { _, _, _, _ -> }
 ) {
     val library = core.items
-    // The pager owns the tab, and it is saveable, which is what makes the Hub come back to the tab
-    // you left — opening a list or a title replaces this section in the shell's `when`, and a plain
-    // remember would return as its default.
-    val pagerState = rememberPagerState(pageCount = { HubTabs.size })
-    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(
+        initialPage = tab.coerceIn(0, HubTabs.lastIndex),
+        pageCount = { HubTabs.size }
+    )
+    // The pager follows the bar rather than owning the answer: the bar is the control, and a pager
+    // that kept its own index would drift from it every time the shell restored a tab.
+    LaunchedEffect(tab) {
+        if (pagerState.currentPage != tab) pagerState.animateScrollToPage(tab)
+    }
 
     Column(
         modifier = Modifier
@@ -113,28 +121,6 @@ internal fun M3ERoughHub(
         ) {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
             M3EScreenHeader(eyebrow = "Curated", title = "Hub")
-            Spacer(Modifier.height(M3ESpacing.tightGap))
-            // Icons, not chips. Two chips sat under the title like a filter row, and a tab is not a
-            // filter: it is where you are. A pair of toggles says that with less furniture, and it
-            // stops the row reading as another set of things to narrow the screen down with.
-            Row(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
-                HubTabs.forEachIndexed { index, tab ->
-                    IconToggleButton(
-                        checked = pagerState.currentPage == index,
-                        onCheckedChange = { scope.launch { pagerState.animateScrollToPage(index) } }
-                    ) {
-                        Icon(
-                            imageVector = tab.icon,
-                            contentDescription = tab.label,
-                            tint = if (pagerState.currentPage == index) {
-                                M3EColor.accent()
-                            } else {
-                                M3EColor.textMuted()
-                            }
-                        )
-                    }
-                }
-            }
             Spacer(Modifier.height(M3ESpacing.cardGap))
         }
 

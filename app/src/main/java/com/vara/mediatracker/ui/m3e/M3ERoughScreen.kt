@@ -53,6 +53,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -74,6 +75,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
@@ -86,6 +88,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -190,6 +193,9 @@ fun M3ERoughScreen(
     // section — because the screen you actually came from had nowhere to be remembered.
     var stack by remember { mutableStateOf(listOf<Overlay>()) }
     val overlay = stack.lastOrNull()
+    // The Hub's tab outlives the Hub, so it lives here — and so does the only control that changes
+    // it, which is the pair of icons in the nav bar.
+    var hubTab by rememberSaveable { mutableIntStateOf(0) }
     // The detail is the one overlay that is a sheet rather than a replacement, so it is worth
     // naming: the render, the bar's remove button and the confirm dialog all key off it.
     val detail = overlay as? Overlay.Detail
@@ -317,6 +323,8 @@ fun M3ERoughScreen(
                 Overlay.Hub -> M3ERoughHub(
                     container = container,
                     core = core,
+                    tab = hubTab,
+                    onTabChange = { hubTab = it },
                     onOpen = { stack = stack + Overlay.Detail(it) },
                     onOpenList = { title, items, kind, layout ->
                         stack = stack + Overlay.Titles(title, items, kind, layout)
@@ -429,6 +437,8 @@ fun M3ERoughScreen(
             // section everything happens to sit in.
             // Search is the one screen whose way out is a close rather than a step back — there is
             // nothing behind it that you were looking at.
+            hubTab = if (overlay is Overlay.Hub) hubTab else null,
+            onHubTab = { hubTab = it },
             parentLabel = when {
                 overlay is Overlay.Search -> "Close"
                 overlay != null -> when (val below = stack.getOrNull(stack.size - 2)) {
@@ -1163,6 +1173,9 @@ private fun FloatingNav(
     parentLabel: String? = null,
     parentIcon: ImageVector = Icons.AutoMirrored.Filled.ArrowBack,
     onBackToParent: () -> Unit = {},
+    /** Set when the Hub is the screen: its two tabs, as icons beside the way back. */
+    hubTab: Int? = null,
+    onHubTab: (Int) -> Unit = {},
     /** Removes the title on screen. Null when there is nothing to remove. */
     onDelete: (() -> Unit)? = null,
     /** Upcoming releases, for the Calendar pill. */
@@ -1198,6 +1211,17 @@ private fun FloatingNav(
                         active = true,
                         onClick = onBackToParent
                     )
+                    if (hubTab != null) {
+                        // The Hub's two are peers of each other and of where you came from, so they
+                        // sit in the bar beside the way out rather than floating under the title.
+                        VerticalDivider(
+                            modifier = Modifier
+                                .height(24.dp)
+                                .padding(horizontal = 2.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
+                        HubTabIcons(selected = hubTab, onSelect = onHubTab)
+                    }
                 } else {
                 NavPill(Icons.Default.Home, "Home", selected == HOME) { onSelect(HOME) }
                 NavPill(
@@ -1267,6 +1291,35 @@ private fun FloatingNav(
 }
 
 /** One section in the bar: icon always, name only when it is the current one. */
+@Composable
+private fun HubTabIcons(selected: Int, onSelect: (Int) -> Unit) {
+    HubTabIconsRow(selected = selected, onSelect = onSelect)
+}
+
+@Composable
+private fun HubTabIconsRow(selected: Int, onSelect: (Int) -> Unit) {
+    IconToggleButton(
+        checked = selected == 0,
+        onCheckedChange = { onSelect(0) }
+    ) {
+        Icon(
+            imageVector = Icons.Default.AutoAwesome,
+            contentDescription = "Smart",
+            tint = if (selected == 0) M3EColor.accent() else M3EColor.textMuted()
+        )
+    }
+    IconToggleButton(
+        checked = selected == 1,
+        onCheckedChange = { onSelect(1) }
+    ) {
+        Icon(
+            imageVector = Icons.Default.Bookmarks,
+            contentDescription = "Collections",
+            tint = if (selected == 1) M3EColor.accent() else M3EColor.textMuted()
+        )
+    }
+}
+
 @Composable
 private fun NavPill(
     icon: ImageVector,
