@@ -128,7 +128,7 @@ internal fun M3ERoughHub(
         // what the hand expects, and the chips stay as the labels for where you are.
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
             when (page) {
-                0 -> SmartTab(library, core.logos, onOpenList)
+                0 -> SmartTab(library, core.networkLogos, onOpenList)
                 else -> M3ERoughCollections(
                     container = container,
                     core = core,
@@ -166,7 +166,7 @@ private val HubTabs = listOf("Smart", "Collections")
 @Composable
 private fun SmartTab(
     library: List<MediaItemEntity>,
-    logos: Map<String, String>,
+    networkLogos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     // Tints are read here because `M3EColor` is composable and `remember`'s lambda is not. The cards
@@ -240,7 +240,7 @@ private fun SmartTab(
                     facets = brands,
                     onOpenList = onOpenList,
                     logoFor = { name ->
-                        logos[name.lowercase(Locale.US)]?.let(TMDBClient::buildLogoUrl)
+                        networkLogos[name.lowercase(Locale.US)]?.let(TMDBClient::buildLogoUrl)
                     }
                 )
             }
@@ -281,25 +281,14 @@ private fun FacetCarousel(
         // `maskClip` shapes the carousel's mask rather than the item, so the corners stay consistent
         // between the item that is peeking and the one that is centred. Clipping the item instead
         // gives every card its own round edge and the row ends up with paired corners in each gap.
-        val logo = logoFor(facet.name)
-        if (logo != null) {
-            LogoFacetCard(
-                facet = facet,
-                logoUrl = logo,
-                modifier = Modifier.maskClip(shape),
-                onClick = {
-                    onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
-                }
-            )
-        } else {
-            PosterFacetCard(
-                facet = facet,
-                modifier = Modifier.maskClip(shape),
-                onClick = {
-                    onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
-                }
-            )
-        }
+        PosterFacetCard(
+            facet = facet,
+            modifier = Modifier.maskClip(shape),
+            logoUrl = logoFor(facet.name),
+            onClick = {
+                onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
+            }
+        )
     }
 }
 
@@ -311,7 +300,12 @@ private fun FacetCarousel(
  * stays because it is the reason to open one over another.
  */
 @Composable
-private fun PosterFacetCard(facet: Facet, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun PosterFacetCard(
+    facet: Facet,
+    modifier: Modifier = Modifier,
+    logoUrl: String? = null,
+    onClick: () -> Unit
+) {
     val poster = facet.items.firstOrNull()?.posterUrl
     Box(
         modifier = modifier
@@ -346,71 +340,31 @@ private fun PosterFacetCard(facet: Facet, modifier: Modifier = Modifier, onClick
                 .padding(M3ESpacing.inlineGap),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = facet.name,
-                style = M3EType.rowTitle(),
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (logoUrl != null) {
+                // The mark instead of the word: on a poster, a network's logo is what you
+                // recognise, and a name under it was the same information at a lower signal.
+                AsyncImage(
+                    model = logoUrl,
+                    contentDescription = facet.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .height(22.dp)
+                        .widthIn(max = 96.dp)
+                )
+            } else {
+                Text(
+                    text = facet.name,
+                    style = M3EType.rowTitle(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Text(
                 text = "${facet.count}",
                 style = M3EType.rowSupporting(),
                 color = Color.White.copy(alpha = 0.8f)
-            )
-        }
-    }
-}
-
-/**
- * A facet as its mark.
- *
- * The logo is the network, so it gets the middle of the card and the name sits under it — a logo at
- * poster size is often just a shape, and the word is what makes it a network you can name.
- */
-@Composable
-private fun LogoFacetCard(
-    facet: Facet,
-    logoUrl: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(M3EColor.card())
-            .clickable(onClick = onClick)
-    ) {
-        AsyncImage(
-            model = logoUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .fillMaxWidth(0.66f)
-                .aspectRatio(1.6f)
-                .align(Alignment.Center)
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(M3ESpacing.inlineGap),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = facet.name,
-                style = M3EType.rowSupporting(),
-                fontWeight = FontWeight.SemiBold,
-                color = M3EColor.text(),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = "${facet.count}",
-                style = M3EType.rowSupporting(),
-                color = M3EColor.textMuted(),
-                textAlign = TextAlign.Center
             )
         }
     }
