@@ -685,21 +685,46 @@ private fun LibrarySection(
                     eyebrow = "${library.size} titles",
                     title = "Library",
                     trailing = {
+                        // Icon as the label, not in the `icon` slot.
+                        //
+                        // `SegmentedButton`'s icon slot is only drawn beside a label — it is meant
+                        // for "a glyph and a word", so an icon with an empty label slot renders
+                        // nothing at all. The label slot takes a composable, so the icon is the label
+                        // here. Tinted explicitly rather than left to LocalContentColor, which was
+                        // how the nav's icons ended up black on dark earlier.
                         SingleChoiceSegmentedButtonRow {
                             SegmentedButton(
                                 selected = !listView,
                                 onClick = { listView = false },
-                                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                                icon = { Icon(Icons.Default.GridView, contentDescription = "Grid") }
-                            ) {}
+                                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.GridView,
+                                    contentDescription = "Grid",
+                                    tint = if (!listView) {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                             SegmentedButton(
                                 selected = listView,
                                 onClick = { listView = true },
-                                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                                icon = {
-                                    Icon(Icons.AutoMirrored.Filled.List, contentDescription = "List")
-                                }
-                            ) {}
+                                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.List,
+                                    contentDescription = "List",
+                                    tint = if (listView) {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 )
