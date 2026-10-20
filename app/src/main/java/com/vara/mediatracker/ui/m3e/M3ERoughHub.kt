@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -127,7 +128,7 @@ internal fun M3ERoughHub(
         // what the hand expects, and the chips stay as the labels for where you are.
         HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
             when (page) {
-                0 -> SmartTab(library, onOpenList)
+                0 -> SmartTab(library, core.logos, onOpenList)
                 else -> M3ERoughCollections(
                     container = container,
                     core = core,
@@ -165,6 +166,7 @@ private val HubTabs = listOf("Smart", "Collections")
 @Composable
 private fun SmartTab(
     library: List<MediaItemEntity>,
+    logos: Map<String, String>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     // Tints are read here because `M3EColor` is composable and `remember`'s lambda is not. The cards
@@ -229,7 +231,20 @@ private fun SmartTab(
                 )
             }
         }
-        if (brands.isNotEmpty()) item { FacetCarousel("Networks", brands, onOpenList) }
+        if (brands.isNotEmpty()) {
+            // A network is a mark. A poster says "something on this network"; the logo says which,
+            // and it is the thing a reader scans for.
+            item {
+                FacetCarousel(
+                    title = "Networks",
+                    facets = brands,
+                    onOpenList = onOpenList,
+                    logoFor = { name ->
+                        logos[name.lowercase(Locale.US)]?.let(TMDBClient::buildLogoUrl)
+                    }
+                )
+            }
+        }
         if (genres.isNotEmpty()) item { FacetCarousel("Genres", genres, onOpenList) }
         if (languages.isNotEmpty()) item { FacetCarousel("Languages", languages, onOpenList) }
         item { Spacer(Modifier.height(LocalNavClearance.current)) }
@@ -249,7 +264,8 @@ private fun FacetCarousel(
     title: String,
     facets: List<Facet>,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit,
-    shape: Shape = M3EShape.hero()
+    shape: Shape = M3EShape.hero(),
+    logoFor: (String) -> String? = { null }
 ) {
     M3ESectionHeader(title)
     val state = rememberCarouselState { facets.size }
@@ -265,13 +281,25 @@ private fun FacetCarousel(
         // `maskClip` shapes the carousel's mask rather than the item, so the corners stay consistent
         // between the item that is peeking and the one that is centred. Clipping the item instead
         // gives every card its own round edge and the row ends up with paired corners in each gap.
-        PosterFacetCard(
-            facet = facet,
-            modifier = Modifier.maskClip(shape),
-            onClick = {
-                onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
-            }
-        )
+        val logo = logoFor(facet.name)
+        if (logo != null) {
+            LogoFacetCard(
+                facet = facet,
+                logoUrl = logo,
+                modifier = Modifier.maskClip(shape),
+                onClick = {
+                    onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
+                }
+            )
+        } else {
+            PosterFacetCard(
+                facet = facet,
+                modifier = Modifier.maskClip(shape),
+                onClick = {
+                    onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
+                }
+            )
+        }
     }
 }
 
@@ -330,6 +358,59 @@ private fun PosterFacetCard(facet: Facet, modifier: Modifier = Modifier, onClick
                 text = "${facet.count}",
                 style = M3EType.rowSupporting(),
                 color = Color.White.copy(alpha = 0.8f)
+            )
+        }
+    }
+}
+
+/**
+ * A facet as its mark.
+ *
+ * The logo is the network, so it gets the middle of the card and the name sits under it — a logo at
+ * poster size is often just a shape, and the word is what makes it a network you can name.
+ */
+@Composable
+private fun LogoFacetCard(
+    facet: Facet,
+    logoUrl: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(M3EColor.card())
+            .clickable(onClick = onClick)
+    ) {
+        AsyncImage(
+            model = logoUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxWidth(0.66f)
+                .aspectRatio(1.6f)
+                .align(Alignment.Center)
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(M3ESpacing.inlineGap),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = facet.name,
+                style = M3EType.rowSupporting(),
+                fontWeight = FontWeight.SemiBold,
+                color = M3EColor.text(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "${facet.count}",
+                style = M3EType.rowSupporting(),
+                color = M3EColor.textMuted(),
+                textAlign = TextAlign.Center
             )
         }
     }
