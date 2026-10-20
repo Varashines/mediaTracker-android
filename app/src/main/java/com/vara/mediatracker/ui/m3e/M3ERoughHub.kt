@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -199,9 +200,21 @@ private fun SmartTab(
             .padding(horizontal = M3ESpacing.page),
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
     ) {
+        // One hero and a grid of the rest.
+        //
+        // Six equal cards is a wall: every tile has the same weight, so nothing is the thing you came
+        // for. Continue watching is why this tab exists, so it gets the width and a poster; the other
+        // five are a set and read as one.
+        tiles.firstOrNull()?.let { first ->
+            item {
+                SmartHero(first) {
+                    onOpenList(first.label, first.items, ListSubtitle.Episode, ListLayout.Grid)
+                }
+            }
+        }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-                tiles.chunked(2).forEach { pair ->
+                tiles.drop(1).chunked(2).forEach { pair ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
@@ -219,6 +232,49 @@ private fun SmartTab(
             }
         }
         item { Spacer(Modifier.height(LocalNavClearance.current)) }
+    }
+}
+
+/**
+ * The biggest thing on the tab: how many titles are waiting to be carried on with, and the artwork of
+ * the first one. A number alone was a tile like the other five; a poster makes it a place to go.
+ */
+@Composable
+private fun SmartHero(tile: SmartTile, onClick: () -> Unit) {
+    M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(M3ESpacing.cardGap),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val poster = tile.items.firstOrNull()?.posterUrl
+            if (poster != null) {
+                AsyncImage(
+                    model = poster,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .width(56.dp)
+                        .height(84.dp)
+                        .clip(M3EShape.chip())
+                )
+                Spacer(Modifier.width(M3ESpacing.cardGap))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text("${tile.count}", style = M3EType.metric(), color = M3EColor.text())
+                Text(
+                    text = tile.label,
+                    style = M3EType.rowTitle(),
+                    fontWeight = FontWeight.SemiBold,
+                    color = M3EColor.text()
+                )
+                Text(
+                    text = "Tap to see them all",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted()
+                )
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = M3EColor.accent())
+        }
     }
 }
 
@@ -325,23 +381,23 @@ private fun NetworkGrid(
         )
         return
     }
-    Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
-        facets.chunked(2).forEach { pair ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
-            ) {
-                pair.forEach { facet ->
-                    GenreTile(
-                        facet = facet,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
-                        }
-                    )
+    // A rail, not a grid.
+    //
+    // Discover was three walls of the same tile stacked — networks, genres, languages — with nothing
+    // saying where one ended. A rail is a different shape, so the tab reads as two ideas instead of
+    // one long one. Fixed size, because a rail of tiles that are each as tall as their label is a
+    // rail that wobbles.
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+        items(facets, key = { it.name }) { facet ->
+            GenreTile(
+                facet = facet,
+                modifier = Modifier
+                    .width(140.dp)
+                    .height(96.dp),
+                onClick = {
+                    onOpenList(facet.name, facet.items, ListSubtitle.Episode, ListLayout.Grid)
                 }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
-            }
+            )
         }
     }
 }
