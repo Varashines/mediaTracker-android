@@ -173,6 +173,7 @@ private sealed interface Overlay {
     data object Hub : Overlay
     data object Finished : Overlay
     data object Search : Overlay
+    data object History : Overlay
 }
 
 @Composable
@@ -284,6 +285,7 @@ fun M3ERoughScreen(
                 else -> M3ERoughSettings(
                     container = container,
                     onBack = { },
+                    onHistory = { stack = stack + Overlay.History },
                     onThemePresetChanged = onThemePresetChanged,
                     onThemeModeChanged = onThemeModeChanged
                 )
@@ -333,6 +335,11 @@ fun M3ERoughScreen(
                 )
                 Overlay.Finished -> FinishedSection(
                     library = library,
+                    onOpen = { stack = stack + Overlay.Detail(it) }
+                )
+                Overlay.History -> M3ERoughHistory(
+                    container = container,
+                    core = core,
                     onOpen = { stack = stack + Overlay.Detail(it) }
                 )
                 Overlay.Search -> M3ERoughSearch(

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -20,13 +21,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +53,7 @@ import com.vara.mediatracker.data.model.SmartRules
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.LibraryCore
 import com.vara.mediatracker.ui.theme.AppTextStyles
+import kotlinx.coroutines.launch
 
 /**
  * Collections, in the [M3E] vocabulary.
@@ -64,7 +76,13 @@ internal fun M3ERoughCollections(
     showHeader: Boolean = true
 ) {
     val library = core.items
-    val collections by produceState(initialValue = emptyList<CollectionEntity>()) {
+    val scope = rememberCoroutineScope()
+    // Bumped after every write, because the DAO's read is a one-shot rather than a Flow.
+    var revision by remember { mutableIntStateOf(0) }
+    var creating by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf<CollectionEntity?>(null) }
+    var deleting by remember { mutableStateOf<CollectionEntity?>(null) }
+    val collections by produceState(initialValue = emptyList<CollectionEntity>(), revision) {
         value = runCatching { container.database.collectionDao().getAllCollections() }.getOrDefault(emptyList())
     }
     val members by produceState(initialValue = emptyList<CollectionItemEntity>()) {
@@ -158,7 +176,12 @@ internal fun M3ERoughCollections(
                 M3ESectionHeader(
                     "Your collections (${mine.size})",
                     icon = Icons.Default.Bookmark,
-                    tint = M3EColor.positive()
+                    tint = M3EColor.positive(),
+                    trailing = {
+                        TextButton(onClick = { creating = true }) {
+                            Text("New", style = M3EType.action())
+                        }
+                    }
                 )
             }
         }
@@ -178,6 +201,7 @@ internal fun M3ERoughCollections(
                     count = titles.size,
                     covers = titles.take(3).map { it.posterUrl },
                     isSmart = false,
+                    onMore = { renaming = collection },
                     onClick = { onOpenList(collection.name, titles, ListSubtitle.None, ListLayout.Grid) }
                 )
             }
@@ -186,6 +210,75 @@ internal fun M3ERoughCollections(
         item(span = { GridItemSpan(maxLineSpan) }) {
             Spacer(Modifier.height(LocalNavClearance.current))
         }
+    }
+
+    if (creating || renaming != null || deleting != null) {
+        var draft by remember(creating, renaming, deleting) {
+            mutableStateOf(renaming?.name ?: "")
+        }
+        AlertDialog(
+            onDismissRequest = { creating = false; renaming = null; deleting = null },
+            title = {
+                Text(
+                    when {
+                        deleting != null -> "Delete \"${deleting!!.name}\"?"
+                        renaming != null -> "Rename collection"
+                        else -> "New collection"
+                    }
+                )
+            },
+            text = {
+                when {
+                    deleting != null -> Text(
+                        "It disappears here and on the other device. The titles stay in your library.",
+                        style = M3EType.rowSupporting()
+                    )
+                    else -> OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        label = { Text("Name") },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = deleting != null || draft.isNotBlank(),
+                    onClick = {
+                        val now = com.vara.mediatracker.data.TrackingLogic.isoNow()
+                        val dao = container.database.collectionDao()
+                        val target = renaming
+                        val doomed = deleting
+                        when {
+                            doomed != null -> scope.launch { dao.softDelete(doomed.id, now); revision++ }
+                            target != null -> scope.launch { dao.rename(target.id, draft.trim(), now); revision++ }
+                            else -> scope.launch {
+                                dao.upsertCollection(
+                                    CollectionEntity(
+                                        id = java.util.UUID.randomUUID().toString(),
+                                        name = draft.trim(),
+                                        updatedAt = now
+                                    )
+                                )
+                                revision++
+                            }
+                        }
+                        creating = false
+                        renaming = null
+                        deleting = null
+                    }
+                ) {
+                    Text(if (deleting != null) "Delete" else "Save")
+                }
+            },
+            dismissButton = {
+                if (deleting == null) {
+                    TextButton(onClick = { creating = false; renaming = null; deleting = null }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
     }
 }
 
@@ -201,6 +294,7 @@ private fun CollectionCard(
     count: Int,
     covers: List<String?>,
     isSmart: Boolean,
+    onMore: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
@@ -240,6 +334,18 @@ private fun CollectionCard(
                     style = M3EType.rowSupporting(),
                     color = M3EColor.textMuted()
                 )
+                if (onMore != null) {
+                    Spacer(Modifier.weight(1f))
+                    // A collection that cannot be renamed is a collection you have to live with.
+                    IconButton(onClick = onMore, modifier = Modifier.size(24.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "Collection actions",
+                            tint = M3EColor.textMuted(),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
                 if (isSmart) {
                     Spacer(Modifier.width(M3ESpacing.tightGap))
                     Surface(

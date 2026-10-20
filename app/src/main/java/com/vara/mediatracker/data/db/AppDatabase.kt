@@ -264,6 +264,13 @@ interface CollectionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCollectionItems(items: List<CollectionItemEntity>)
+
+    @Query("UPDATE collections SET name = :name, updatedAt = :now WHERE id = :id")
+    suspend fun rename(id: String, name: String, now: String)
+
+    /** Tombstone, not a delete: the Mac has to learn the collection is gone. */
+    @Query("UPDATE collections SET isDeleted = 1, updatedAt = :now WHERE id = :id")
+    suspend fun softDelete(id: String, now: String)
 }
 
 /** Watch history: the per-viewing cycles and the immutable events behind them. */

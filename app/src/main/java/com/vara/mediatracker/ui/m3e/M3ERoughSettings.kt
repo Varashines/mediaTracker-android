@@ -135,6 +135,8 @@ import java.util.Locale
 fun M3ERoughSettings(
     container: AppContainer,
     onBack: () -> Unit,
+    /** Opens the cycle/event history, which lives outside Settings but is reached from here. */
+    onHistory: () -> Unit = {},
     onThemePresetChanged: (Int) -> Unit,
     onThemeModeChanged: (Int) -> Unit
 ) {
@@ -549,6 +551,15 @@ fun M3ERoughSettings(
                     ) {
                         haptics.tap()
                         keysShown = true
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    IconActionRow(
+                        icon = Icons.Default.History,
+                        label = "Watch history",
+                        detail = "Cycles and viewings, newest first"
+                    ) {
+                        haptics.tap()
+                        onHistory()
                     }
                 }
             }
