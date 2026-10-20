@@ -21,7 +21,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -110,23 +113,39 @@ internal fun M3ERoughHub(
         ) {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
             M3EScreenHeader(eyebrow = "Curated", title = "Hub")
-            Spacer(Modifier.height(M3ESpacing.cardGap))
+            Spacer(Modifier.height(M3ESpacing.tightGap))
+            // Icons, not chips. Two chips sat under the title like a filter row, and a tab is not a
+            // filter: it is where you are. A pair of toggles says that with less furniture, and it
+            // stops the row reading as another set of things to narrow the screen down with.
             Row(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
-                HubTabs.forEachIndexed { index, label ->
-                    FilterChip(
-                        selected = pagerState.currentPage == index,
-                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
-                        label = { Text(label, style = M3EType.action()) },
-                        shape = M3EShape.chip()
-                    )
+                HubTabs.forEachIndexed { index, tab ->
+                    IconToggleButton(
+                        checked = pagerState.currentPage == index,
+                        onCheckedChange = { scope.launch { pagerState.animateScrollToPage(index) } }
+                    ) {
+                        Icon(
+                            imageVector = tab.icon,
+                            contentDescription = tab.label,
+                            tint = if (pagerState.currentPage == index) {
+                                M3EColor.accent()
+                            } else {
+                                M3EColor.textMuted()
+                            }
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(M3ESpacing.cardGap))
         }
 
-        // Swipeable as well as tappable: the two are peers, so moving between them sideways is
-        // what the hand expects, and the chips stay as the labels for where you are.
-        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
+        // Not swipeable. The two pages are not a deck to be flicked through — Smart is a long
+        // scroller, and a sideways drag that starts on one of its carousels was being taken by the
+        // pager, so a carousel you meant to scroll jumped the tab instead.
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.weight(1f),
+            userScrollEnabled = false
+        ) { page ->
             when (page) {
                 0 -> SmartTab(library, core.networkLogos, onOpenList)
                 else -> M3ERoughCollections(
@@ -148,7 +167,12 @@ private data class Facet(
     val count: Int get() = items.size
 }
 
-private val HubTabs = listOf("Smart", "Collections")
+private data class HubTab(val label: String, val icon: ImageVector)
+
+private val HubTabs = listOf(
+    HubTab("Smart", Icons.Default.AutoAwesome),
+    HubTab("Collections", Icons.Default.Bookmarks)
+)
 
 // MARK: - Smart
 
