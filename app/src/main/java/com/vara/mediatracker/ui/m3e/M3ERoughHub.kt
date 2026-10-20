@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Recommend
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -53,6 +54,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -70,7 +72,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.vara.mediatracker.data.TrackingLogic
 import com.vara.mediatracker.data.api.TMDBClient
+import com.vara.mediatracker.data.api.TMDBSearchItem
+import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.util.NetworkResolver
 import com.vara.mediatracker.di.AppContainer
@@ -136,7 +141,7 @@ internal fun M3ERoughHub(
             userScrollEnabled = false
         ) { page ->
             when (page) {
-                0 -> SmartTab(library, core.networkLogos, onOpenList)
+                0 -> SmartTab(library, core.networkLogos, container, onOpen, onOpenList)
                 else -> M3ERoughCollections(
                     container = container,
                     core = core,
@@ -180,6 +185,8 @@ private val HubTabs = listOf(
 private fun SmartTab(
     library: List<MediaItemEntity>,
     networkLogos: Map<String, String>,
+    container: AppContainer,
+    onOpen: (MediaItemEntity) -> Unit,
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     // Tints are read here because `M3EColor` is composable and `remember`'s lambda is not. The cards
@@ -232,6 +239,8 @@ private fun SmartTab(
                 }
             }
         }
+        item { ForYouRow(library = library, container = container, onOpen = onOpen) }
+
         if (groups.isNotEmpty()) {
             // The cookie shape is the app's one playful shape — the emphasis card on Home has it —
             // so it marks the section that is about you rather than about the catalogue.
@@ -420,6 +429,106 @@ private fun PosterFacetCard(
                 color = M3EColor.onArtwork.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center
             )
+        }
+    }
+}
+
+
+/**
+ * TMDB's own recommendations for what this library loves most.
+ *
+ * Three seeds rather than one: a single seed drifts to one franchise, and the first row on a browse
+ * screen that shows the same show five times is worse than no row. Anything already owned is
+ * dropped — a recommendation you have is a chore, not a discovery.
+ */
+@Composable
+private fun ForYouRow(
+    library: List<MediaItemEntity>,
+    container: AppContainer,
+    onOpen: (MediaItemEntity) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val owned = remember(library) { library.map { it.id }.toSet() }
+    val seeds = remember(library) {
+        library
+            .filter { it.taste.equals("Love", true) || it.state.equals("Completed", true) }
+            .sortedByDescending { it.lastInteractionDate ?: "" }
+            .take(3)
+    }
+    val results by produceState(emptyList<TMDBSearchItem>(), seeds) {
+        if (seeds.isEmpty()) return@produceState
+        val client = container.tmdbClient()
+        val seen = linkedSetOf<String>()
+        val out = mutableListOf<TMDBSearchItem>()
+        for (seed in seeds) {
+            val tmdbId = MediaIds.tmdbIdOf(seed.id)
+            if (tmdbId <= 0) continue
+            val recs = if (seed.type.contains("TV", true)) {
+                client.getTVRecommendations(tmdbId).getOrNull()
+            } else {
+                client.getMovieRecommendations(tmdbId).getOrNull()
+            }?.results.orEmpty()
+            for (rec in recs) {
+                val id = (if (rec.media_type == "movie") "movie_" else "tv_") + rec.id
+                if (id in owned || !seen.add(id)) continue
+                out.add(rec)
+            }
+            if (out.size >= 12) break
+        }
+        value = out.take(12)
+    }
+
+    if (results.isEmpty()) return
+    M3ESectionHeader("For you", icon = Icons.Default.Recommend, tint = M3EColor.accent())
+    Spacer(Modifier.height(M3ESpacing.tightGap))
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+        items(results, key = { "${it.media_type}_${it.id}" }) { result ->
+            Column(modifier = Modifier.width(120.dp)) {
+                M3ETonalCard(
+                    onClick = {
+                        val isMovie = result.media_type == "movie"
+                        val mediaId = (if (isMovie) "movie_" else "tv_") + result.id
+                        val item = MediaItemEntity(
+                            id = mediaId,
+                            title = result.title ?: result.name ?: return@M3ETonalCard,
+                            overview = result.overview.orEmpty(),
+                            posterUrl = TMDBClient.buildPosterUrl(result.poster_path),
+                            backdropUrl = TMDBClient.buildBackdropUrl(result.backdrop_path),
+                            releaseDate = result.release_date ?: result.first_air_date,
+                            type = if (isMovie) "Movie" else "TV",
+                            state = "Wishlist",
+                            dateAdded = TrackingLogic.isoNow()
+                        )
+                        scope.launch {
+                            container.mediaDao.upsertMedia(item)
+                            container.syncManager().pushMediaUpdate(
+                                mediaId = item.id,
+                                type = item.type,
+                                state = item.state,
+                                taste = item.taste,
+                                isStateChange = false,
+                                dateAdded = item.dateAdded
+                            )
+                            onOpen(item)
+                        }
+                    }
+                ) {
+                    AsyncImage(
+                        model = TMDBClient.buildPosterUrl(result.poster_path),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = result.title ?: result.name ?: "",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted(),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
