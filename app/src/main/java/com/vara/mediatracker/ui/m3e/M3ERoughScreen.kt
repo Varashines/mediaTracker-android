@@ -449,7 +449,9 @@ fun M3ERoughScreen(
             // Only when there is a title on screen. The bar is the one place reachable from every
             // overlay, which is why removing lives here rather than buried in a sheet.
             onDelete = detail?.let { { deleteTarget = it.item } },
-            calendarBadge = home.comingSoonItems.size.takeIf { it > 0 },
+            // No badge: a count of things that are coming was a number to look at, not a
+            // thing to do. The calendar itself shows what is in it.
+            calendarBadge = null,
             settingsStale = run {
                 val last = SyncScheduler.lastSyncTimestamp(context)
                 last == 0L || System.currentTimeMillis() - last > TimeUnit.HOURS.toMillis(24)

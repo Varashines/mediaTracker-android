@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.SplitButtonLayout
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
@@ -818,24 +820,27 @@ fun M3ERoughDetail(
                             // in ten, so it gets the face; "the opposite of this" is a menu item,
                             // not a second button competing with it.
                             Box {
-                                SplitButtonLayout(
-                                    leadingButton = {
-                                        Button(onClick = { setSeasonWatched(!allWatched) }) {
-                                            Text(
-                                                text = if (allWatched) "Clear season" else "Watch season",
-                                                style = M3EType.action()
-                                            )
-                                        }
-                                    },
-                                    trailingButton = {
-                                        FilledTonalIconButton(onClick = { seasonMenu = true }) {
-                                            Icon(
-                                                imageVector = Icons.Default.ArrowDropDown,
-                                                contentDescription = "More season actions"
-                                            )
-                                        }
+                                // A floating toolbar rather than a split button: it is the only
+                                // control on the row, it belongs to the season above it rather than
+                                // to the page, and a rounded bar that sits apart from the list says
+                                // that better than two buttons stapled together.
+                                HorizontalFloatingToolbar(
+                                    expanded = true,
+                                    contentPadding = PaddingValues(horizontal = 6.dp)
+                                ) {
+                                    Button(onClick = { setSeasonWatched(!allWatched) }) {
+                                        Text(
+                                            text = if (allWatched) "Clear season" else "Watch season",
+                                            style = M3EType.action()
+                                        )
                                     }
-                                )
+                                    FilledTonalIconButton(onClick = { seasonMenu = true }) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = "More season actions"
+                                        )
+                                    }
+                                }
                                 DropdownMenu(
                                     expanded = seasonMenu,
                                     onDismissRequest = { seasonMenu = false }
