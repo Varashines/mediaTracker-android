@@ -22,14 +22,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.SplitButtonLayout
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -1724,37 +1720,6 @@ private fun openingSeasonFor(episodes: List<EpisodeEntity>): Int {
 
 @Composable
 private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Boolean) -> Unit) {
-    // A sweep either way toggles it.
-    //
-    // The row never actually leaves the list — an episode is not a thing you dismiss — so the state
-    // is told not to settle: the gesture fires the toggle and the row springs back. That is the
-    // difference between a swipe *action* and a swipe *dismissal*, and it is one boolean.
-    val sweepState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value != SwipeToDismissBoxValue.Settled) onToggle(!watched)
-            false
-        }
-    )
-    SwipeToDismissBox(
-        state = sweepState,
-        backgroundContent = {
-            val tint = if (watched) M3EColor.textMuted() else M3EColor.positive()
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(M3EShape.card())
-                    .background(tint.copy(alpha = 0.18f))
-                    .padding(horizontal = M3ESpacing.cardGap),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Icon(
-                    imageVector = if (watched) Icons.Default.Undo else Icons.Default.Check,
-                    contentDescription = null,
-                    tint = tint
-                )
-            }
-        }
-    ) {
     M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
@@ -1793,7 +1758,6 @@ private fun EpisodeRow(episode: EpisodeEntity, watched: Boolean, onToggle: (Bool
             }
             Checkbox(checked = watched, onCheckedChange = onToggle)
         }
-    }
     }
 }
 
