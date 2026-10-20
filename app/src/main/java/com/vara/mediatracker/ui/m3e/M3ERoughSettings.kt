@@ -29,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
@@ -137,6 +138,7 @@ fun M3ERoughSettings(
     onBack: () -> Unit,
     /** Opens the cycle/event history, which lives outside Settings but is reached from here. */
     onHistory: () -> Unit = {},
+    onInsights: () -> Unit = {},
     onThemePresetChanged: (Int) -> Unit,
     onThemeModeChanged: (Int) -> Unit
 ) {
@@ -560,6 +562,15 @@ fun M3ERoughSettings(
                     ) {
                         haptics.tap()
                         onHistory()
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    IconActionRow(
+                        icon = Icons.Default.BarChart,
+                        label = "Insights",
+                        detail = "What the library adds up to"
+                    ) {
+                        haptics.tap()
+                        onInsights()
                     }
                 }
             }
