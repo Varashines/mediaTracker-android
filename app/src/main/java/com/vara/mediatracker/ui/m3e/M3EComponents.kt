@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Card
+import androidx.compose.material3.ButtonColors
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.CardDefaults
@@ -243,6 +245,26 @@ fun M3EArtworkCard(
  * the detail's poster is 2:3 — scaling one to the other squashed it vertically rather than growing
  * it, which is exactly what it looked like.
  */
+/**
+ * Button colours that tint rather than fill.
+ *
+ * A filled button takes the accent at full strength. On a page that already uses the accent for its
+ * headings and icons, that makes every action shout at the same volume as the thing it is acting
+ * on. A tint is the same colour at low alpha: the button still reads as the accent thing on the
+ * row, without competing with the content beside it.
+ *
+ * A caller that passes its own colour (a destructive action, a warning) gets that colour tinted by
+ * the same rule, so nothing reverts to a slab of solid paint.
+ */
+@Composable
+fun tintedButtonColors(tint: Color = M3EColor.accent()): ButtonColors =
+    ButtonDefaults.buttonColors(
+        containerColor = tint.copy(alpha = 0.16f),
+        contentColor = tint,
+        disabledContainerColor = tint.copy(alpha = 0.07f),
+        disabledContentColor = tint.copy(alpha = 0.38f)
+    )
+
 class TileOrigin(val modifier: Modifier, val record: () -> Unit)
 
 @Composable

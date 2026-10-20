@@ -1282,7 +1282,7 @@ private fun FloatingNav(
         Surface(
             onClick = onSearch,
             shape = RoundedCornerShape(50),
-            color = if (searching) M3EColor.accent() else M3EColor.card(),
+            color = if (searching) M3EColor.accent().copy(alpha = 0.16f) else M3EColor.card(),
             shadowElevation = 12.dp,
             modifier = Modifier.size(56.dp)
         ) {
@@ -1290,7 +1290,7 @@ private fun FloatingNav(
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = "Search",
-                    tint = if (searching) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
+                    tint = if (searching) M3EColor.accent() else M3EColor.textMuted()
                 )
             }
         }
@@ -1339,14 +1339,14 @@ private fun NavPill(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(50),
-        color = if (active) M3EColor.accent() else M3EColor.card()
+        color = if (active) M3EColor.accent().copy(alpha = 0.16f) else M3EColor.card()
     ) {
         Row(
             modifier = Modifier.padding(horizontal = if (active) 16.dp else 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
         ) {
-            val tint = if (active) MaterialTheme.colorScheme.onPrimary else M3EColor.textMuted()
+            val tint = if (active) M3EColor.accent() else M3EColor.textMuted()
             // A badge says what is waiting in a place you have not opened — a count for a number of
             // things, a dot for "something", because "how many" is not useful for a stale sync.
             if (badgeCount != null || badgeDot) {
@@ -1368,7 +1368,7 @@ private fun NavPill(
                 Text(
                     text = label,
                     style = M3EType.action(),
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    color = M3EColor.accent(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

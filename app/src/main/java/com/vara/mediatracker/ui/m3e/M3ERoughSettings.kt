@@ -411,6 +411,7 @@ fun M3ERoughSettings(
                                 permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             },
                             shape = M3EShape.chip(),
+                            colors = tintedButtonColors(),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(M3ESpacing.rowMinHeight)
@@ -472,6 +473,7 @@ fun M3ERoughSettings(
                         },
                         enabled = !syncing && !checkingImpact,
                         shape = M3EShape.chip(),
+                        colors = tintedButtonColors(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(M3ESpacing.rowMinHeight)
@@ -481,7 +483,7 @@ fun M3ERoughSettings(
                             // rest of the screen is written in.
                             LoadingIndicator(
                                 modifier = Modifier.size(18.dp),
-                                color = MaterialTheme.colorScheme.onPrimary
+                                color = M3EColor.accent()
                             )
                         } else {
                             Icon(
@@ -831,12 +833,13 @@ fun M3ERoughSettings(
                         },
                         enabled = !syncing,
                         shape = M3EShape.chip(),
+                        colors = tintedButtonColors(),
                         modifier = Modifier.weight(1f)
                     ) {
                         if (syncing) {
                             LoadingIndicator(
                                 modifier = Modifier.size(16.dp),
-                                color = MaterialTheme.colorScheme.onPrimary
+                                color = M3EColor.accent()
                             )
                         } else {
                             Icon(

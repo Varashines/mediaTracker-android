@@ -825,7 +825,10 @@ fun M3ERoughDetail(
                             // was already on screen, so it offered "mark all watched" beside a
                             // "watch season" button and "clear all" beside a "clear season" one:
                             // the same action, twice, with the second hidden behind a chevron.
-                            Button(onClick = { setSeasonWatched(!allWatched) }) {
+                            Button(
+                                onClick = { setSeasonWatched(!allWatched) },
+                                colors = tintedButtonColors()
+                            ) {
                                 Text(
                                     text = if (allWatched) "Clear season" else "Watch season",
                                     style = M3EType.action()
@@ -1468,11 +1471,7 @@ private fun PrimaryAction(
     Button(
         onClick = onClick,
         enabled = enabled,
-        colors = if (tint != null) {
-            ButtonDefaults.buttonColors(containerColor = tint)
-        } else {
-            ButtonDefaults.buttonColors()
-        },
+        colors = tintedButtonColors(tint ?: M3EColor.accent()),
         modifier = Modifier
             .fillMaxWidth()
             .height(M3ESpacing.rowMinHeight)
