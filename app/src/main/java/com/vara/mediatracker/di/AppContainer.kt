@@ -57,6 +57,10 @@ class AppContainer(context: Context) {
                 json(Json {
                     ignoreUnknownKeys = true
                     isLenient = true
+                    // Blob uploads must be key-stable: kotlinx omits a property at its default, and
+                    // PostgREST rejects a batch whose objects disagree (PGRST102), so a title with a
+                    // taste and one without could not be sent in the same request.
+                    encodeDefaults = true
                 })
             }
             expectSuccess = true

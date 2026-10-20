@@ -59,6 +59,34 @@ data class RemoteMedia(
     val updated_at: String? = null
 )
 
+/**
+ * A media row as it goes *up*, which is not the same shape as a row coming down.
+ *
+ * The upload type has no palette fields at all, rather than palette fields that are null. kotlinx
+ * omits a property whose value is its default, so a batch of `RemoteMedia` objects disagreed about
+ * their key set — one title with a taste, one without, one carrying a custom poster — and PostgREST
+ * rejects that in full with PGRST102, the same 400 the Mac was failing on.
+ *
+ * Setting `encodeDefaults` fixes the keys, and sending `theme_color_hex = null` to fix them would be
+ * worse: a null is an instruction to clear the column, so every Android sync would wipe the palette
+ * the Mac extracted. A type that does not have the columns cannot say anything about them, which is
+ * what this device actually means.
+ */
+@Serializable
+data class RemoteMediaPush(
+    val user_id: String,
+    val media_id: String,
+    val type: String,
+    val state: String,
+    val taste: String,
+    val custom_poster_url: String?,
+    val is_soft_deleted: Boolean,
+    val last_interaction_date: String?,
+    val last_state_change_date: String?,
+    val date_added: String?,
+    val updated_at: String?
+)
+
 @Serializable
 data class RemoteEpisode(
     val user_id: String,
@@ -160,6 +188,10 @@ class CloudSyncManager(
                 json(Json {
                     ignoreUnknownKeys = true
                     isLenient = true
+                    // Emit every property, including ones sitting at their default. Without this a
+                    // batch of rows disagrees about its keys as soon as one title has a taste and
+                    // another has none, and PostgREST rejects the request with PGRST102.
+                    encodeDefaults = true
                 })
             }
         }
@@ -407,12 +439,18 @@ class CloudSyncManager(
         dateAdded: String? = null
     ) = runCatching {
         val now = isoNow()
-        val payload = RemoteMedia(
+        // The two fields this call does not decide are read off the row rather than left at their
+        // defaults: a push now carries every key, and a null custom poster would be an instruction
+        // to clear the one extracted elsewhere.
+        val existing = mediaDao.getMediaById(mediaId)
+        val payload = RemoteMediaPush(
             user_id = syncKey,
             media_id = mediaId,
             type = type,
             state = state,
             taste = Taste.normalize(taste),
+            custom_poster_url = existing?.customPosterUrl,
+            is_soft_deleted = existing?.isSoftDeleted ?: false,
             last_interaction_date = now,
             last_state_change_date = if (isStateChange) now else null,
             date_added = dateAdded,
@@ -984,7 +1022,7 @@ class CloudSyncManager(
         if (items.isEmpty()) return
         val now = isoNow()
         val payload = items.map { item ->
-            RemoteMedia(
+            RemoteMediaPush(
                 user_id = syncKey,
                 media_id = item.id,
                 type = item.type,
@@ -1012,14 +1050,14 @@ class CloudSyncManager(
 
     /**
      * Tombstones titles in the cloud so a delete propagates to the other device.
-     * (A plain state push omits `is_soft_deleted`, since `false` is the serialization
-     * default, so deletes need to be sent explicitly.)
+     * (A plain state push now carries `is_soft_deleted` like every other field, so this is only
+     * about the rows the caller chose to tombstone.)
      */
     suspend fun pushMediaDeletes(items: List<MediaItemEntity>) {
         if (items.isEmpty()) return
         val now = isoNow()
         val payload = items.map { item ->
-            RemoteMedia(
+            RemoteMediaPush(
                 user_id = syncKey,
                 media_id = item.id,
                 type = item.type,
