@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tv
@@ -560,6 +561,16 @@ fun M3ERoughSettings(
                     ) {
                         haptics.tap()
                         onHistory()
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    IconActionRow(
+                        icon = Icons.Default.Refresh,
+                        label = "Refresh episodes",
+                        detail = "Re-fetch every show's episode list, including complete ones"
+                    ) {
+                        haptics.tap()
+                        SyncScheduler.enrichEpisodesNow(context, forceAll = true)
+                        AppToast.show("Refreshing episodes…")
                     }
                 }
             }

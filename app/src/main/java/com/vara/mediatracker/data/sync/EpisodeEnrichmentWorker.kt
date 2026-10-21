@@ -53,7 +53,11 @@ class EpisodeEnrichmentWorker(
         }
 
         val db = container.database
-        val todo = db.mediaDao().getShowsNeedingEpisodeEnrichment(BATCH_SIZE)
+        // A forced run re-enriches every show, not only the ones missing rows: a count can be
+        // wrong while every row looks complete, which is exactly when you reach for this.
+        val forceAll = inputData.getBoolean(SyncScheduler.KEY_FORCE_ALL, false)
+        val todo = if (forceAll) db.mediaDao().getTvShowsForEnrichment(BATCH_SIZE)
+                   else db.mediaDao().getShowsNeedingEpisodeEnrichment(BATCH_SIZE)
         android.util.Log.i("EpisodeEnrich", "doWork: ${todo.size} shows to enrich")
         if (todo.isEmpty()) return Result.success(workDataOf(KEY_SHOWS to 0))
 

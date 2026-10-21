@@ -8,6 +8,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
+import androidx.work.workDataOf
 import com.vara.mediatracker.data.badge.BadgeUpdateWorker
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkInfo
@@ -36,6 +37,7 @@ object SyncScheduler {
     const val BADGE_ONESHOT_WORK_NAME = "mediatracker-badge-refresh-now"
     const val ENRICHMENT_WORK_NAME = "mediatracker-episode-enrichment"
     const val ENRICHMENT_ONESHOT_WORK_NAME = "mediatracker-episode-enrichment-now"
+    const val KEY_FORCE_ALL = "force_all"
     const val METADATA_WORK_NAME = "mediatracker-metadata-enrichment"
     const val METADATA_ONESHOT_WORK_NAME = "mediatracker-metadata-enrichment-now"
     const val ONESHOT_WORK_NAME = "mediatracker-immediate-sync"
@@ -155,8 +157,9 @@ object SyncScheduler {
     }
 
     /** Runs one backfill pass immediately — useful after adding titles. */
-    fun enrichEpisodesNow(context: Context) {
+    fun enrichEpisodesNow(context: Context, forceAll: Boolean = false) {
         val request = OneTimeWorkRequestBuilder<EpisodeEnrichmentWorker>()
+            .setInputData(workDataOf(KEY_FORCE_ALL to forceAll))
             .setConstraints(networkConstraints())
             .addTag(TAG_ENRICH)
             .build()

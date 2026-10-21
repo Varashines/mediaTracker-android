@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,9 +30,12 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.WatchCycleEntity
@@ -167,20 +171,36 @@ internal fun M3ERoughHistory(
                         )
                     },
                     leadingContent = {
-                        Icon(
-                            imageVector = if (entry.isShow) Icons.Default.Tv else Icons.Default.Movie,
+                        AsyncImage(
+                            model = entry.item?.posterUrl,
                             contentDescription = null,
-                            tint = M3EColor.textMuted(),
-                            modifier = Modifier.size(20.dp)
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(width = 40.dp, height = 60.dp)
+                                .clip(M3EShape.chip())
                         )
                     },
                     trailingContent = {
-                        entry.state?.let {
-                            Text(
-                                text = it,
-                                style = M3EType.rowSupporting(),
-                                color = stateColor(it)
-                            )
+                        // Taste as a tinted capsule — the same shape the Home rails use for their
+                        // tags, so it reads as the same kind of information.
+                        val normalized = entry.taste?.lowercase(Locale.US)
+                        if (normalized != null && normalized != "none") {
+                            val tint = when (normalized) {
+                                "love" -> M3EColor.warning()
+                                "like" -> M3EColor.accent()
+                                else -> MaterialTheme.colorScheme.error
+                            }
+                            Surface(
+                                shape = M3EShape.chip(),
+                                color = tint.copy(alpha = 0.16f),
+                                contentColor = tint
+                            ) {
+                                Text(
+                                    text = normalized,
+                                    style = M3EType.rowSupporting(),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
                         }
                     },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
@@ -207,7 +227,6 @@ private data class HistoryEntry(
 
 private fun supporting(entry: HistoryEntry): String = buildString {
     append(entry.detail ?: "watched")
-    entry.taste?.takeIf { !it.equals("None", true) }?.let { append(" · ") ; append(it.lowercase(Locale.US)) }
     if (entry.rewatch) append(" · rewatch")
 }
 

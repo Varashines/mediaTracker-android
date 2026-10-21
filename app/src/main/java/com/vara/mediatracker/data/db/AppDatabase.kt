@@ -137,6 +137,17 @@ interface MediaDao {
     )
     suspend fun getShowsNeedingEpisodeEnrichment(limit: Int): List<MediaItemEntity>
 
+    /** Every live TV show, for a forced refresh — the query above only finds incomplete ones. */
+    @Query(
+        """
+        SELECT * FROM media_items
+        WHERE isSoftDeleted = 0 AND type LIKE '%TV%'
+        ORDER BY lastInteractionDate DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun getTvShowsForEnrichment(limit: Int): List<MediaItemEntity>
+
     /**
      * Titles missing Discovery Hub facets (genres / language / providers). One pass
      * fills them from TMDB details + watch providers; once set the row drops out.
