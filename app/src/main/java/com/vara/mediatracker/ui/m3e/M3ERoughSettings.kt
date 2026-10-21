@@ -570,6 +570,22 @@ fun M3ERoughSettings(
                         Spacer(Modifier.width(M3ESpacing.tightGap))
                         Text("Refresh episodes", style = M3EType.action())
                     }
+                    Spacer(Modifier.height(M3ESpacing.tightGap))
+                    // The watermark is what makes a sync cheap, and also what makes a bad pull
+                    // permanent: once it covers every table, "nothing newer" means a wrong local
+                    // state can never be corrected. This drops it and pulls the lot again.
+                    OutlinedButton(
+                        onClick = {
+                            haptics.tap()
+                            prefs.syncWatermark = null
+                            AppToast.show("Pulling everything from the cloud…")
+                            runSync()
+                        },
+                        shape = M3EShape.chip(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Resync from cloud", style = M3EType.action())
+                    }
                 }
             }
         }
