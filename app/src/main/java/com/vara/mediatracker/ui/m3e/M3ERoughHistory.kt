@@ -26,8 +26,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,10 +81,13 @@ internal fun M3ERoughHistory(
                 if (!seen.add(identity)) continue
                 out += HistoryEntry(
                     id = event.id,
+                    mediaId = event.mediaId,
                     at = event.watchedAt,
                     title = item?.title ?: event.mediaId,
                     isShow = cycle?.kind != "movie",
                     detail = key?.let { "S${it.seasonNumber}E${it.episodeNumber}" },
+                    season = key?.seasonNumber,
+                    episode = key?.episodeNumber,
                     state = item?.state,
                     taste = item?.taste,
                     rewatch = cycle?.isRewatch == true,
@@ -95,10 +100,13 @@ internal fun M3ERoughHistory(
                 cycle.completedAt?.let { done ->
                     out += HistoryEntry(
                         id = "done_${cycle.id}",
+                        mediaId = cycle.mediaId,
                         at = done,
                         title = item.title,
                         isShow = cycle.kind != "movie",
                         detail = "season complete",
+                        season = null,
+                        episode = null,
                         state = item.state,
                         taste = item.taste,
                         rewatch = cycle.isRewatch,
@@ -111,6 +119,9 @@ internal fun M3ERoughHistory(
     }
 
     val byDay = remember(entries) { entries.groupBy { it.at.take(10) } }
+    // Which collapsed groups are open. Keyed by day + title, so opening one sitting does not open
+    // every copy of the show in the list.
+    var expanded by remember { mutableStateOf(setOf<String>()) }
 
     LazyColumn(
         modifier = Modifier
@@ -150,8 +161,36 @@ internal fun M3ERoughHistory(
                     tint = M3EColor.accent()
                 )
             }
-            items(dayEntries, key = { it.id }) { entry ->
-                HistoryRow(entry) { entry.item?.let(onOpen) }
+            val groups = dayEntries.groupBy { it.mediaId }.values.toList()
+            groups.forEach { group ->
+                val first = group.first()
+                val key = "${day}_${first.mediaId}"
+                if (group.size == 1) {
+                    item(key = "row_${first.id}") {
+                        HistoryRow(first) { first.item?.let(onOpen) }
+                    }
+                } else {
+                    item(key = "group_$key") {
+                        HistoryRow(
+                            entry = first.copy(
+                                id = key,
+                                detail = rangeLabel(group),
+                                episode = null,
+                                season = null
+                            ),
+                            count = group.size,
+                            expanded = key in expanded,
+                            onClick = {
+                                expanded = if (key in expanded) expanded - key else expanded + key
+                            }
+                        )
+                    }
+                    if (key in expanded) {
+                        items(group, key = { it.id }) { entry ->
+                            HistoryRow(entry, indent = true) { entry.item?.let(onOpen) }
+                        }
+                    }
+                }
             }
         }
 
@@ -161,10 +200,13 @@ internal fun M3ERoughHistory(
 
 private data class HistoryEntry(
     val id: String,
+    val mediaId: String,
     val at: String,
     val title: String,
     val isShow: Boolean,
     val detail: String?,
+    val season: Int?,
+    val episode: Int?,
     val state: String?,
     val taste: String?,
     val rewatch: Boolean,
@@ -180,7 +222,13 @@ private data class HistoryEntry(
  * than by a tag at the end of the line. Unrated keeps the plain card.
  */
 @Composable
-private fun HistoryRow(entry: HistoryEntry, onClick: () -> Unit) {
+private fun HistoryRow(
+    entry: HistoryEntry,
+    count: Int? = null,
+    expanded: Boolean = false,
+    indent: Boolean = false,
+    onClick: () -> Unit
+) {
     val normalized = entry.taste?.lowercase(Locale.US)
     val tint = when (normalized) {
         "love" -> M3EColor.warning()
@@ -210,7 +258,7 @@ private fun HistoryRow(entry: HistoryEntry, onClick: () -> Unit) {
                     .clip(M3EShape.chip())
             )
             Spacer(Modifier.size(M3ESpacing.inlineGap))
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f).padding(start = if (indent) 8.dp else 0.dp)) {
                 Text(
                     text = entry.title,
                     style = M3EType.rowTitleStrong(),
@@ -226,7 +274,29 @@ private fun HistoryRow(entry: HistoryEntry, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis
                 )
             }
+            if (count != null) {
+                Text(
+                    text = if (expanded) "−" else "+$count",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted()
+                )
+            }
         }
+    }
+}
+
+/** "S1E1–E7 · 7 episodes" when the run is contiguous, "7 episodes" when it is not. */
+private fun rangeLabel(group: List<HistoryEntry>): String {
+    val eps = group.mapNotNull { it.episode }
+    val seasons = group.mapNotNull { it.season }.distinct()
+    val countLabel = if (group.size == 1) "1 episode" else "${group.size} episodes"
+    if (seasons.size != 1 || eps.size != group.size) return countLabel
+    val sorted = eps.sorted()
+    val contiguous = sorted.zipWithNext().all { (a, b) -> b == a + 1 }
+    return if (contiguous && sorted.size > 1) {
+        "S${seasons.first()}E${sorted.first()}–E${sorted.last()} · ${group.size} episodes"
+    } else {
+        countLabel
     }
 }
 
