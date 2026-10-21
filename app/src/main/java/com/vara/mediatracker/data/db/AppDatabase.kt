@@ -276,6 +276,12 @@ interface CollectionDao {
 /** Watch history: the per-viewing cycles and the immutable events behind them. */
 @Dao
 interface WatchHistoryDao {
+    @Query("SELECT * FROM watch_events WHERE voidedAt IS NULL ORDER BY watchedAt DESC LIMIT 500")
+    fun observeEvents(): Flow<List<WatchEventEntity>>
+
+    @Query("SELECT * FROM watch_cycles ORDER BY startedAt DESC LIMIT 500")
+    fun observeCycles(): Flow<List<WatchCycleEntity>>
+
     @Query("SELECT * FROM watch_cycles")
     suspend fun getAllCycles(): List<WatchCycleEntity>
 
