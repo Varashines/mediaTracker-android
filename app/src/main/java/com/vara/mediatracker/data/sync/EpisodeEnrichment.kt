@@ -76,14 +76,43 @@ object EpisodeEnrichment {
         }
         val episodesBySeasonNumber = seasonNumbers.zip(episodesBySeason).toMap()
 
+        // Thai shows take TVMaze's list, as on the Mac. TMDB is regularly two episodes ahead for a
+        // Thai series, with entries it has titles for but that have not aired; TVMaze schedules
+        // them week by week. TMDB still supplies names, stills and runtimes by episode number.
+        val isThai = show.language == "th" || details.original_language == "th"
+
         for (season in details.seasons.orEmpty()) {
             if (season.season_number < 1) continue
-            val eps = episodesBySeasonNumber[season.season_number].orEmpty()
+            val tmdbEps = episodesBySeasonNumber[season.season_number].orEmpty()
+            val mazeRefs = mazeByKey
+                .filterKeys { it.startsWith("${season.season_number}_") }
+                .values
+                .filter { it.number != null }
+            val useMaze = isThai && mazeRefs.isNotEmpty()
+            val eps = if (useMaze) {
+                mazeRefs.mapNotNull { ref ->
+                    val number = ref.number ?: return@mapNotNull null
+                    val tmdb = tmdbEps.firstOrNull { it.episode_number == number }
+                    com.vara.mediatracker.data.api.TMDBEpisodeItem(
+                        season_number = season.season_number,
+                        episode_number = number,
+                        name = tmdb?.name,
+                        overview = tmdb?.overview,
+                        air_date = ref.airdate ?: tmdb?.air_date,
+                        air_time = ref.airtime ?: tmdb?.air_time,
+                        still_path = tmdb?.still_path,
+                        runtime = tmdb?.runtime
+                    )
+                }
+            } else {
+                tmdbEps
+            }
 
             seasonRows += TVSeasonEntity(
                 showId = showId,
                 seasonNumber = season.season_number,
-                episodeCount = season.episode_count?.takeIf { it > 0 } ?: eps.size,
+                episodeCount = if (useMaze) eps.size
+                    else (season.episode_count?.takeIf { it > 0 } ?: eps.size),
                 name = season.name,
                 airDate = season.air_date
             )
@@ -127,6 +156,10 @@ object EpisodeEnrichment {
 
         if (newEpisodes.isEmpty()) return showInfo != null
         db.mediaDao().upsertEpisodes(newEpisodes)
+        // An authoritative list means rows it omits should go — except watched ones.
+        if (isThai && mazeByKey.isNotEmpty()) {
+            db.mediaDao().pruneUnwatchedEpisodes(showId, newEpisodes.map { it.uniqueId })
+        }
         if (seasonRows.isNotEmpty()) db.seasonDao().upsertSeasons(seasonRows)
         return true
     }
