@@ -85,6 +85,17 @@ interface MediaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertEpisodes(episodes: List<EpisodeEntity>)
 
+    /**
+     * Deletes rows this show should no longer have, never a watched one.
+     *
+     * Only used where the list is authoritative (a Thai show, whose episodes come from TVMaze):
+     * TMDB's announced-but-unaired entries would otherwise sit in the season and inflate every
+     * count derived from rows. A watched row stays even if the new list omits it — a schedule is a
+     * suggestion, history is not.
+     */
+    @Query("DELETE FROM tv_episodes WHERE showId = :showId AND isWatched = 0 AND uniqueId NOT IN (:keepIds)")
+    suspend fun pruneUnwatchedEpisodes(showId: String, keepIds: List<String>)
+
     @Query("UPDATE tv_episodes SET isWatched = :watched, watchedDate = :watchedDate WHERE uniqueId = :uniqueId")
     suspend fun setEpisodeWatched(uniqueId: String, watched: Boolean, watchedDate: String?)
 
