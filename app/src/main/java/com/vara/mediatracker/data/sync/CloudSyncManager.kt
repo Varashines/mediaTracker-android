@@ -579,11 +579,19 @@ class CloudSyncManager(
             return Result.failure(IllegalStateException("Sync credentials not configured"))
         }
         val r = reconcile(since)
+        // Which cycles this device already knew about, before the pull adds them.
+        val knownCycles = db.watchHistoryDao().getAllCycles().mapTo(HashSet()) { it.id }
         if (r.incomingMedia.isNotEmpty()) mediaDao.upsertMedia(r.incomingMedia)
         if (r.incomingEpisodes.isNotEmpty()) mediaDao.upsertEpisodes(r.incomingEpisodes)
         if (r.incomingCollections.isNotEmpty()) db.collectionDao().upsertCollections(r.incomingCollections)
         if (r.incomingCollectionItems.isNotEmpty()) db.collectionDao().upsertCollectionItems(r.incomingCollectionItems)
         if (r.incomingCycles.isNotEmpty()) db.watchHistoryDao().upsertCycles(r.incomingCycles)
+        // A rewatch that is new to this device resets the show's projection, exactly as starting one
+        // does on the Mac. Only for cycles we have not seen — otherwise every sync would unmark the
+        // episodes watched since.
+        r.incomingCycles
+            .filter { it.isRewatch && it.state == "active" && it.id !in knownCycles }
+            .forEach { cycle -> mediaDao.clearEpisodeProjection(cycle.mediaId) }
         if (r.incomingWatchEvents.isNotEmpty()) db.watchHistoryDao().upsertEvents(r.incomingWatchEvents)
         pushMediaBatch(r.outgoingMedia)
         pushEpisodeBatch(r.outgoingEpisodes)
