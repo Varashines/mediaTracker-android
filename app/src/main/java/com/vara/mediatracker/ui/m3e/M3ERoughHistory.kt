@@ -1,6 +1,7 @@
 package com.vara.mediatracker.ui.m3e
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,9 +12,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Tv
@@ -190,7 +193,7 @@ internal fun M3ERoughHistory(
                     }
                     if (key in expanded) {
                         items(group, key = { it.id }) { entry ->
-                            HistoryRow(entry, indent = true) { entry.item?.let(onOpen) }
+                            HistoryRow(entry) { entry.item?.let(onOpen) }
                         }
                     }
                 }
@@ -229,68 +232,49 @@ private fun HistoryRow(
     entry: HistoryEntry,
     count: Int? = null,
     expanded: Boolean = false,
-    indent: Boolean = false,
     onClick: () -> Unit
 ) {
-    val normalized = entry.taste?.lowercase(Locale.US)
-    val semantic = LocalSemanticColors.current
-    val tint = when (normalized) {
-        "love" -> semantic.loved
-        "like" -> semantic.liked
-        "dislike" -> semantic.disliked
-        else -> null
-    }
-    Surface(
-        onClick = onClick,
-        shape = M3EShape.card(),
-        color = tint?.copy(alpha = 0.10f) ?: M3EColor.card(),
-        contentColor = M3EColor.text(),
+    // Same shape as the Continue watching row: poster, two lines, nothing else.
+    Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(M3EShape.card())
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
+        AsyncImage(
+            model = entry.item?.posterUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
-                .background(
-                    Brush.horizontalGradient(
-                        0f to (tint?.copy(alpha = 0.22f) ?: Color.Transparent),
-                        1f to Color.Transparent
-                    )
-                )
-                .padding(M3ESpacing.cardGap),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AsyncImage(
-                model = entry.item?.posterUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(width = 40.dp, height = 60.dp)
-                    .clip(M3EShape.chip())
+                .size(width = 40.dp, height = 60.dp)
+                .clip(M3EShape.chip())
+        )
+        Spacer(Modifier.width(M3ESpacing.inlineGap))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = entry.title,
+                style = M3EType.rowTitle(),
+                color = M3EColor.text(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            Spacer(Modifier.size(M3ESpacing.inlineGap))
-            Column(modifier = Modifier.weight(1f).padding(start = if (indent) 8.dp else 0.dp)) {
-                Text(
-                    text = entry.title,
-                    style = M3EType.rowTitleStrong(),
-                    color = M3EColor.text(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = supporting(entry),
-                    style = M3EType.rowSupporting(),
-                    color = M3EColor.textMuted(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (count != null) {
-                Text(
-                    text = if (expanded) "−" else "+$count",
-                    style = M3EType.rowSupporting(),
-                    color = M3EColor.textMuted()
-                )
-            }
+            Text(
+                text = entry.detail ?: supporting(entry),
+                style = M3EType.rowSupporting(),
+                color = M3EColor.textMuted(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (count != null) {
+            Icon(
+                imageVector = Icons.Default.ExpandMore,
+                contentDescription = if (expanded) "Collapse" else "Expand",
+                tint = M3EColor.textMuted(),
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
