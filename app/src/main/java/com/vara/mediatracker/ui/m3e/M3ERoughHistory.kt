@@ -44,6 +44,7 @@ import com.vara.mediatracker.data.model.WatchCycleEntity
 import com.vara.mediatracker.data.model.WatchEventEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.LibraryCore
+import com.vara.mediatracker.ui.theme.LocalSemanticColors
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -128,7 +129,8 @@ internal fun M3ERoughHistory(
             .fillMaxSize()
             .background(M3EColor.page())
             .statusBarsPadding()
-            .padding(horizontal = M3ESpacing.page)
+            .padding(horizontal = M3ESpacing.page),
+        verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
     ) {
         item {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
@@ -230,10 +232,11 @@ private fun HistoryRow(
     onClick: () -> Unit
 ) {
     val normalized = entry.taste?.lowercase(Locale.US)
+    val semantic = LocalSemanticColors.current
     val tint = when (normalized) {
-        "love" -> M3EColor.warning()
-        "like" -> M3EColor.accent()
-        "dislike" -> MaterialTheme.colorScheme.error
+        "love" -> semantic.loved
+        "like" -> semantic.liked
+        "dislike" -> semantic.disliked
         else -> null
     }
     Surface(
@@ -243,7 +246,6 @@ private fun HistoryRow(
         contentColor = M3EColor.text(),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp)
     ) {
         Row(
             modifier = Modifier.padding(M3ESpacing.tightGap),
