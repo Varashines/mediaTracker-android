@@ -58,7 +58,10 @@ object WatchHistoryRecorder {
             // device `tv_{show}_s{season}_e{episode}`; keyed on the raw string the two spellings
             // were two different events, so the cloud merge kept both and one viewing appeared
             // twice in the history.
-            deduplicationKey = "${cycle.id}:${MediaIds.canonicalEpisodeIdOrNull(episodeId) ?: "movie"}",
+            // Lower-case the cycle id, like the Mac: both devices build this key from a UUID's
+            // string form, and one side upper-cased it — so the same viewing got two keys and the
+            // cloud merge kept both, which is why history had duplicates differing only in case.
+            deduplicationKey = "${cycle.id.lowercase()}:${MediaIds.canonicalEpisodeIdOrNull(episodeId) ?: "movie"}",
             updatedAt = watchedAt
         )
         dao.upsertEvents(listOf(event))

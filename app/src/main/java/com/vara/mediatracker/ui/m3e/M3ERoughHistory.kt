@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -153,6 +155,12 @@ internal fun M3ERoughHistory(
                 color = M3EColor.textMuted()
             )
             Spacer(Modifier.height(M3ESpacing.cardGap))
+            Row(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
+                LogStat("viewings", entries.size.toString(), Modifier.weight(1f))
+                LogStat("titles", entries.mapNotNull { it.item?.id }.distinct().size.toString(), Modifier.weight(1f))
+                LogStat("rewatches", entries.count { it.rewatch }.toString(), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(M3ESpacing.cardGap))
         }
 
         if (entries.isEmpty()) {
@@ -168,12 +176,7 @@ internal fun M3ERoughHistory(
         byDay.forEach { (day, dayEntries) ->
             item(key = "day_$day") {
                 Spacer(Modifier.height(M3ESpacing.cardGap))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = dayLabel(day),
-                    style = LogStyle.copy(color = M3EColor.textMuted())
-                )
+                M3ESectionHeader(title = dayLabel(day), icon = Icons.Default.History, tint = M3EColor.accent())
                 Spacer(Modifier.height(2.dp))
             }
             items(dayEntries, key = { "${it.at}_${it.verb}_${it.title}_${it.detail}" }) { entry ->
@@ -202,6 +205,17 @@ private data class LogEntry(
     val rewatch: Boolean,
     val item: MediaItemEntity?
 )
+
+/** One number and its label, in a tonal card. */
+@Composable
+private fun LogStat(label: String, value: String, modifier: Modifier = Modifier) {
+    M3ETonalCard(modifier = modifier) {
+        Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
+            Text(value, style = M3EType.metric(), color = M3EColor.text())
+            Text(label, style = M3EType.rowSupporting(), color = M3EColor.textMuted())
+        }
+    }
+}
 
 /** One line of the log: coloured tokens on the left, the name they belong to on the right. */
 @Composable
