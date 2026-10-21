@@ -591,12 +591,12 @@ class CloudSyncManager(
         // Only a cycle that has *just* started may reset anything. A fresh install pulls every
         // cycle ever written, and an old active rewatch would otherwise clear a show that is simply
         // sitting in this device's library — which is how every series came back unmarked.
-        val resetCutoff = java.time.Instant.now().minusSeconds(48 * 3600)
+        val resetCutoff = java.util.Date(System.currentTimeMillis() - 48L * 3600L * 1000L)
         r.incomingCycles
             .filter { it.isRewatch && it.state == "active" }
             .filter { cycle ->
                 val started = com.vara.mediatracker.util.WireTime.parseInstant(cycle.startedAt)
-                started != null && started.isAfter(resetCutoff)
+                started != null && started.after(resetCutoff)
             }
             .forEach { cycle -> mediaDao.clearEpisodeProjectionBefore(cycle.mediaId, cycle.startedAt) }
         if (r.incomingWatchEvents.isNotEmpty()) db.watchHistoryDao().upsertEvents(r.incomingWatchEvents)
