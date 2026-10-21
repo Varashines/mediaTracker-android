@@ -593,8 +593,14 @@ class CloudSyncManager(
         val media = SyncReconciler.reconcileMedia(mediaDao.getAllMediaList(), remoteMedia, since)
         val episodes = SyncReconciler.reconcileEpisodes(mediaDao.getAllEpisodesList(), remoteEpisodes, since)
 
-        val collections = reconcileCollections(since)
-        val history = reconcileWatchHistory(since)
+        // Every table contributes to the watermark. It used to be media and episodes only, so the
+        // other three could advance without moving it — the next pull then re-read them, or worse,
+        // skipped a row whose only change landed in a table the watermark was not looking at.
+        val stamps = mutableListOf<String?>()
+        stamps += remoteMedia.map { it.updated_at }
+        stamps += remoteEpisodes.map { it.updated_at }
+        val collections = reconcileCollections(since, stamps)
+        val history = reconcileWatchHistory(since, stamps)
         return Reconcile(
             media.outgoing, media.incoming, episodes.outgoing, episodes.incoming, media.conflicts,
             outgoingCollections = collections.outgoingCollections,
@@ -605,9 +611,7 @@ class CloudSyncManager(
             incomingCycles = history.incomingCycles,
             outgoingWatchEvents = history.outgoingEvents,
             incomingWatchEvents = history.incomingEvents,
-            // Advance the watermark to the newest server stamp we have seen (minus a margin
-            // for reads racing an in-flight commit), so the next pull only asks for changes.
-            watermark = nextWatermark(since, remoteMedia.map { it.updated_at } + remoteEpisodes.map { it.updated_at })
+            watermark = nextWatermark(since, stamps)
         )
     }
 
@@ -631,19 +635,23 @@ class CloudSyncManager(
         SyncReconciler.changedSince(stamp, watermark)
 
     /**
-     * The watermark to store after this pull: the newest server `updated_at` observed, backed
-     * off slightly. Server time, not the device clock — a fast device clock would skip rows.
+     * The watermark to store after this pull: the newest server `updated_at` observed across all
+     * five tables, exactly as the server wrote it.
+     *
+     * No back-off. Subtracting five seconds was meant to cover a read racing an in-flight commit,
+     * and it does not: a row committed after our GET carries a *later* stamp and is pulled next
+     * time either way. What the back-off did do was make every row written in those five seconds
+     * look edited on the next sync, which is how one title per sync came to be re-pushed forever.
      */
     private fun nextWatermark(previous: String?, stamps: List<String?>): String? {
-        val newest = stamps.filterNotNull().filter { it.isNotBlank() }.maxOrNull() ?: return previous
-        return runCatching {
-            java.time.Instant.parse(newest).minusSeconds(5).toString()
-        }.getOrNull() ?: newest
+        return stamps.filterNotNull().filter { it.isNotBlank() }.maxOrNull() ?: previous
     }
 
-    private suspend fun reconcileWatchHistory(since: String? = null): WatchHistoryReconcile {
+    private suspend fun reconcileWatchHistory(since: String? = null, stamps: MutableList<String?> = mutableListOf()): WatchHistoryReconcile {
         val remoteCycles = fetchRemoteWatchCycles(since)
         val remoteEvents = fetchRemoteWatchEvents(since)
+        stamps += remoteCycles.map { it.updated_at }
+        stamps += remoteEvents.map { it.updated_at }
         val localCycles = db.watchHistoryDao().getAllCycles()
         val localEvents = db.watchHistoryDao().getAllEvents()
 
@@ -785,9 +793,11 @@ class CloudSyncManager(
         parseInstant(completedAt) ?: parseInstant(startedAt)
 
     /** Collections + membership diff. Newest-wins per row; membership uses tombstones. */
-    private suspend fun reconcileCollections(since: String? = null): CollectionReconcile {
+    private suspend fun reconcileCollections(since: String? = null, stamps: MutableList<String?> = mutableListOf()): CollectionReconcile {
         val remoteCollections = fetchRemoteCollections(since)
         val remoteItems = fetchRemoteCollectionItems(since)
+        stamps += remoteCollections.map { it.updated_at }
+        stamps += remoteItems.map { it.updated_at }
         val localCollections = db.collectionDao().getAllCollections()
         val localItems = db.collectionDao().getAllCollectionItems()
 

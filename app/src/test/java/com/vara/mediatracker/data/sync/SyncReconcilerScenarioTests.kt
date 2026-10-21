@@ -161,8 +161,10 @@ class SyncReconcilerScenarioTests {
         )
 
         assertTrue("canonically equal taste is not a difference", result.conflicts.isEmpty())
-        assertTrue(result.incoming.isEmpty())
-        assertTrue(result.outgoing.isEmpty())
+        assertTrue("nothing is pushed", result.outgoing.isEmpty())
+        // The cloud's stamp is the newer one, so it is adopted — timestamps are facts and travel
+        // independently of state. Adopting it is what stops the row being seen as edited again.
+        assertEquals(listOf("movie_1"), result.incoming.map { it.id })
     }
 
     /**
@@ -270,5 +272,48 @@ class SyncReconcilerScenarioTests {
         )
 
         assertFalse("a later viewing is not a duplicate", result.incoming.isEmpty())
+    }
+
+    /**
+     * The Mac marks an episode on an Active show: state and taste are identical, only the timestamps
+     * move. The reconciler used to ignore that, so this device never learned it had been watched.
+     */
+    @Test
+    fun `a later interaction date alone is applied`() {
+        val result = SyncReconciler.reconcileMedia(
+            local = listOf(item("tv_1", state = "Active", lastInteraction = stamp(-3600))),
+            remote = listOf(cloudMedia("tv_1", state = "Active", lastInteraction = stamp(-60), updatedAt = stamp(-60))),
+            since = stamp(-7200)
+        )
+
+        assertEquals(listOf("tv_1"), result.incoming.map { it.id })
+        assertTrue("timestamps are facts, not a conflict", result.outgoing.isEmpty())
+    }
+
+    /** The mirror: this device's edit is the later one, so it travels up instead. */
+    @Test
+    fun `an earlier remote interaction date is pushed up`() {
+        val result = SyncReconciler.reconcileMedia(
+            local = listOf(item("tv_1", state = "Active", lastInteraction = stamp(-30))),
+            remote = listOf(cloudMedia("tv_1", state = "Active", lastInteraction = stamp(-3600), updatedAt = stamp(-3600))),
+            since = stamp(-7200)
+        )
+
+        assertEquals(listOf("tv_1"), result.outgoing.map { it.id })
+        assertTrue(result.incoming.isEmpty())
+    }
+
+    /** Equal stamps mean nothing to do — the state that caused the one-title-per-sync churn. */
+    @Test
+    fun `equal stamps move nothing`() {
+        val same = stamp(-60)
+        val result = SyncReconciler.reconcileMedia(
+            local = listOf(item("tv_1", state = "Active", lastInteraction = same)),
+            remote = listOf(cloudMedia("tv_1", state = "Active", lastInteraction = same, updatedAt = same)),
+            since = stamp(-7200)
+        )
+
+        assertTrue(result.incoming.isEmpty())
+        assertTrue(result.outgoing.isEmpty())
     }
 }

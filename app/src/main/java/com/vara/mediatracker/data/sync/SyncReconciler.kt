@@ -84,12 +84,33 @@ object SyncReconciler {
                 } else {
                     outgoing.add(row)
                 }
-            } else if (row.dateAdded == null && cloud.date_added != null) {
-                // Pure backfill: nothing conflicts, we just never learned when this was added.
-                // date_added is immutable and one-way, so there is nothing to resolve — and
-                // without this it never arrived, because fromRemote only runs for rows that
-                // differ or are new.
-                incoming.add(row.copy(dateAdded = cloud.date_added))
+            } else {
+                // State and taste agree, but *when* may not.
+                //
+                // A watch on the other device changes `last_interaction_date` without changing
+                // state: every rewatch, and every episode marked while a show is already Active.
+                // Comparing only state/taste/soft-delete meant those edits never arrived, which is
+                // exactly the "recently watched doesn't consider the Mac" symptom. Timestamps are
+                // facts, so the later one wins — no conflict, no pushing back and forth.
+                if (row.dateAdded == null && cloud.date_added != null) {
+                    // date_added is immutable and one-way: nothing to resolve, just a gap.
+                    incoming.add(row.copy(dateAdded = cloud.date_added))
+                }
+                val localNewest = listOfNotNull(
+                    WireTime.parseInstant(row.lastInteractionDate),
+                    WireTime.parseInstant(row.lastStateChangeDate)
+                ).maxOrNull()
+                val remoteNewest = listOfNotNull(
+                    WireTime.parseInstant(cloud.last_interaction_date),
+                    WireTime.parseInstant(cloud.last_state_change_date)
+                ).maxOrNull()
+                if (localNewest != null && remoteNewest != null) {
+                    if (remoteNewest.after(localNewest)) {
+                        incoming.add(fromRemote(cloud, row))
+                    } else if (localNewest.after(remoteNewest)) {
+                        outgoing.add(row)
+                    }
+                }
             }
         }
         for (cloud in remote) {
