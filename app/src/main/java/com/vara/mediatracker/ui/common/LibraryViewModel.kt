@@ -114,12 +114,17 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
         RawLibrary(items, episodes, badgeRows, logoRows)
     }.mapLatest { raw ->
         withContext(Dispatchers.Default) {
+            // Season 0 is specials, and this app does not carry them at all: they are not part of
+            // the season list, the progress, Continue watching, Coming soon, or the next-airing
+            // instant. Dropping them here — the single place every consumer reads from — is the
+            // only way none of those surfaces can disagree.
+            val episodes = raw.episodes.filter { it.seasonNumber > 0 }
             LibraryCore(
                 items = raw.items,
-                allEpisodes = raw.episodes,
+                allEpisodes = episodes,
                 // Sorted once here so every consumer (Home rails, Hub, Calendar, Detail)
                 // gets season/episode order without re-sorting each show's list itself.
-                episodesByShow = raw.episodes
+                episodesByShow = episodes
                     .sortedWith(compareBy({ it.showId }, { it.seasonNumber }, { it.episodeNumber }))
                     .groupBy { it.showId },
                 badges = raw.badgeRows.associate { row ->
