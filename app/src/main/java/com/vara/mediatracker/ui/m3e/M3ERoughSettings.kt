@@ -137,7 +137,6 @@ fun M3ERoughSettings(
     container: AppContainer,
     onBack: () -> Unit,
     /** Opens the cycle/event history, which lives outside Settings but is reached from here. */
-    onHistory: () -> Unit = {},
     onThemePresetChanged: (Int) -> Unit,
     onThemeModeChanged: (Int) -> Unit
 ) {
@@ -554,23 +553,22 @@ fun M3ERoughSettings(
                         keysShown = true
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    IconActionRow(
-                        icon = Icons.Default.History,
-                        label = "Watch history",
-                        detail = "Cycles and viewings, newest first"
+                    // A button, not a row with a chevron: a chevron says "there is another screen
+                    // behind this", and this does something where it stands.
+                    Spacer(Modifier.height(M3ESpacing.cardGap))
+                    Button(
+                        onClick = {
+                            haptics.tap()
+                            SyncScheduler.enrichEpisodesNow(context, forceAll = true)
+                            AppToast.show("Refreshing episodes…")
+                        },
+                        shape = M3EShape.chip(),
+                        colors = tintedButtonColors(),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        haptics.tap()
-                        onHistory()
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    IconActionRow(
-                        icon = Icons.Default.Refresh,
-                        label = "Refresh episodes",
-                        detail = "Re-fetch every show's episode list, including complete ones"
-                    ) {
-                        haptics.tap()
-                        SyncScheduler.enrichEpisodesNow(context, forceAll = true)
-                        AppToast.show("Refreshing episodes…")
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(M3ESpacing.tightGap))
+                        Text("Refresh episodes", style = M3EType.action())
                     }
                 }
             }

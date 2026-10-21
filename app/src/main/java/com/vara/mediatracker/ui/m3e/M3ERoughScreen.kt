@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
@@ -280,12 +281,12 @@ fun M3ERoughScreen(
                     core = core,
                     onOpen = { stack = stack + Overlay.Detail(it) },
                     onHub = { stack = stack + Overlay.Hub },
-                    onFinished = { stack = stack + Overlay.Finished }
+                    onFinished = { stack = stack + Overlay.Finished },
+                    onHistory = { stack = stack + Overlay.History }
                 )
                 else -> M3ERoughSettings(
                     container = container,
                     onBack = { },
-                    onHistory = { stack = stack + Overlay.History },
                     onThemePresetChanged = onThemePresetChanged,
                     onThemeModeChanged = onThemeModeChanged
                 )
@@ -673,7 +674,8 @@ private fun LibrarySection(
     core: LibraryCore,
     onOpen: (MediaItemEntity) -> Unit,
     onHub: () -> Unit,
-    onFinished: () -> Unit
+    onFinished: () -> Unit,
+    onHistory: () -> Unit
 ) {
     // Real filtering and sorting: LibraryQuery is the same pure routine the shipping Library uses,
     // including its sort orders, rather than a second set invented for this screen.
@@ -763,6 +765,7 @@ private fun LibrarySection(
                 Row(horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)) {
                     LibraryShortcut(Icons.Default.AutoAwesome, "Hub", onHub)
                     LibraryShortcut(Icons.Default.Check, "Finished", onFinished)
+                    LibraryShortcut(Icons.Default.History, "History", onHistory)
                 }
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 ChipRow(
