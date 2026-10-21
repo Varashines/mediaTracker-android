@@ -218,6 +218,36 @@ class SyncReconcilerScenarioTests {
         assertEquals(corrected, result.incoming.single().watchedDate)
     }
 
+    @Test
+    fun `remote episodes create local rows on a clean install`() {
+        val watchedTime = stamp(-86_400)
+        val result = SyncReconciler.reconcileEpisodes(
+            local = emptyList(),
+            remote = listOf(
+                RemoteEpisode(
+                    user_id = "mt_sync_test",
+                    episode_id = "293610_1_3",
+                    show_id = "tv_293610",
+                    season_number = 1,
+                    episode_number = 3,
+                    is_watched = true,
+                    watched_date = watchedTime,
+                    updated_at = stamp(-30)
+                )
+            ),
+            since = null
+        )
+
+        assertEquals(1, result.incoming.size)
+        val incoming = result.incoming.single()
+        assertEquals("tv_293610_s1_e3", incoming.uniqueId)
+        assertEquals("tv_293610", incoming.showId)
+        assertEquals(1, incoming.seasonNumber)
+        assertEquals(3, incoming.episodeNumber)
+        assertTrue(incoming.isWatched)
+        assertEquals(watchedTime, incoming.watchedDate)
+    }
+
     // MARK: - Ledger
 
     /**

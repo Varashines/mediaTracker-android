@@ -168,6 +168,7 @@ object SyncReconciler {
         val outgoing = mutableListOf<EpisodeEntity>()
         val incoming = mutableListOf<EpisodeEntity>()
 
+        val localById = local.associateBy { MediaIds.canonicalEpisodeIdOrNull(it.uniqueId) }
         for (row in local) {
             val cloud = remoteById[MediaIds.canonicalEpisodeIdOrNull(row.uniqueId)]
             if (cloud == null) {
@@ -200,6 +201,22 @@ object SyncReconciler {
                 } else {
                     outgoing.add(row)
                 }
+            }
+        }
+        for (cloud in remote) {
+            val canonId = MediaIds.canonicalEpisodeIdOrNull(cloud.episode_id) ?: cloud.episode_id
+            if (!localById.containsKey(canonId)) {
+                incoming.add(
+                    EpisodeEntity(
+                        uniqueId = canonId,
+                        showId = MediaIds.tvShowKey(cloud.show_id),
+                        seasonNumber = cloud.season_number,
+                        episodeNumber = cloud.episode_number,
+                        isWatched = cloud.is_watched,
+                        watchedDate = cloud.watched_date,
+                        updatedAt = cloud.updated_at
+                    )
+                )
             }
         }
         return EpisodeReconcile(outgoing, incoming)
