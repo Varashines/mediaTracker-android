@@ -151,61 +151,7 @@ internal fun M3ERoughHistory(
                 )
             }
             items(dayEntries, key = { it.id }) { entry ->
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text = entry.title,
-                            style = M3EType.rowTitleStrong(),
-                            color = M3EColor.text(),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            text = supporting(entry),
-                            style = M3EType.rowSupporting(),
-                            color = M3EColor.textMuted(),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    leadingContent = {
-                        AsyncImage(
-                            model = entry.item?.posterUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(width = 40.dp, height = 60.dp)
-                                .clip(M3EShape.chip())
-                        )
-                    },
-                    trailingContent = {
-                        // Taste as a tinted capsule — the same shape the Home rails use for their
-                        // tags, so it reads as the same kind of information.
-                        val normalized = entry.taste?.lowercase(Locale.US)
-                        if (normalized != null && normalized != "none") {
-                            val tint = when (normalized) {
-                                "love" -> M3EColor.warning()
-                                "like" -> M3EColor.accent()
-                                else -> MaterialTheme.colorScheme.error
-                            }
-                            Surface(
-                                shape = M3EShape.chip(),
-                                color = tint.copy(alpha = 0.16f),
-                                contentColor = tint
-                            ) {
-                                Text(
-                                    text = normalized,
-                                    style = M3EType.rowSupporting(),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
-                    },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                HistoryRow(entry) { entry.item?.let(onOpen) }
             }
         }
 
@@ -224,6 +170,65 @@ private data class HistoryEntry(
     val rewatch: Boolean,
     val item: MediaItemEntity?
 )
+
+
+/**
+ * One row, tinted by how it was rated.
+ *
+ * The Home rails colour a row's container for what it is; here the row's colour is the reaction —
+ * love amber, like accent, dislike red — so a glance down the list groups itself by feeling rather
+ * than by a tag at the end of the line. Unrated keeps the plain card.
+ */
+@Composable
+private fun HistoryRow(entry: HistoryEntry, onClick: () -> Unit) {
+    val normalized = entry.taste?.lowercase(Locale.US)
+    val tint = when (normalized) {
+        "love" -> M3EColor.warning()
+        "like" -> M3EColor.accent()
+        "dislike" -> MaterialTheme.colorScheme.error
+        else -> null
+    }
+    Surface(
+        onClick = onClick,
+        shape = M3EShape.card(),
+        color = tint?.copy(alpha = 0.16f) ?: M3EColor.card(),
+        contentColor = M3EColor.text(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(M3ESpacing.tightGap),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AsyncImage(
+                model = entry.item?.posterUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(width = 40.dp, height = 60.dp)
+                    .clip(M3EShape.chip())
+            )
+            Spacer(Modifier.size(M3ESpacing.inlineGap))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = entry.title,
+                    style = M3EType.rowTitleStrong(),
+                    color = M3EColor.text(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = supporting(entry),
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
 
 private fun supporting(entry: HistoryEntry): String = buildString {
     append(entry.detail ?: "watched")
