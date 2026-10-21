@@ -595,7 +595,7 @@ class CloudSyncManager(
         r.incomingCycles
             .filter { it.isRewatch && it.state == "active" }
             .filter { cycle ->
-                val started = com.vara.mediatracker.data.sync.WireTime.parseInstant(cycle.startedAt)
+                val started = com.vara.mediatracker.util.WireTime.parseInstant(cycle.startedAt)
                 started != null && started.isAfter(resetCutoff)
             }
             .forEach { cycle -> mediaDao.clearEpisodeProjectionBefore(cycle.mediaId, cycle.startedAt) }
