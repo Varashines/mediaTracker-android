@@ -159,7 +159,10 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
             val showEps = episodesByShow[showKey] ?: episodesByShow[item.id] ?: emptyList()
             val total = showEps.size
             val watched = showEps.count { it.isWatched }
-            val nextEp = showEps.firstOrNull { !it.isWatched }
+            // Season 0 is specials: they belong in the detail's season list, not in "Continue
+            // watching S0E1" or in the next-airing instant. Counting them still includes them —
+            // progress is progress — but the *next* episode never points at one.
+            val nextEp = showEps.firstOrNull { it.seasonNumber > 0 && !it.isWatched }
             // nextAir comes from the resolved instant, not the air-date string: an episode
             // airing at 21:00 in New York lands tomorrow in IST, and a date-only comparison both
             // missed that and called an episode already airing today "not upcoming".
