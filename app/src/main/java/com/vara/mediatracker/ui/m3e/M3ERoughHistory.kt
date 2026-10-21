@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -242,13 +243,20 @@ private fun HistoryRow(
     Surface(
         onClick = onClick,
         shape = M3EShape.card(),
-        color = tint?.copy(alpha = 0.16f) ?: M3EColor.card(),
+        color = tint?.copy(alpha = 0.10f) ?: M3EColor.card(),
         contentColor = M3EColor.text(),
         modifier = Modifier
             .fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(M3ESpacing.tightGap),
+            modifier = Modifier
+                .background(
+                    Brush.horizontalGradient(
+                        0f to (tint?.copy(alpha = 0.22f) ?: Color.Transparent),
+                        1f to Color.Transparent
+                    )
+                )
+                .padding(M3ESpacing.cardGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(

@@ -866,11 +866,17 @@ fun M3ERoughDetail(
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)) {
                         if (live.overview.isNotBlank()) {
-                            M3ESectionHeader("Overview", icon = Icons.Default.Info, tint = M3EColor.accent())
+                            // No heading above it: the synopsis is the first thing under the title,
+                            // and "Overview" only repeated that. Padding so it does not sit on the
+                            // chips above it.
                             Text(
                                 text = live.overview,
                                 style = M3EType.rowSupporting(),
-                                color = M3EColor.textMuted()
+                                color = M3EColor.textMuted(),
+                                modifier = Modifier.padding(
+                                    top = M3ESpacing.tightGap,
+                                    bottom = M3ESpacing.tightGap
+                                )
                             )
                         }
                         M3ESectionHeader("Details", icon = Icons.Default.Info, tint = M3EColor.textMuted())
@@ -913,9 +919,8 @@ fun M3ERoughDetail(
             }
 
             DetailSection.Related -> {
-                item {
-                    M3ESectionHeader("More like this", icon = Icons.Default.AutoAwesome, tint = M3EColor.warning())
-                }
+                // No heading: the posters are already in a row under the cast, and the section
+                // announces itself.
                 if (related.isEmpty()) {
                     item {
                         M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
