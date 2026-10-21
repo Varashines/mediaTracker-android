@@ -185,15 +185,12 @@ object SyncReconciler {
                     remoteWatchedDate = WireTime.parseInstant(cloud.watched_date)
                 )
             ) {
-                // A cleared state is deliberate and has no date to argue with: starting a rewatch
-                // clears watchedDate, so the timestamp comparison below would always find the
-                // cloud "newer" and put the episodes back. Whichever side says unwatched wins.
+                // A cloud that says unwatched has been cleared deliberately (a rewatch starting
+                // elsewhere), and has no date to argue with — so it applies without a comparison.
+                // The reverse is not true: this device being unwatched is usually just an episode
+                // that was never marked here, and the cloud's watch is the fact.
                 if (row.isWatched && !cloud.is_watched) {
                     incoming.add(row.copy(isWatched = false, watchedDate = null))
-                    continue
-                }
-                if (!row.isWatched && cloud.is_watched) {
-                    outgoing.add(row)
                     continue
                 }
                 val localTime = WireTime.parseInstant(row.watchedDate)
