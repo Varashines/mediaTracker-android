@@ -92,7 +92,7 @@ object HomeEligibility {
             )
         }
 
-        val sorted = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+        val sorted = episodes.filter { it.seasonNumber > 0 }.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
         val watchedCount = sorted.count { it.isWatched }
         val total = sorted.size
         val aired = sorted.count { ep -> epInstant(ep, item)?.let { !it.after(now) } == true }
@@ -207,7 +207,7 @@ object HomeEligibility {
      * unaired one only when that episode has no air date.
      */
     fun nextAiringDate(episodes: List<EpisodeEntity>, today: String): String? {
-        val ordered = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+        val ordered = episodes.filter { it.seasonNumber > 0 }.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
         val firstUnwatchedAir = ordered.firstOrNull { !it.isWatched }?.airDate?.take(10)
         if (firstUnwatchedAir != null) return firstUnwatchedAir
         return ordered.asSequence()
@@ -218,14 +218,14 @@ object HomeEligibility {
 
     /** Whether the show has any aired-but-unwatched episode to resume. */
     fun hasUnwatchedAired(episodes: List<EpisodeEntity>, today: String): Boolean =
-        episodes.any { !it.isWatched && (it.airDate?.take(10)?.let { d -> d <= today } ?: false) }
+        episodes.any { it.seasonNumber > 0 && !it.isWatched && (it.airDate?.take(10)?.let { d -> d <= today } ?: false) }
 
     /**
      * The episode [nextAiringDate] points at, so callers can use its TVMaze `airstamp`
      * and airtime for an exact countdown.
      */
     fun nextAiringEpisode(episodes: List<EpisodeEntity>, today: String): EpisodeEntity? {
-        val ordered = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+        val ordered = episodes.filter { it.seasonNumber > 0 }.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
         ordered.firstOrNull { !it.isWatched }?.let { return it }
         return ordered.asSequence()
             .filter { (it.airDate?.take(10) ?: "") > today }
@@ -242,7 +242,7 @@ object HomeEligibility {
      */
     fun nextAiringInstant(item: MediaItemEntity, episodes: List<EpisodeEntity>): Date? {
         if (!item.type.contains("TV", ignoreCase = true)) return parseDay(item.releaseDate)
-        val ordered = episodes.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+        val ordered = episodes.filter { it.seasonNumber > 0 }.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
         ordered.firstOrNull { !it.isWatched }?.let { epInstant(it, item) }?.let { return it }
         return ordered.asSequence().mapNotNull { epInstant(it, item) }.minOrNull()
     }

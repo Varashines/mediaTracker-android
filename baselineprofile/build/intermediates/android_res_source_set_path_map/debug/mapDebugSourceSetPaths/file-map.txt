@@ -1,0 +1,7 @@
+com.vara.mediatracker.baselineprofile-pngs-0 /Users/jarvis/Projects/mediaTracker/android/baselineprofile/build/generated/res/pngs/debug
+com.vara.mediatracker.baselineprofile-updated_navigation_xml-1 /Users/jarvis/Projects/mediaTracker/android/baselineprofile/build/generated/updated_navigation_xml/debug
+com.vara.mediatracker.baselineprofile-packageDebugResources-2 /Users/jarvis/Projects/mediaTracker/android/baselineprofile/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.vara.mediatracker.baselineprofile-packageDebugResources-3 /Users/jarvis/Projects/mediaTracker/android/baselineprofile/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.vara.mediatracker.baselineprofile-debug-4 /Users/jarvis/Projects/mediaTracker/android/baselineprofile/build/intermediates/merged_res/debug/mergeDebugResources
+com.vara.mediatracker.baselineprofile-debug-5 /Users/jarvis/Projects/mediaTracker/android/baselineprofile/src/debug/res
+com.vara.mediatracker.baselineprofile-main-6 /Users/jarvis/Projects/mediaTracker/android/baselineprofile/src/main/res
