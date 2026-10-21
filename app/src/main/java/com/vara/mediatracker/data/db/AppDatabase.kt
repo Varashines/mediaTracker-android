@@ -104,8 +104,14 @@ interface MediaDao {
      * there beside it. Per-episode un-watches do not travel (a cleared row has no date to compare),
      * so the cycle itself has to do it.
      */
-    @Query("UPDATE tv_episodes SET isWatched = 0, watchedDate = NULL WHERE showId = :showId AND isWatched = 1")
-    suspend fun clearEpisodeProjection(showId: String)
+    @Query(
+        """
+        UPDATE tv_episodes SET isWatched = 0, watchedDate = NULL
+        WHERE showId = :showId AND isWatched = 1
+          AND (watchedDate IS NULL OR watchedDate < :startedAt)
+        """
+    )
+    suspend fun clearEpisodeProjectionBefore(showId: String, startedAt: String)
 
     @Query("UPDATE tv_episodes SET isWatched = :watched, watchedDate = :watchedDate WHERE uniqueId = :uniqueId")
     suspend fun setEpisodeWatched(uniqueId: String, watched: Boolean, watchedDate: String?)
