@@ -20,6 +20,8 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import com.vara.mediatracker.data.api.TMDBClient
@@ -171,6 +173,12 @@ class CloudSyncManager(
     private val tmdbApiKey: String = "",
     private val client: HttpClient = defaultClient()
 ) {
+    /** One sync at a time: the worker, Settings and app start can all ask at once. */
+    private val syncMutex = Mutex()
+
+    /** media_id → when a batch last pushed it, so a single-row push can yield to the batch. */
+    private val lastBatchPush = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     companion object {
         /**
          * TMDB allows a generous rate, but a small in-flight cap keeps the sync well
@@ -442,6 +450,9 @@ class CloudSyncManager(
         /** Set when this push also introduces the title, so its "added" time rides along. */
         dateAdded: String? = null
     ) = runCatching {
+        // A sync that pushed this row within the last couple of seconds has already said this.
+        val stamp = lastBatchPush[mediaId]
+        if (stamp != null && System.currentTimeMillis() - stamp < 2_000L) return@runCatching
         val now = isoNow()
         // The two fields this call does not decide are read off the row rather than left at their
         // defaults: a push now carries every key, and a null custom poster would be an instruction
@@ -529,7 +540,10 @@ class CloudSyncManager(
     )
 
     /** Computes what a sync would change, without writing anything (macOS SyncImpact). */
-    suspend fun computeImpact(since: String? = null): Result<SyncImpact> = runCatching {
+    suspend fun computeImpact(since: String? = null): Result<SyncImpact> =
+        syncMutex.withLock { computeImpactLocked(since) }
+
+    private suspend fun computeImpactLocked(since: String?): Result<SyncImpact> = runCatching {
         if (supabaseUrl.isBlank() || anonKey.isBlank() || syncKey.isBlank()) {
             return Result.failure(IllegalStateException("Sync credentials not configured"))
         }
@@ -557,7 +571,10 @@ class CloudSyncManager(
      *
      * @return how many rows were sent up and applied down.
      */
-    suspend fun sync(since: String? = null): Result<SyncSummary> = runCatching {
+    suspend fun sync(since: String? = null): Result<SyncSummary> =
+        syncMutex.withLock { syncLocked(since) }
+
+    private suspend fun syncLocked(since: String?): Result<SyncSummary> = runCatching {
         if (supabaseUrl.isBlank() || anonKey.isBlank() || syncKey.isBlank()) {
             return Result.failure(IllegalStateException("Sync credentials not configured"))
         }
@@ -726,9 +743,9 @@ class CloudSyncManager(
         val incomingEvents: List<WatchEventEntity>
     )
 
-    private suspend fun fetchRemoteWatchCycles(since: String? = null): List<RemoteWatchCycle> = fetchAllPages("user_watch_cycles", since)
+    private suspend fun fetchRemoteWatchCycles(since: String? = null): List<RemoteWatchCycle> = fetchAllPages("user_watch_cycles", since, { it.cycle_id }, { it.updated_at })
 
-    private suspend fun fetchRemoteWatchEvents(since: String? = null): List<RemoteWatchEvent> = fetchAllPages("user_watch_events", since)
+    private suspend fun fetchRemoteWatchEvents(since: String? = null): List<RemoteWatchEvent> = fetchAllPages("user_watch_events", since, { it.event_id }, { it.updated_at })
 
     private suspend fun pushWatchCycles(cycles: List<WatchCycleEntity>) {
         if (cycles.isEmpty()) return
@@ -931,14 +948,14 @@ class CloudSyncManager(
     }.getOrNull()
 
     private suspend fun fetchRemoteMedia(since: String? = null): List<RemoteMedia> =
-        fetchAllPages("user_media", since)
+        fetchAllPages("user_media", since, { it.media_id }, { it.updated_at })
 
-    private suspend fun fetchRemoteEpisodes(since: String? = null): List<RemoteEpisode> = fetchAllPages("user_episodes", since)
+    private suspend fun fetchRemoteEpisodes(since: String? = null): List<RemoteEpisode> = fetchAllPages("user_episodes", since, { it.episode_id }, { it.updated_at })
 
-    private suspend fun fetchRemoteCollections(since: String? = null): List<RemoteCollection> = fetchAllPages("user_collections", since)
+    private suspend fun fetchRemoteCollections(since: String? = null): List<RemoteCollection> = fetchAllPages("user_collections", since, { it.collection_id }, { it.updated_at })
 
     private suspend fun fetchRemoteCollectionItems(since: String? = null): List<RemoteCollectionItem> =
-        fetchAllPages("user_collection_items", since)
+        fetchAllPages("user_collection_items", since, { "${it.collection_id}|${it.media_id}" }, { it.updated_at })
 
     /** GETs every page of a PostgREST table — it caps an unpaginated response at 1000 rows. */
     /**
@@ -949,29 +966,52 @@ class CloudSyncManager(
      * than it looks — a full pull is ~8 MB, and the background sync runs every 30 minutes
      * (~11 GB/month against Supabase's 5 GB free egress quota).
      */
-    private suspend inline fun <reified T> fetchAllPages(endpoint: String, since: String? = null): List<T> {
+    private suspend inline fun <reified T> fetchAllPages(
+        endpoint: String,
+        since: String? = null,
+        keyOf: (T) -> String,
+        stampOf: (T) -> String?
+    ): List<T> {
         val out = mutableListOf<T>()
-        var offset = 0
+        val seen = HashSet<String>()
+        var cursor = since
         val pageSize = 1000
+
+        // Keyset, not offset.
+        //
+        // Offset paging over `order=updated_at.asc` has no tiebreaker, and a batch push gives many
+        // rows the same stamp — so a page boundary could return one row twice and skip another.
+        // Since the watermark is the newest stamp seen, a skipped row was then passed over for
+        // good. Here the filter is inclusive (`gte`) and rows are de-duplicated by key, then the
+        // cursor advances to the newest stamp on the page.
         while (true) {
             val response: HttpResponse = client.get("$supabaseUrl/rest/v1/$endpoint") {
                 parameter("user_id", "eq.$syncKey")
                 parameter("select", "*")
-                // Stable paging: PostgREST pages by offset over an unspecified order, so a
-                // multi-page GET (episodes, watch events) can duplicate or drop rows without
-                // an explicit sort. updated_at is indexed on every sync table.
                 parameter("order", "updated_at.asc")
-                if (!since.isNullOrBlank()) parameter("updated_at", "gt.$since")
+                if (!cursor.isNullOrBlank()) parameter("updated_at", "gte.$cursor")
                 header("apikey", anonKey)
                 header("Authorization", "Bearer $anonKey")
                 header("x-sync-key", syncKey)
-                header("Range", "$offset-${offset + pageSize - 1}")
+                header("Range", "0-${pageSize - 1}")
             }
             val page: List<T> = response.body()
             if (page.isEmpty()) break
-            out.addAll(page)
-            offset += page.size
+
+            var fresh = 0
+            for (row in page) {
+                if (seen.add(keyOf(row))) {
+                    out += row
+                    fresh++
+                }
+            }
+
+            val newest = page.mapNotNull { stampOf(it) }.maxOrNull()
             if (page.size < pageSize) break
+            // No progress means every remaining row shares the cursor's stamp; stop rather than
+            // request the same page forever.
+            if (newest == null || newest == cursor || fresh == 0) break
+            cursor = newest
         }
         return out
     }
@@ -1071,6 +1111,8 @@ class CloudSyncManager(
             contentType(ContentType.Application.Json)
             setBody(payload)
         }
+        val stampedAt = System.currentTimeMillis()
+        items.forEach { lastBatchPush[it.id] = stampedAt }
     }
 
     /**
