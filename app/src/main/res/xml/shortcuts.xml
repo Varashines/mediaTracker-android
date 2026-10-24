@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Long-press shortcuts. Each one is a place the app is opened *for*, not a duplicate of a tab: the
+  calendar is where you check tonight, and the widget is where you start watching. Search is the
+  third because it is the only way to reach a title that is not already on a rail.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="calendar"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_calendar">
+        <intent
+            android:action="com.vara.mediatracker.SHORTCUT"
+            android:targetPackage="com.vara.mediatracker"
+            android:targetClass="com.vara.mediatracker.MainActivity">
+            <extra android:name="shortcut" android:value="calendar" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="search"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_search">
+        <intent
+            android:action="com.vara.mediatracker.SHORTCUT"
+            android:targetPackage="com.vara.mediatracker"
+            android:targetClass="com.vara.mediatracker.MainActivity">
+            <extra android:name="shortcut" android:value="search" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="up_next"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_up_next">
+        <intent
+            android:action="com.vara.mediatracker.SHORTCUT"
+            android:targetPackage="com.vara.mediatracker"
+            android:targetClass="com.vara.mediatracker.MainActivity">
+            <extra android:name="shortcut" android:value="up_next" />
+        </intent>
+    </shortcut>
+</shortcuts>

@@ -1,14 +1,6 @@
 package com.vara.mediatracker.data.sync
 
-import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
@@ -109,40 +101,18 @@ class WeeklyDigestWorker(
     }
 
     private fun post(context: Context, body: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
-
-        val manager = NotificationManagerCompat.from(context)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    "Weekly digest",
-                    NotificationManager.IMPORTANCE_DEFAULT
-                ).apply { description = "A summary of what you watched, once a week" }
-            )
-        }
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Your week in review")
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .build()
-
-        runCatching { manager.notify(NOTIFICATION_ID, notification) }
+        Notify.post(
+            context = context,
+            id = NOTIFICATION_ID,
+            channel = CHANNEL_ID,
+            title = "Your week in review",
+            text = body,
+            bigText = body
+        )
     }
 
     companion object {
-        const val CHANNEL_ID = "media_digest"
+        const val CHANNEL_ID = Notify.CHANNEL_DIGEST
         private const val NOTIFICATION_ID = 4202
     }
 }

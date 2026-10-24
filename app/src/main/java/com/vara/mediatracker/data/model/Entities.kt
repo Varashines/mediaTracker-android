@@ -1,6 +1,7 @@
 package com.vara.mediatracker.data.model
 
 import androidx.room.Entity
+import kotlinx.serialization.Serializable
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
@@ -14,6 +15,7 @@ import androidx.room.TypeConverter
         Index(value = ["state", "isSoftDeleted"])
     ]
 )
+@Serializable
 data class MediaItemEntity(
     @PrimaryKey val id: String,              // e.g. "movie_550" or "tv_1399"
     val title: String,
@@ -86,6 +88,7 @@ data class MediaItemEntity(
     // enrichment `NOT EXISTS` subqueries). Without this the whole table is scanned.
     indices = [Index(value = ["showId"])]
 )
+@Serializable
 data class EpisodeEntity(
     @PrimaryKey val uniqueId: String,        // e.g. "tv_1399_s1_e1"
     val showId: String,
@@ -191,6 +194,7 @@ data class FacetLogoEntity(
     tableName = "collections",
     indices = [Index(value = ["name"])]
 )
+@Serializable
 data class CollectionEntity(
     @PrimaryKey val id: String,
     val name: String,
@@ -213,6 +217,7 @@ data class CollectionEntity(
     primaryKeys = ["collectionId", "mediaId"],
     indices = [Index(value = ["collectionId"]), Index(value = ["mediaId"])]
 )
+@Serializable
 data class CollectionItemEntity(
     val collectionId: String,
     val mediaId: String,
@@ -240,6 +245,7 @@ class CollectionConverters {
     tableName = "watch_cycles",
     indices = [Index(value = ["mediaId"])]
 )
+@Serializable
 data class WatchCycleEntity(
     @PrimaryKey val id: String,              // UUID string, shared with macOS
     val mediaId: String,
@@ -262,6 +268,7 @@ data class WatchCycleEntity(
     tableName = "watch_events",
     indices = [Index(value = ["mediaId"]), Index(value = ["cycleId"]), Index(value = ["watchedAt"])]
 )
+@Serializable
 data class WatchEventEntity(
     @PrimaryKey val id: String,              // UUID string, shared with macOS
     val cycleId: String,

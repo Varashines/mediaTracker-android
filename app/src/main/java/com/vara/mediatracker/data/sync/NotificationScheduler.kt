@@ -2,6 +2,8 @@ package com.vara.mediatracker.data.sync
 
 import android.Manifest
 import android.app.NotificationChannel
+import android.app.PendingIntent
+import android.content.Intent
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -22,7 +24,9 @@ data class PlannedRelease(
     val key: String,
     val title: String,
     val subtitle: String,
-    val triggerAtMillis: Long
+    val triggerAtMillis: Long,
+    /** The library row this reminder is about; the notification's actions act on it. */
+    val mediaId: String? = null
 )
 
 /**
@@ -41,47 +45,74 @@ class ReleaseAlertWorker(
     override suspend fun doWork(): Result {
         val title = inputData.getString(KEY_TITLE) ?: return Result.success()
         val subtitle = inputData.getString(KEY_SUBTITLE).orEmpty()
-        post(title, subtitle)
+        post(title, subtitle, inputData.getString(KEY_MEDIA_ID))
         return Result.success()
     }
 
-    private fun post(title: String, subtitle: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(
-                applicationContext,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
+    private fun post(title: String, subtitle: String, mediaId: String?) {
+        val notificationId = (title + subtitle).hashCode()
+        val openIntent = Intent(applicationContext, com.vara.mediatracker.MainActivity::class.java)
+            .apply {
+                putExtra(com.vara.mediatracker.EXTRA_OPEN_MEDIA, mediaId)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+        val contentIntent = PendingIntent.getActivity(
+            applicationContext,
+            notificationId,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
-        val manager = NotificationManagerCompat.from(applicationContext)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.createNotificationChannel(
-                NotificationChannel(
-                    ReleaseNotifier.CHANNEL_ID,
-                    "New releases",
-                    NotificationManager.IMPORTANCE_DEFAULT
-                ).apply { description = "Alerts when something in your library premieres or airs" }
+        // The two answers worth offering from the shade: deal with it, or defer it. Both are
+        // broadcasts so the app does not have to be opened for either.
+        val actions = buildList {
+            if (mediaId != null) {
+                add(
+                    Notify.Action(
+                        "Mark watched",
+                        ReleaseActionReceiver.pendingIntent(
+                            applicationContext,
+                            ReleaseActionReceiver.ACTION_MARK_WATCHED,
+                            notificationId,
+                            mediaId,
+                            notificationId,
+                            title,
+                            subtitle
+                        )
+                    )
+                )
+            }
+            add(
+                Notify.Action(
+                    "Snooze 1 day",
+                    ReleaseActionReceiver.pendingIntent(
+                        applicationContext,
+                        ReleaseActionReceiver.ACTION_SNOOZE,
+                        notificationId + 1,
+                        mediaId,
+                        notificationId,
+                        title,
+                        subtitle
+                    )
+                )
             )
         }
 
-        val notification = NotificationCompat.Builder(applicationContext, ReleaseNotifier.CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle(title)
-            .setContentText(subtitle.ifBlank { "Premiering now" })
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .build()
-
-        runCatching {
-            manager.notify((title + subtitle).hashCode(), notification)
-        }
+        Notify.post(
+            context = applicationContext,
+            id = notificationId,
+            channel = Notify.CHANNEL_RELEASES,
+            title = title,
+            text = subtitle.ifBlank { "Premiering now" },
+            contentIntent = contentIntent,
+            actions = actions
+        )
     }
 
     companion object {
         const val KEY_TITLE = "title"
         const val KEY_SUBTITLE = "subtitle"
+        const val KEY_MEDIA_ID = "media_id"
     }
 }
 
@@ -122,7 +153,8 @@ object NotificationScheduler {
                 .setInputData(
                     workDataOf(
                         ReleaseAlertWorker.KEY_TITLE to release.title,
-                        ReleaseAlertWorker.KEY_SUBTITLE to release.subtitle
+                        ReleaseAlertWorker.KEY_SUBTITLE to release.subtitle,
+                        ReleaseAlertWorker.KEY_MEDIA_ID to release.mediaId
                     )
                 )
                 .addTag(TAG)
@@ -131,6 +163,30 @@ object NotificationScheduler {
         }
 
         prefs.edit().putStringSet(KEY_SCHEDULED, wanted).apply()
+    }
+
+    /**
+     * Re-posts a reminder a day later.
+     *
+     * A second unique work name rather than replacing the first: the original has already fired
+     * and been consumed, and reusing its name would make a second snooze cancel the first.
+     */
+    fun snooze(context: Context, title: String, subtitle: String) {
+        val request = OneTimeWorkRequestBuilder<ReleaseAlertWorker>()
+            .setInitialDelay(1, TimeUnit.DAYS)
+            .setInputData(
+                workDataOf(
+                    ReleaseAlertWorker.KEY_TITLE to title,
+                    ReleaseAlertWorker.KEY_SUBTITLE to subtitle
+                )
+            )
+            .addTag(TAG)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            PREFIX + "snooze_" + title,
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
     }
 
     /** Used when notifications are switched off entirely. */

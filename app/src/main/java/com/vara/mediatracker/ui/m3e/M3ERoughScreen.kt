@@ -67,6 +67,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
@@ -76,6 +77,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialShapes
@@ -106,7 +108,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -117,14 +118,17 @@ import com.vara.mediatracker.data.TrackingLogic
 import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.ui.common.AppToast
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -142,6 +146,8 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.ui.common.HomeData
 import com.vara.mediatracker.ui.common.LibraryCore
 import com.vara.mediatracker.ui.common.LibraryViewModel
+import com.vara.mediatracker.ui.common.ManualSync
+import com.vara.mediatracker.ui.common.UpNextShortcut
 import com.vara.mediatracker.ui.home.HomeEligibility
 import com.vara.mediatracker.ui.library.LibraryFilters
 import com.vara.mediatracker.ui.library.LibraryQuery
@@ -181,7 +187,13 @@ private sealed interface Overlay {
 fun M3ERoughScreen(
     container: AppContainer,
     onThemePresetChanged: (Int) -> Unit = {},
-    onThemeModeChanged: (Int) -> Unit = {}
+    onThemeModeChanged: (Int) -> Unit = {},
+    /** A title a notification asked to open, if any. */
+    initialMediaId: String? = null,
+    onInitialMediaOpened: () -> Unit = {},
+    /** A launcher shortcut ("calendar", "search", "up_next"), if the app was opened from one. */
+    initialShortcut: String? = null,
+    onInitialShortcutHandled: () -> Unit = {}
 ) {
     // The same activity-scoped holder the shipping shell collects: the library joined once per DB
     // change off the UI thread, plus Home's own derivations. Querying Room here instead would mean
@@ -196,6 +208,27 @@ fun M3ERoughScreen(
     // section — because the screen you actually came from had nowhere to be remembered.
     var stack by remember { mutableStateOf(listOf<Overlay>()) }
     val overlay = stack.lastOrNull()
+
+    // A reminder names one title, so landing on Home and asking the user to find it again would
+    // waste the only advantage the notification has. Waits for the library to arrive, then opens
+    // the detail and consumes the request so it cannot reopen on the next recomposition.
+    // A shortcut is a request for one screen. Applied once, then consumed, so a later
+    // recomposition does not drag the user back to the calendar after they have moved on.
+    LaunchedEffect(initialShortcut) {
+        when (initialShortcut) {
+            "calendar" -> section = CALENDAR
+            "search" -> stack = listOf(Overlay.Search)
+            "up_next" -> section = HOME
+        }
+        if (initialShortcut != null) onInitialShortcutHandled()
+    }
+
+    LaunchedEffect(initialMediaId, library) {
+        val id = initialMediaId ?: return@LaunchedEffect
+        if (library.isEmpty()) return@LaunchedEffect
+        library.firstOrNull { it.id == id }?.let { stack = listOf(Overlay.Detail(it)) }
+        onInitialMediaOpened()
+    }
     // The Hub's tab outlives the Hub, so it lives here — and so does the only control that changes
     // it, which is the pair of icons in the nav bar.
     var hubTab by rememberSaveable { mutableIntStateOf(0) }
@@ -204,6 +237,17 @@ fun M3ERoughScreen(
     val detail = overlay as? Overlay.Detail
     val haptics = rememberHaptics()
     val context = LocalContext.current
+
+    // The launcher shortcut is refreshed from the same derivation Home already computed, so the
+    // label can never describe a different "up next" than the rail does.
+    LaunchedEffect(home.resumeItems.firstOrNull()?.id, home.resumeItems.size) {
+        val next = home.resumeItems.firstOrNull()
+        UpNextShortcut.update(context, next, next?.let { nextEpisodeSubtitle(it, core) })
+    }
+
+    // A manual sync is the one action on Home, so its in-flight state lives with the shell rather
+    // than inside the header — the button must keep showing progress while the list scrolls.
+    var syncing by remember { mutableStateOf(false) }
     // Delete is the one action here with a real undo — the row is soft-deleted, not gone — so it gets
     // a Snackbar with an action rather than the fire-and-forget toast used everywhere else.
     val snackbar = remember { SnackbarHostState() }
@@ -224,14 +268,8 @@ fun M3ERoughScreen(
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     // Back unwinds one step at a time: a title opened from Finished returns to Finished, and
-    // Finished returns to Library.
-    //
-    // A plain handler, deliberately. The predictive version — the gesture driving a scale and fade —
-    // was tried and removed: its payoff was never going to arrive, because a predictive back peek
-    // shows the screen underneath and this shell composes one screen at a time, so there is nothing
-    // to show. What it did instead was leave the screen shrunk. The system-level animation is still
-    // on (the manifest flag is unchanged); this is only the in-app half, and it is not worth code
-    // that misbehaves for an effect with no audience.
+    // Finished returns to Library. A plain handler: the predictive version needs the screen
+    // underneath composed during the gesture, which this shell deliberately does not do.
     BackHandler(enabled = stack.isNotEmpty()) { stack = stack.dropLast(1) }
 
     // With nothing open, back from a section that is not Home goes Home rather than leaving the app
@@ -271,6 +309,25 @@ fun M3ERoughScreen(
                 0 -> HomeSection(
                     core = core,
                     home = home,
+                    syncing = syncing,
+                    onSync = {
+                        if (syncing) return@HomeSection
+                        syncing = true
+                        haptics.tap()
+                        scope.launch {
+                            val summary = ManualSync.run(container, context)
+                            withContext(Dispatchers.Main) {
+                                syncing = false
+                                AppToast.show(
+                                    if (summary == null) {
+                                        "Sync failed — check Keys in Settings"
+                                    } else {
+                                        "Synced — ↑ ${summary.outgoing} sent, ↓ ${summary.incoming} received"
+                                    }
+                                )
+                            }
+                        }
+                    },
                     onOpen = { stack = stack + Overlay.Detail(it) },
                     onSeeAll = { title, items, kind ->
                         stack = stack + Overlay.Titles(title, items, kind, ListLayout.Rows)
@@ -286,7 +343,9 @@ fun M3ERoughScreen(
                 )
                 else -> M3ERoughSettings(
                     container = container,
-                    onBack = { },
+                    // The arrow goes where the system back goes. Settings is a section, not a
+                    // pushed screen, so "back" means the section you came from most often: Home.
+                    onBack = { section = HOME },
                     onThemePresetChanged = onThemePresetChanged,
                     onThemeModeChanged = onThemeModeChanged
                 )
@@ -350,7 +409,6 @@ fun M3ERoughScreen(
                     onBack = { stack = stack.dropLast(1) }
                 )
                 else -> Unit
-            }
             }
             }
         }
@@ -483,6 +541,40 @@ fun M3ERoughScreen(
         )
     }
 }
+}
+
+/**
+ * The one manual sync, as a symbol in the Home header.
+ *
+ * A cloud rather than the word "Sync": the action is the same every time, and the only thing that
+ * changes is whether it is running. It sits at the top right because that is where a refresh lives
+ * on every platform, and it replaces a Settings row that made an everyday action a two-screen trip.
+ */
+@Composable
+private fun SyncButton(syncing: Boolean, onSync: () -> Unit) {
+    Surface(
+        onClick = onSync,
+        shape = CircleShape,
+        color = M3EColor.card(),
+        modifier = Modifier.size(44.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            if (syncing) {
+                LoadingIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = M3EColor.accent()
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Outlined.CloudSync,
+                    contentDescription = "Sync with cloud",
+                    tint = M3EColor.text(),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    }
+}
 
 /**
  * The detail, arriving as a sheet from the bottom.
@@ -551,6 +643,8 @@ private fun DetailSheet(
 private fun HomeSection(
     core: LibraryCore,
     home: HomeData,
+    syncing: Boolean,
+    onSync: () -> Unit,
     onOpen: (MediaItemEntity) -> Unit,
     onSeeAll: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
 ) {
@@ -574,10 +668,14 @@ private fun HomeSection(
         item {
             Column {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
-            // No search or settings icon here any more: both are on the bar, where a thumb can
-            // reach them, and a second entry point at the top of the screen was only ever a
-            // duplicate in the worst place.
-            M3EScreenHeader(eyebrow = "Explore", title = "MediaTracker")
+            // Search stays on the bar. Sync is here because it belongs to the library you are
+            // looking at: the action and its result are on the same screen, which is why the
+            // count of what moved is worth a toast rather than a trip to Settings.
+            M3EScreenHeader(
+                eyebrow = "Explore",
+                title = "MediaTracker",
+                trailing = { SyncButton(syncing = syncing, onSync = onSync) }
+            )
             }
         }
         item {

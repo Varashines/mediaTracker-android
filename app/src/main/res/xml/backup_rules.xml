@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 and below (android:fullBackupContent).
+
+  The library database and ordinary settings are backed up; the credentials file is not. The sync
+  key is a write credential for the Supabase library, and a cloud backup is the one place it should
+  never end up. See PreferencesManager for why the secrets have a file of their own.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="media_tracker_secrets.xml" />
+</full-backup-content>

@@ -142,8 +142,6 @@ fun M3ESectionHeader(
  * A card as a tonal plane: no outline, no shadow, shape from the theme scale.
  *
  * Depth comes from the surface tone rather than a stroke, which is how a Material card reads on a
- * Material background. Long-press callers keep using [com.vara.mediatracker.ui.common.FlatCard]
- * until they migrate.
  */
 @Composable
 fun M3ETonalCard(

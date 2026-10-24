@@ -81,7 +81,8 @@ object ReleaseReminderPlanner {
                 key = "${item.id}@$dateString",
                 title = item.title,
                 subtitle = subtitle,
-                triggerAtMillis = trigger
+                triggerAtMillis = trigger,
+                mediaId = item.id
             )
         }
         return out

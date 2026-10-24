@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher long-press shortcuts. -->
+    <string name="shortcut_calendar">Calendar</string>
+    <string name="shortcut_search">Search</string>
+    <string name="shortcut_up_next">Up next</string>
+</resources>

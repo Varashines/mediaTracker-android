@@ -1,5 +1,7 @@
 package com.vara.mediatracker.ui.m3e
 
+import android.content.Intent
+import android.provider.CalendarContract
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
@@ -53,6 +55,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
@@ -85,6 +88,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -898,6 +902,41 @@ fun M3ERoughDetail(
                                 if (!network.isNullOrBlank()) DetailRow("Network", network)
                                 if (!released.isNullOrBlank()) {
                                     DetailRow("Released", indianDate(released) ?: released)
+                                    // One tap into the calendar the user already has, rather than
+                                    // another reminder system inside the app.
+                                    val calendarContext = LocalContext.current
+                                    val releaseDay = remember(released) { isoDay(released) }
+                                    if (releaseDay != null) {
+                                        TextButton(
+                                            onClick = {
+                                                calendarContext.startActivity(
+                                                    Intent(Intent.ACTION_INSERT).apply {
+                                                        data = CalendarContract.Events.CONTENT_URI
+                                                        putExtra(
+                                                            CalendarContract.Events.TITLE,
+                                                            "Release: ${live.title}"
+                                                        )
+                                                        putExtra(CalendarContract.Events.ALL_DAY, true)
+                                                        putExtra(
+                                                            CalendarContract.EXTRA_EVENT_BEGIN_TIME,
+                                                            releaseDay.atStartOfDay()
+                                                                .atZone(java.time.ZoneId.systemDefault())
+                                                                .toInstant().toEpochMilli()
+                                                        )
+                                                    }
+                                                )
+                                            },
+                                            modifier = Modifier.padding(start = 12.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.CalendarMonth,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Add to calendar", style = M3EType.action())
+                                        }
+                                    }
                                 }
                                 DetailRow("Added", indianDate(live.dateAdded) ?: "—", divider = false)
                             }

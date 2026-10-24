@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (android:dataExtractionRules).
+
+  Same rule as backup_rules.xml, stated twice because the two mechanisms are not interchangeable:
+  cloud backup restores after a reinstall, device transfer moves data to a new phone over cable.
+  Neither should carry the sync key. The library database is included by default, so it still does.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="media_tracker_secrets.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="media_tracker_secrets.xml" />
+    </device-transfer>
+</data-extraction-rules>

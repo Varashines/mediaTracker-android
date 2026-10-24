@@ -8,6 +8,24 @@ plugins {
     alias(libs.plugins.androidx.baselineprofile)
 }
 
+/**
+ * The version, in one place.
+ *
+ * `versionName` is the thing a person reads and `versionCode` is the thing Android compares, and
+ * the only safe relationship between them is one derived from the other. It was a hand-written
+ * `1` while `versionName` said `1.0.0`, which means every build you sideloaded was "version 1" —
+ * indistinguishable on the device, and an upload Play would reject once a second release existed.
+ *
+ * Scheme: major * 10000 + minor * 100 + patch, so 1.0.0 → 10000, 1.0.1 → 10001, 1.2.0 → 10200.
+ * It must only ever increase; a downgrade is not installable over the previous build.
+ */
+val appVersionName = "1.3.2"
+val appVersionCode = run {
+    val parts = appVersionName.split(".").map { it.toIntOrNull() ?: 0 }
+    require(parts.size >= 3) { "versionName must be major.minor.patch, was $appVersionName" }
+    parts[0] * 10_000 + parts[1] * 100 + parts[2]
+}
+
 android {
     namespace = "com.vara.mediatracker"
     compileSdk = 37
@@ -20,6 +38,9 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        versionName = appVersionName
+        versionCode = appVersionCode
     }
 
     signingConfigs {
@@ -106,6 +127,9 @@ dependencies {
 
     // Installs the baseline profile in the APK. Required below API 31, where nothing else will.
     implementation(libs.androidx.profileinstaller)
+
+    // Cold start: shows the launcher icon instead of a blank window while Compose boots.
+    implementation(libs.androidx.core.splashscreen)
 
     // Room Database
     implementation(libs.androidx.room.runtime)

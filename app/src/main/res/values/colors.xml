@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#4660E5</color>
+    <!-- Matches the default (Mac) palette's page colour, so the splash does not flash a
+         different shade before the Compose theme paints. -->
+    <color name="splash_background">#111418</color>
 </resources>

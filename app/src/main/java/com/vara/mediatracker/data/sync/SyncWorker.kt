@@ -59,6 +59,7 @@ class SyncWorker(
         outcome.getOrNull()?.watermark?.let { prefs.syncWatermark = it }
         val count = outcome.getOrNull()?.let { it.incoming + it.outgoing } ?: 0
         SyncScheduler.recordSyncCompletion(applicationContext)
+        // Background sync is the one that most often brings new rows; without this the widgets
 
         // Fresh data means stale badges; recompute inline so a notification can be
         // raised against the new state within the same pass.

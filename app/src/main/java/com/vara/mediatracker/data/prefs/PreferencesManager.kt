@@ -6,21 +6,64 @@ import android.content.SharedPreferences
 class PreferencesManager(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("media_tracker_prefs", Context.MODE_PRIVATE)
 
+    /**
+     * Credentials live in a file of their own so they can be excluded from Android backup.
+     *
+     * The sync key is a write credential for the Supabase library: anyone holding it can rewrite
+     * every title on every device. It used to sit in [prefs] next to the theme setting, which is
+     * also the file Android auto-backs-up to the user's Google account — so the key left the device
+     * in a backup nobody had to unlock. Splitting it out means the backup rules can name exactly
+     * one file to leave behind, while the library and the settings still restore normally.
+     *
+     * Losing the keys on a restore is the correct outcome: the alternative is a key in a cloud
+     * backup, and re-entering four fields is what the Mac asks for after a clean install too.
+     */
+    private val secrets: SharedPreferences =
+        context.getSharedPreferences(SECRETS_FILE, Context.MODE_PRIVATE)
+
+    init {
+        migrateSecretsOutOfBackedUpPrefs()
+    }
+
+    /**
+     * Moves credentials written by an older build into [secrets] and deletes them from the backed-up
+     * file. Committed rather than applied: a getter called on the next line has to see the moved
+     * value, and `apply()` is asynchronous. One-time and a handful of strings, so the commit is free.
+     */
+    private fun migrateSecretsOutOfBackedUpPrefs() {
+        val legacyKeys = listOf("supabase_url", "supabase_anon_key", "sync_key", "tmdb_api_key")
+        val editor = secrets.edit()
+        var found = false
+        legacyKeys.forEach { key ->
+            if (secrets.getString(key, "").isNullOrEmpty()) {
+                val old = prefs.getString(key, null)
+                if (!old.isNullOrEmpty()) {
+                    editor.putString(key, old)
+                    found = true
+                }
+            }
+        }
+        if (found) editor.commit()
+        if (legacyKeys.any { prefs.contains(it) }) {
+            prefs.edit().apply { legacyKeys.forEach { remove(it) } }.commit()
+        }
+    }
+
     var supabaseUrl: String
-        get() = prefs.getString("supabase_url", "") ?: ""
-        set(value) = prefs.edit().putString("supabase_url", value.trim()).apply()
+        get() = secrets.getString("supabase_url", "") ?: ""
+        set(value) = secrets.edit().putString("supabase_url", value.trim()).apply()
 
     var supabaseAnonKey: String
-        get() = prefs.getString("supabase_anon_key", "") ?: ""
-        set(value) = prefs.edit().putString("supabase_anon_key", value.trim()).apply()
+        get() = secrets.getString("supabase_anon_key", "") ?: ""
+        set(value) = secrets.edit().putString("supabase_anon_key", value.trim()).apply()
 
     var syncKey: String
-        get() = prefs.getString("sync_key", "") ?: ""
-        set(value) = prefs.edit().putString("sync_key", value.trim()).apply()
+        get() = secrets.getString("sync_key", "") ?: ""
+        set(value) = secrets.edit().putString("sync_key", value.trim()).apply()
 
     var tmdbApiKey: String
-        get() = prefs.getString("tmdb_api_key", "") ?: ""
-        set(value) = prefs.edit().putString("tmdb_api_key", value.trim()).apply()
+        get() = secrets.getString("tmdb_api_key", "") ?: ""
+        set(value) = secrets.edit().putString("tmdb_api_key", value.trim()).apply()
 
     var lastSyncTimestamp: Long
         get() = prefs.getLong("last_sync_timestamp", 0L)
@@ -78,14 +121,6 @@ class PreferencesManager(context: Context) {
     var episodeKeyMigrationDone: Boolean
         get() = prefs.getBoolean("episode_key_migration_v3_done", false)
         set(value) = prefs.edit().putBoolean("episode_key_migration_v3_done", value).apply()
-
-    /**
-     * When true, the detail view's NETWORK / PRODUCTION pill shows the network/studio
-     * logo instead of its name.
-     */
-    var detailNetworkLogo: Boolean
-        get() = prefs.getBoolean("detail_network_logo", false)
-        set(value) = prefs.edit().putBoolean("detail_network_logo", value).apply()
 
     /**
      * Set once legacy taste spellings ("Loved"/"Liked"/"Disliked") have been rewritten to the
@@ -209,7 +244,7 @@ class PreferencesManager(context: Context) {
         syncKey: String,
         tmdbApiKey: String
     ) {
-        prefs.edit()
+        secrets.edit()
             .putString("supabase_url", supabaseUrl.trim())
             .putString("supabase_anon_key", supabaseAnonKey.trim())
             .putString("sync_key", syncKey.trim())
@@ -218,5 +253,8 @@ class PreferencesManager(context: Context) {
     }
 
 }
+
+/** The one preferences file the backup rules exclude — see the class KDoc. */
+private const val SECRETS_FILE = "media_tracker_secrets"
 
 private const val LEGACY_KEY_RELEASE_ALERTS = "release_alerts"

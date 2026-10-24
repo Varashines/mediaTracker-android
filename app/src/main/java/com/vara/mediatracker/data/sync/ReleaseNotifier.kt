@@ -1,14 +1,8 @@
 package com.vara.mediatracker.data.sync
 
-import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import com.vara.mediatracker.data.badge.BadgeEngine
 import com.vara.mediatracker.data.badge.BadgeResult
 import com.vara.mediatracker.data.badge.SmartBadge
@@ -33,24 +27,14 @@ class ReleaseNotifier(
 
     private val prefs get() = context.getSharedPreferences("release_announcements", Context.MODE_PRIVATE)
 
-    fun ensureChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "New releases",
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
-            description = "Alerts when something in your library premieres or airs soon"
-        }
-        NotificationManagerCompat.from(context).createNotificationChannel(channel)
-    }
+    fun ensureChannel() = Notify.ensureChannels(context)
 
     suspend fun announceNewReleases() {
         // Global prefs, not a per-title list: the master switch and the channel for this
         // title's type decide whether it is worth interrupting the user for.
         val notifications = container.preferences
         if (!notifications.notificationsEnabled) return
-        if (!hasPermission()) return
+        if (!Notify.canPost(context)) return
 
         val candidates = collectCandidates()
         if (candidates.isEmpty()) return
@@ -73,17 +57,6 @@ class ReleaseNotifier(
     }
 
     private fun postSummary(entries: List<Pair<String, MediaCandidate>>) {
-        // Explicit inline guard (not just hasPermission()) so lint's MissingPermission
-        // data-flow sees it: notify() throws without POST_NOTIFICATIONS on API 33+.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
-
         val titles = entries.take(MAX_TITLES_IN_SUMMARY).map { it.second.title }
         val extra = entries.size - titles.size
 
@@ -92,29 +65,25 @@ class ReleaseNotifier(
             if (extra > 0) append("\n…and $extra more")
         }
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle(
-                if (entries.size == 1) "New in your library"
-                else "${entries.size} new releases in your library"
-            )
-            .setContentText(titles.first())
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .build()
+        val open = PendingIntent.getActivity(
+            context,
+            NOTIFICATION_ID,
+            Intent(context, com.vara.mediatracker.MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
-        runCatching {
-            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
-        }
+        Notify.post(
+            context = context,
+            id = NOTIFICATION_ID,
+            channel = CHANNEL_ID,
+            title = if (entries.size == 1) "New in your library" else "${entries.size} new releases in your library",
+            text = titles.first(),
+            bigText = body,
+            contentIntent = open
+        )
     }
-
-    private fun hasPermission(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
 
     private suspend fun collectCandidates(): Map<String, MediaCandidate> {
         val notifications = container.preferences
@@ -157,7 +126,7 @@ class ReleaseNotifier(
     private data class MediaCandidate(val title: String, val badge: String, val date: String?)
 
     companion object {
-        const val CHANNEL_ID = "media_releases"
+        const val CHANNEL_ID = Notify.CHANNEL_RELEASES
         const val NOTIFICATION_ID = 4201
         private const val KEY_ANNOUNCED = "announced_keys"
         private const val MAX_TITLES_IN_SUMMARY = 5

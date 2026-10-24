@@ -2,6 +2,7 @@ package com.vara.mediatracker.ui.m3e
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.text.format.DateUtils
@@ -11,15 +12,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -29,46 +32,54 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BrightnessAuto
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.outlined.BrightnessAuto
+import androidx.compose.material.icons.outlined.CloudDone
+import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.CloudSync
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.UploadFile
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Tv
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimeInput
 import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TimePickerDialog
+import androidx.compose.material3.TimePickerDialogDefaults
+import androidx.compose.material3.TimePickerDisplayMode
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -96,10 +107,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
-import com.vara.mediatracker.data.sync.ReleaseReminderPlanner
+import androidx.core.content.FileProvider
+import com.vara.mediatracker.data.backup.LibraryBackupService
+import com.vara.mediatracker.ui.common.ManualSync
 import com.vara.mediatracker.data.sync.CloudSyncManager
 import com.vara.mediatracker.data.sync.DigestScheduler
 import com.vara.mediatracker.data.sync.NotificationScheduler
+import com.vara.mediatracker.data.sync.ReleaseReminderPlanner
 import com.vara.mediatracker.data.sync.SyncScheduler
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.AppToast
@@ -115,28 +129,26 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
- * Settings, as the shape of the things it configures.
+ * Settings, as a grouped list.
  *
- * A settings screen is usually a list of label/control pairs, and that is exactly what this was.
- * This one is built the other way round: each block is the shape of the thing it configures. The
- * palette is a strip of swatches because a palette is something you look at; the notification
- * channels are tiles that light up because they are on/off states; sync is an action with a status
- * rather than a switch with a label.
+ * The screen is a small number of sections, each a label over one container of rows. A row is an
+ * icon, a name, and — where the name alone is not the whole story — a supporting line that says
+ * what it does or what it is currently set to. The control lives at the end of the row it belongs
+ * to, so a switch or a value is read in the same glance as the thing it changes.
  *
- * Everything is symbol-led. An icon says what a row is about before the words do, and the words are
- * then only needed where a symbol cannot carry the meaning — a region code, a clock time, a key.
- * The four credential fields stay behind one key symbol rather than sitting on the page, because
- * they are set once and never read.
+ * This is deliberately the most conventional screen in the app. Every other screen is somewhere to
+ * look; this one is somewhere to find a switch, and the fastest way to find a switch is for it to be
+ * where the last forty apps put theirs.
  *
- * No functionality was dropped from the shipping screen: sync now previews its impact first and
- * confirms, the discovery region is chosen here, the network logo toggle lives with the palette,
- * and the notification permission is requested from the block it affects.
+ * Nothing was dropped from the previous screen: the palette and theme mode moved into rows that
+ * open a picker, the notification channels moved from four tiles into four rows, sync previews its
+ * impact before it runs, and the four credentials stay behind one key row because they are set once
+ * and never read.
  */
 @Composable
 fun M3ERoughSettings(
     container: AppContainer,
     onBack: () -> Unit,
-    /** Opens the cycle/event history, which lives outside Settings but is reached from here. */
     onThemePresetChanged: (Int) -> Unit,
     onThemeModeChanged: (Int) -> Unit
 ) {
@@ -147,7 +159,8 @@ fun M3ERoughSettings(
     // ── Appearance ───────────────────────────────────────────────────────────────────────────
     var themeMode by rememberSaveable { mutableIntStateOf(prefs.themeMode) }
     var preset by rememberSaveable { mutableIntStateOf(prefs.themePreset) }
-    var detailNetworkLogo by rememberSaveable { mutableStateOf(prefs.detailNetworkLogo) }
+    var maintenanceShown by rememberSaveable { mutableStateOf(false) }
+    var backupShown by rememberSaveable { mutableStateOf(false) }
 
     // ── Notifications ────────────────────────────────────────────────────────────────────────
     var notificationsEnabled by rememberSaveable { mutableStateOf(prefs.notificationsEnabled) }
@@ -166,10 +179,7 @@ fun M3ERoughSettings(
     // ── Sync ─────────────────────────────────────────────────────────────────────────────────
     var keysShown by rememberSaveable { mutableStateOf(false) }
     var backgroundSync by rememberSaveable { mutableStateOf(SyncScheduler.isEnabled(context)) }
-    var syncing by remember { mutableStateOf(false) }
-    var checkingImpact by remember { mutableStateOf(false) }
     var lastSyncedAt by remember { mutableLongStateOf(SyncScheduler.lastSyncTimestamp(context)) }
-    var pendingImpact by remember { mutableStateOf<CloudSyncManager.SyncImpact?>(null) }
     var lastSummary by remember { mutableStateOf<CloudSyncManager.SyncSummary?>(null) }
 
     // ── Discovery ────────────────────────────────────────────────────────────────────────────
@@ -222,6 +232,27 @@ fun M3ERoughSettings(
         if (granted) reschedule()
     }
 
+    // Backup import is a document picker rather than an extension check: a backup restored on a
+    // new phone comes from wherever the user put it (Drive, email, a USB stick).
+    val backupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val outcome = runCatching { LibraryBackupService.import(container, uri, context) }
+            withContext(Dispatchers.Main) {
+                outcome.fold(
+                    onSuccess = { summary ->
+                        AppToast.show(
+                            "Restored ${summary.media} titles and ${summary.episodes} episodes"
+                        )
+                    },
+                    onFailure = { AppToast.show("Import failed: ${it.message ?: "bad file"}") }
+                )
+            }
+        }
+    }
+
     // The digest is periodic work, so a change re-registers it rather than re-planning a list.
     // Values are passed in rather than read back from the state: a handler that has just changed
     // one would otherwise re-register the old value it captured before the change.
@@ -234,44 +265,36 @@ fun M3ERoughSettings(
         }
     }
 
-    // Preview the diff before syncing, the way the Mac does: the point of the sheet is that a sync
-    // is two-way, and the counts are the only place that is visible before it runs.
-    fun previewSync() {
-        if (!isCloudConnected) {
-            AppToast.show("Add your keys first")
-            keysShown = true
-            return
-        }
-        checkingImpact = true
-        container.appScope.launch {
-            val result = container.syncManager().computeImpact(since = prefs.syncWatermark)
+    fun exportBackup() {
+        scope.launch {
+            val outcome = runCatching { LibraryBackupService.export(container, context) }
+            val file = outcome.getOrElse {
+                withContext(Dispatchers.Main) { AppToast.show("Export failed: ${it.message ?: "unknown"}") }
+                return@launch
+            }
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
             withContext(Dispatchers.Main) {
-                checkingImpact = false
-                if (result.isSuccess) {
-                    pendingImpact = result.getOrNull()
-                } else {
-                    AppToast.show("Couldn't check: ${result.exceptionOrNull()?.localizedMessage}")
-                }
+                context.startActivity(Intent.createChooser(share, "Save library backup"))
             }
         }
     }
 
-    fun runSync() {
-        syncing = true
-        container.appScope.launch {
-            val result = container.syncManager().sync(since = prefs.syncWatermark)
+    /** Pulls everything again. The only sync Settings offers now; the everyday one is on Home. */
+    fun resync() {
+        scope.launch {
+            val summary = ManualSync.run(container, context, resetWatermark = true)
             withContext(Dispatchers.Main) {
-                syncing = false
-                if (result.isSuccess) {
-                    result.getOrNull()?.watermark?.let { prefs.syncWatermark = it }
-                    val at = System.currentTimeMillis()
-                    SyncScheduler.recordSyncCompletion(context, at)
-                    lastSyncedAt = at
-                    lastSummary = result.getOrNull()
-                    val s = result.getOrNull()
-                    AppToast.show("Synced — ↑ ${s?.outgoing ?: 0} sent, ↓ ${s?.incoming ?: 0} received")
+                if (summary != null) {
+                    lastSyncedAt = SyncScheduler.lastSyncTimestamp(context)
+                    lastSummary = summary
+                    AppToast.show("Synced — ↑ ${summary.outgoing} sent, ↓ ${summary.incoming} received")
                 } else {
-                    AppToast.show("Sync failed: ${result.exceptionOrNull()?.localizedMessage}")
+                    AppToast.show("Sync failed — check Keys")
                 }
             }
         }
@@ -287,327 +310,275 @@ fun M3ERoughSettings(
     ) {
         item {
             Spacer(Modifier.height(M3ESpacing.pageVertical))
-            M3EScreenHeader(
-                title = "Settings",
-                eyebrow = "Preferences",
-                // A symbol rather than a word: the colour is the whole message, and it is the same
-                // message the Mac's row carries in its subtitle.
-                trailing = { ConnectionMark(connected = isCloudConnected) }
+
+            // A plain way out, then the title. The arrow sits where it does on every other Android
+            // screen, and it goes where the system back gesture goes: home.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = {
+                        haptics.tap()
+                        onBack()
+                    },
+                    // Pulled left by its own touch padding, so the glyph — not the 48dp box — lines
+                    // up with the page margin above the title and with the cards below it.
+                    modifier = Modifier.offset(x = (-12).dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = M3EColor.text()
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                ConnectionMark(connected = isCloudConnected)
+            }
+            Spacer(Modifier.height(M3ESpacing.tightGap))
+            Text(
+                text = "Settings",
+                style = M3EType.screenTitle(),
+                color = M3EColor.text()
             )
         }
 
         // ── Appearance ───────────────────────────────────────────────────────────────────────
         item {
-            M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
-                    PaletteStrip(
-                        selected = preset,
-                        onSelect = { index ->
-                            haptics.tap()
-                            preset = index
-                            prefs.themePreset = index
-                            onThemePresetChanged(index)
-                        }
-                    )
-                    Spacer(Modifier.height(M3ESpacing.cardGap))
-                    ThemeSelector(
-                        selected = themeMode,
-                        onSelect = { mode ->
-                            haptics.tap()
-                            themeMode = mode
-                            prefs.themeMode = mode
-                            onThemeModeChanged(mode)
-                        }
-                    )
-                    Spacer(Modifier.height(M3ESpacing.cardGap))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    IconSwitchRow(
-                        icon = Icons.Default.Tv,
-                        label = "Network logo in detail",
-                        checked = detailNetworkLogo,
-                        onToggle = {
-                            detailNetworkLogo = it
-                            prefs.detailNetworkLogo = it
-                        }
-                    )
+            SettingsSection(
+                label = "Appearance",
+                rows = {
+                    // The theme and the palette are the two things this screen exists to change, so
+                    // they are the controls themselves rather than rows that open another surface.
+                    // A choice you can see and tap beats a choice you have to open, and it removes
+                    // two dialogs from the screen's vocabulary.
+                    Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
+                        ThemeSegmented(
+                            selected = themeMode,
+                            onSelect = { mode ->
+                                haptics.tap()
+                                themeMode = mode
+                                prefs.themeMode = mode
+                                onThemeModeChanged(mode)
+                            }
+                        )
+                        Spacer(Modifier.height(M3ESpacing.cardGap))
+                        PaletteStrip(
+                            selected = preset,
+                            onSelect = { index ->
+                                haptics.tap()
+                                preset = index
+                                prefs.themePreset = index
+                                onThemePresetChanged(index)
+                            }
+                        )
+                    }
                 }
-            }
+            )
         }
 
         // ── Notifications ────────────────────────────────────────────────────────────────────
         item {
-            M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
-                    ) {
-                        ToggleTile(
-                            icon = Icons.Default.Notifications,
-                            label = "All",
-                            checked = notificationsEnabled,
-                            modifier = Modifier.weight(1f),
-                            onToggle = { enabled ->
-                                haptics.toggle()
-                                notificationsEnabled = enabled
-                                prefs.notificationsEnabled = enabled
-                                if (enabled) {
-                                    if (hasNotificationPermission(context)) {
-                                        reschedule()
-                                    } else {
-                                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    }
+            SettingsSection(
+                label = "Notifications",
+                rows = {
+                    SettingsSwitchRow(
+                        icon = Icons.Outlined.Notifications,
+                        title = "Release reminders",
+                        subtitle = "Something on your list is out today",
+                        checked = notificationsEnabled,
+                        onToggle = { enabled ->
+                            haptics.toggle()
+                            notificationsEnabled = enabled
+                            prefs.notificationsEnabled = enabled
+                            if (enabled) {
+                                if (hasNotificationPermission(context)) {
+                                    reschedule()
                                 } else {
-                                    NotificationScheduler.cancelAll(context.applicationContext)
+                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 }
+                            } else {
+                                NotificationScheduler.cancelAll(context.applicationContext)
                             }
-                        )
-                        ToggleTile(
-                            icon = Icons.Default.Movie,
-                            label = "Films",
-                            checked = notificationsEnabled && notificationsMovies,
-                            enabled = notificationsEnabled,
-                            modifier = Modifier.weight(1f),
-                            onToggle = { on ->
-                                haptics.toggle()
-                                notificationsMovies = on
-                                prefs.notificationsMovies = on
-                                reschedule()
-                            }
-                        )
-                        ToggleTile(
-                            icon = Icons.Default.Tv,
-                            label = "TV",
-                            checked = notificationsEnabled && notificationsTv,
-                            enabled = notificationsEnabled,
-                            modifier = Modifier.weight(1f),
-                            onToggle = { on ->
-                                haptics.toggle()
-                                notificationsTv = on
-                                prefs.notificationsTv = on
-                                reschedule()
-                            }
-                        )
-                        ToggleTile(
-                            icon = Icons.Default.Schedule,
-                            label = "Digest",
-                            checked = notificationsEnabled && digestEnabled,
-                            enabled = notificationsEnabled,
-                            modifier = Modifier.weight(1f),
-                            onToggle = { on ->
-                                haptics.toggle()
-                                digestEnabled = on
-                                prefs.digestEnabled = on
-                                applyDigest(on, digestWeekday, digestTime)
-                            }
-                        )
-                    }
+                        }
+                    )
 
-                    // The permission is asked for from the block it affects, and only when the
-                    // switch that needs it is on and Android has not already granted it.
+                    // The permission is asked for from the row it affects, and only while that row
+                    // is on and Android has not already granted it.
                     if (notificationsEnabled && !notificationsAllowed) {
-                        Spacer(Modifier.height(M3ESpacing.cardGap))
-                        Button(
+                        SettingsDivider()
+                        SettingsRow(
+                            icon = Icons.Outlined.Notifications,
+                            title = "Allow notifications",
+                            subtitle = "Android needs your permission",
+                            emphasise = true,
                             onClick = {
                                 haptics.tap()
                                 permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            },
-                            shape = M3EShape.chip(),
-                            colors = tintedButtonColors(),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(M3ESpacing.rowMinHeight)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Notifications,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(M3ESpacing.tightGap))
-                            Text("Allow notifications", style = M3EType.action())
-                        }
-                    }
-
-                    if (notificationsEnabled) {
-                        Spacer(Modifier.height(M3ESpacing.cardGap))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        IconValueRow(
-                            icon = Icons.Default.Schedule,
-                            label = "Delivery time",
-                            value = clockLabel(deliverySeconds)
-                        ) {
-                            timePicker = 0
-                        }
-                        if (digestEnabled) {
-                            IconValueRow(
-                                icon = Icons.Default.Notifications,
-                                label = "Digest day",
-                                value = weekdayLabel(digestWeekday)
-                            ) {
-                                haptics.tap()
-                                pickingWeekday = true
                             }
-                            IconValueRow(
-                                icon = Icons.Default.Schedule,
-                                label = "Digest time",
-                                value = clockLabel(digestTime)
-                            ) {
-                                timePicker = 1
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── Sync ─────────────────────────────────────────────────────────────────────────────
-        item {
-            M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
-                    // Symbol-led: the cloud carries the meaning, the word only says what pressing it
-                    // does. It previews first, because a sync runs both ways and the counts are the
-                    // only warning you get.
-                    Button(
-                        onClick = {
-                            if (syncing || checkingImpact) return@Button
-                            haptics.tap()
-                            previewSync()
-                        },
-                        enabled = !syncing && !checkingImpact,
-                        shape = M3EShape.chip(),
-                        colors = tintedButtonColors(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(M3ESpacing.rowMinHeight)
-                    ) {
-                        if (syncing || checkingImpact) {
-                            // M3E's morphing indicator, not a ring. Same job, in the vocabulary the
-                            // rest of the screen is written in.
-                            LoadingIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = M3EColor.accent()
-                            )
-                        } else {
-                            Icon(
-                                imageVector = if (isCloudConnected) {
-                                    Icons.Default.CloudSync
-                                } else {
-                                    Icons.Default.CloudOff
-                                },
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Spacer(Modifier.width(M3ESpacing.tightGap))
-                        Text(
-                            text = when {
-                                syncing -> "Syncing…"
-                                checkingImpact -> "Checking…"
-                                else -> "Sync now"
-                            },
-                            style = M3EType.action()
                         )
                     }
 
-                    // The same stamp the background worker writes, so the line covers both without
-                    // anyone having to know which one ran. The summary replaces it after a manual
-                    // sync, because the counts are more useful than the clock for the next minute.
-                    Spacer(Modifier.height(M3ESpacing.tightGap))
-                    Text(
-                        text = lastSummary?.let {
-                            "↑ ${it.outgoing} sent · ↓ ${it.incoming} received"
-                        } ?: lastSyncedLabel,
-                        style = M3EType.rowSupporting(),
-                        color = M3EColor.textMuted(),
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    SettingsDivider()
+                    // Two channels, one row. They are the same kind of choice (which releases
+                    // interrupt you) so they read as a pair, and as toggles their state is visible
+                    // without a second line of explanation.
+                    ChannelToggles(
+                        movies = notificationsEnabled && notificationsMovies,
+                        tv = notificationsEnabled && notificationsTv,
+                        enabled = notificationsEnabled,
+                        onMovies = { on ->
+                            haptics.toggle()
+                            notificationsMovies = on
+                            prefs.notificationsMovies = on
+                            reschedule()
+                        },
+                        onTv = { on ->
+                            haptics.toggle()
+                            notificationsTv = on
+                            prefs.notificationsTv = on
+                            reschedule()
+                        }
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        icon = Icons.Outlined.Schedule,
+                        title = "Weekly digest",
+                        subtitle = "One summary of the week, on a day you pick",
+                        checked = notificationsEnabled && digestEnabled,
+                        enabled = notificationsEnabled,
+                        onToggle = { on ->
+                            haptics.toggle()
+                            digestEnabled = on
+                            prefs.digestEnabled = on
+                            applyDigest(on, digestWeekday, digestTime)
+                        }
                     )
 
-                    Spacer(Modifier.height(M3ESpacing.cardGap))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    IconSwitchRow(
-                        icon = Icons.Default.Schedule,
-                        label = "Background sync",
-                        subtitle = if (backgroundSync) "Every 30 minutes, while closed" else "Off",
+                    if (notificationsEnabled && digestEnabled) {
+                        SettingsDivider()
+                        SettingsRow(
+                            icon = Icons.Outlined.Schedule,
+                            title = "Digest day",
+                            subtitle = weekdayLabel(digestWeekday),
+                            onClick = {
+                                haptics.tap()
+                                pickingWeekday = true
+                            }
+                        )
+                        SettingsDivider()
+                        SettingsRow(
+                            icon = Icons.Outlined.Schedule,
+                            title = "Digest time",
+                            subtitle = clockLabel(digestTime),
+                            onClick = { timePicker = 1 }
+                        )
+                    }
+
+                    if (notificationsEnabled) {
+                        SettingsDivider()
+                        SettingsRow(
+                            icon = Icons.Outlined.Schedule,
+                            title = "Delivery time",
+                            subtitle = clockLabel(deliverySeconds),
+                            onClick = { timePicker = 0 }
+                        )
+                    }
+                }
+            )
+        }
+
+        // ── Cloud sync ───────────────────────────────────────────────────────────────────────
+        item {
+            SettingsSection(
+                label = "Cloud sync",
+                rows = {
+                    // Sync itself lives on Home, where the library it acts on is. What stays here
+                    // is the state: the last result, and whether this device is connected at all.
+                    SettingsRow(
+                        icon = if (isCloudConnected) {
+                            Icons.Outlined.CloudSync
+                        } else {
+                            Icons.Outlined.CloudOff
+                        },
+                        title = if (isCloudConnected) "Last sync" else "Not connected",
+                        subtitle = if (!isCloudConnected) {
+                            "Add your keys to sync with the Mac"
+                        } else {
+                            lastSummary?.let {
+                                "↑ ${it.outgoing} sent · ↓ ${it.incoming} received"
+                            } ?: lastSyncedLabel
+                        }
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        icon = Icons.Outlined.Schedule,
+                        title = "Background sync",
+                        subtitle = if (backgroundSync) {
+                            "Every 30 minutes, while closed"
+                        } else {
+                            "Off — sync only when you ask"
+                        },
                         checked = backgroundSync,
                         onToggle = {
+                            haptics.toggle()
                             backgroundSync = it
                             SyncScheduler.setEnabled(context, it)
                             if (it) SyncScheduler.syncNow(context)
                         }
                     )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                    // Four fields behind one symbol: they are set once and never read, so they get a
-                    // key rather than a page.
-                    IconActionRow(
-                        icon = Icons.Default.Key,
-                        label = "Keys",
-                        detail = when {
+                    SettingsDivider()
+                    // Four fields behind one key: they are set once and never read, so they get a
+                    // row rather than a page of their own.
+                    SettingsRow(
+                        icon = Icons.Outlined.Key,
+                        title = "Keys",
+                        subtitle = when {
                             isCloudConnected && isTmdbConnected -> "Cloud and TMDB"
-                            isCloudConnected -> "Cloud"
+                            isCloudConnected -> "Cloud only"
                             isTmdbConnected -> "TMDB only"
-                            else -> "Not set"
+                            else -> "Not set — sync is off"
+                        },
+                        onClick = {
+                            haptics.tap()
+                            keysShown = true
                         }
-                    ) {
-                        haptics.tap()
-                        keysShown = true
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    // A button, not a row with a chevron: a chevron says "there is another screen
-                    // behind this", and this does something where it stands.
-                    Spacer(Modifier.height(M3ESpacing.cardGap))
-                    Button(
+                    )
+                    SettingsDivider()
+                    // Diagnostics, not decisions: pulling everything again or re-fetching episode
+                    // data is something you do when something is wrong, so it lives one level down
+                    // rather than taking two of the four rows on the everyday screen.
+                    SettingsRow(
+                        icon = Icons.Outlined.Tune,
+                        title = "Maintenance",
+                        subtitle = "Refresh episodes · resync · region",
                         onClick = {
                             haptics.tap()
-                            SyncScheduler.enrichEpisodesNow(context, forceAll = true)
-                            AppToast.show("Refreshing episodes…")
-                        },
-                        shape = M3EShape.chip(),
-                        colors = tintedButtonColors(),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(M3ESpacing.tightGap))
-                        Text("Refresh episodes", style = M3EType.action())
-                    }
-                    Spacer(Modifier.height(M3ESpacing.tightGap))
-                    // The watermark is what makes a sync cheap, and also what makes a bad pull
-                    // permanent: once it covers every table, "nothing newer" means a wrong local
-                    // state can never be corrected. This drops it and pulls the lot again.
-                    OutlinedButton(
-                        onClick = {
-                            haptics.tap()
-                            prefs.syncWatermark = null
-                            AppToast.show("Pulling everything from the cloud…")
-                            runSync()
-                        },
-                        shape = M3EShape.chip(),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Resync from cloud", style = M3EType.action())
-                    }
+                            maintenanceShown = true
+                        }
+                    )
                 }
-            }
+            )
         }
 
-        // ── Discovery ────────────────────────────────────────────────────────────────────────
+        // ── Data ─────────────────────────────────────────────────────────────────────────────
         item {
-            M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
-                    IconValueRow(
-                        icon = Icons.Default.Public,
-                        label = "Discovery region",
-                        value = if (providerRegion.isBlank()) {
-                            "Auto"
-                        } else {
-                            regionDisplayName(providerRegion)
+            SettingsSection(
+                label = "Data",
+                rows = {
+                    // Cloud sync restores a library only while another device still holds it. This
+                    // is the copy that survives an uninstall, a lost phone, or a bad sync.
+                    SettingsRow(
+                        icon = Icons.Outlined.Save,
+                        title = "Backup",
+                        subtitle = "Export a file, or restore one",
+                        onClick = {
+                            haptics.tap()
+                            backupShown = true
                         }
-                    ) {
-                        haptics.tap()
-                        regionPickerShown = true
-                    }
+                    )
                 }
-            }
+            )
         }
 
         item {
@@ -616,7 +587,9 @@ fun M3ERoughSettings(
                 style = M3EType.rowSupporting(),
                 color = M3EColor.textMuted(),
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = M3ESpacing.tightGap)
             )
         }
 
@@ -667,6 +640,107 @@ fun M3ERoughSettings(
         )
     }
 
+    if (maintenanceShown) {
+        ModalBottomSheet(onDismissRequest = { maintenanceShown = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = M3ESpacing.page)
+                    .padding(bottom = M3ESpacing.sectionGap)
+            ) {
+                Text("Maintenance", style = M3EType.sectionTitle(), color = M3EColor.text())
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                Text(
+                    "For when something looks wrong, not for every day.",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted()
+                )
+                Spacer(Modifier.height(M3ESpacing.cardGap))
+                SettingsRow(
+                    icon = Icons.Outlined.Refresh,
+                    title = "Refresh episodes",
+                    subtitle = "Fetch episode data again",
+                    onClick = {
+                        haptics.tap()
+                        maintenanceShown = false
+                        SyncScheduler.enrichEpisodesNow(context, forceAll = true)
+                        AppToast.show("Refreshing episodes…")
+                    }
+                )
+                SettingsDivider()
+                // The watermark makes a sync cheap and also makes a bad pull permanent: once it
+                // covers every table, "nothing newer" means a wrong local state is never corrected.
+                SettingsRow(
+                    icon = Icons.Outlined.Sync,
+                    title = "Resync from cloud",
+                    subtitle = "Pull everything, ignoring what it already has",
+                    onClick = {
+                        haptics.tap()
+                        maintenanceShown = false
+                        AppToast.show("Pulling everything from the cloud…")
+                        resync()
+                    }
+                )
+                SettingsDivider()
+                SettingsRow(
+                    icon = Icons.Outlined.Public,
+                    title = "Discovery region",
+                    subtitle = if (providerRegion.isBlank()) {
+                        "Auto — follow this device"
+                    } else {
+                        regionDisplayName(providerRegion)
+                    },
+                    onClick = {
+                        haptics.tap()
+                        maintenanceShown = false
+                        regionPickerShown = true
+                    }
+                )
+            }
+        }
+    }
+
+    if (backupShown) {
+        ModalBottomSheet(onDismissRequest = { backupShown = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = M3ESpacing.page)
+                    .padding(bottom = M3ESpacing.sectionGap)
+            ) {
+                Text("Backup", style = M3EType.sectionTitle(), color = M3EColor.text())
+                Spacer(Modifier.height(M3ESpacing.tightGap))
+                Text(
+                    "A file on your own storage is the copy that survives an uninstall or a lost phone.",
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted()
+                )
+                Spacer(Modifier.height(M3ESpacing.cardGap))
+                SettingsRow(
+                    icon = Icons.Outlined.Save,
+                    title = "Export library",
+                    subtitle = "One JSON file you can keep anywhere",
+                    onClick = {
+                        haptics.tap()
+                        backupShown = false
+                        exportBackup()
+                    }
+                )
+                SettingsDivider()
+                SettingsRow(
+                    icon = Icons.Outlined.UploadFile,
+                    title = "Import backup",
+                    subtitle = "Restore from a file — replaces matching titles",
+                    onClick = {
+                        haptics.tap()
+                        backupShown = false
+                        backupLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                    }
+                )
+            }
+        }
+    }
+
     timePicker?.let { which ->
         TimePickerPopup(
             title = if (which == 0) "Delivery time" else "Digest time",
@@ -687,232 +761,424 @@ fun M3ERoughSettings(
     }
 
     if (pickingWeekday) {
-        AlertDialog(
-            onDismissRequest = { pickingWeekday = false },
-            title = { Text("Digest day") },
-            text = {
-                Column {
-                    (1..7).forEach { day ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(M3EShape.chip())
-                                .clickable {
-                                    haptics.tap()
-                                    digestWeekday = day
-                                    prefs.digestWeekday = day
-                                    applyDigest(true, day, digestTime)
-                                    pickingWeekday = false
-                                }
-                                .padding(vertical = M3ESpacing.rowGap),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = if (day == digestWeekday) {
-                                    Icons.Default.Check
-                                } else {
-                                    Icons.Default.Schedule
-                                },
-                                contentDescription = null,
-                                tint = if (day == digestWeekday) {
-                                    M3EColor.accent()
-                                } else {
-                                    M3EColor.textMuted()
-                                },
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(M3ESpacing.inlineGap))
-                            Text(
-                                text = weekdayLabel(day),
-                                style = M3EType.rowTitle(),
-                                color = if (day == digestWeekday) M3EColor.accent() else M3EColor.text()
-                            )
-                        }
-                    }
-                }
+        ChoiceDialog(
+            title = "Digest day",
+            options = (1..7).map { day -> Choice(day, weekdayLabel(day)) },
+            selected = digestWeekday,
+            onSelect = { day ->
+                haptics.tap()
+                digestWeekday = day
+                prefs.digestWeekday = day
+                applyDigest(true, day, digestTime)
+                pickingWeekday = false
             },
-            confirmButton = {
-                TextButton(onClick = { pickingWeekday = false }) { Text("Done") }
-            }
+            onDismiss = { pickingWeekday = false }
         )
     }
 
     if (regionPickerShown) {
-        AlertDialog(
-            onDismissRequest = { regionPickerShown = false },
-            title = { Text("Discovery region") },
-            text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    RegionOption(
-                        label = "Auto — follow this device",
-                        selected = providerRegion.isBlank()
-                    ) {
+        ChoiceDialog(
+            title = "Discovery region",
+            // The region is keyed by a code rather than a position in the list, so this list is
+            // built by hand instead of from the shared option shape.
+            options = emptyList(),
+            selected = -1,
+            onSelect = { },
+            onDismiss = { regionPickerShown = false },
+            custom = {
+                ChoiceRow(
+                    label = "Auto — follow this device",
+                    selected = providerRegion.isBlank(),
+                    onClick = {
                         haptics.tap()
                         providerRegion = ""
                         prefs.providerRegion = ""
                         SyncScheduler.enrichMetadataNow(context)
                         regionPickerShown = false
                     }
-                    ProviderRegions.forEach { code ->
-                        RegionOption(
-                            label = "${regionDisplayName(code)} ($code)",
-                            selected = providerRegion == code
-                        ) {
+                )
+                ProviderRegions.forEach { code ->
+                    ChoiceRow(
+                        label = "${regionDisplayName(code)} ($code)",
+                        selected = providerRegion == code,
+                        onClick = {
                             haptics.tap()
                             providerRegion = code
                             prefs.providerRegion = code
                             SyncScheduler.enrichMetadataNow(context)
                             regionPickerShown = false
                         }
-                    }
+                    )
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { regionPickerShown = false }) { Text("Done") }
             }
         )
     }
 
-    pendingImpact?.let { impact ->
-        ModalBottomSheet(onDismissRequest = { pendingImpact = null }) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = M3ESpacing.page)
-                    .padding(bottom = M3ESpacing.sectionGap)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(M3EColor.accent().copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudSync,
-                            contentDescription = null,
-                            tint = M3EColor.accent(),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(Modifier.width(M3ESpacing.inlineGap))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Cloud sync", style = M3EType.rowTitle(), fontWeight = FontWeight.SemiBold, color = M3EColor.text())
-                        Text(
-                            text = if (impact.hasChanges) {
-                                "↑ ${impact.totalOutgoing} out · ↓ ${impact.totalIncoming} in"
-                            } else {
-                                "No title changes — episodes and history still sync"
-                            },
-                            style = M3EType.rowSupporting(),
-                            color = M3EColor.textMuted()
-                        )
-                    }
-                }
+}
 
-                ImpactSection(
-                    icon = Icons.Default.WarningAmber,
-                    title = "Conflicts",
-                    count = impact.conflictTitles.size,
-                    tint = M3EColor.warning(),
-                    summary = "Kept by both sides but disagreeing. The newest edit wins.",
-                    names = impact.conflictTitles,
-                    initiallyExpanded = true
-                )
-                ImpactSection(
-                    icon = Icons.Default.CloudDownload,
-                    title = "Incoming",
-                    count = impact.incomingTitles.size + impact.incomingEpisodes +
-                        impact.incomingCollections.size + impact.incomingCollectionItems,
-                    tint = M3EColor.accent(),
-                    summary = "${impact.incomingTitles.size} titles · ${impact.incomingEpisodes} episodes · " +
-                        "${impact.incomingCollections.size + impact.incomingCollectionItems} collection rows",
-                    names = impact.incomingTitles + impact.incomingCollections
-                )
-                ImpactSection(
-                    icon = Icons.Default.CloudUpload,
-                    title = "Uploads",
-                    count = impact.outgoingTitles.size + impact.outgoingEpisodes +
-                        impact.outgoingCollections.size + impact.outgoingCollectionItems,
-                    tint = M3EColor.positive(),
-                    summary = "${impact.outgoingTitles.size} titles · ${impact.outgoingEpisodes} episodes · " +
-                        "${impact.outgoingCollections.size + impact.outgoingCollectionItems} collection rows",
-                    names = impact.outgoingTitles + impact.outgoingCollections
-                )
-                ImpactSection(
-                    icon = Icons.Default.History,
-                    title = "History",
-                    count = impact.incomingCycles + impact.outgoingCycles +
-                        impact.incomingEvents + impact.outgoingEvents,
-                    tint = M3EColor.accent(),
-                    summary = "${impact.outgoingCycles} cycles · ${impact.outgoingEvents} events up, " +
-                        "${impact.incomingCycles} cycles · ${impact.incomingEvents} events down"
-                )
+// ── The shape of the page ────────────────────────────────────────────────────────────────────────
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
-                ) {
-                    OutlinedButton(
-                        onClick = { pendingImpact = null },
-                        shape = M3EShape.chip(),
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Cancel", style = M3EType.action()) }
-
-                    Button(
-                        onClick = {
-                            pendingImpact = null
-                            runSync()
-                        },
-                        enabled = !syncing,
-                        shape = M3EShape.chip(),
-                        colors = tintedButtonColors(),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        if (syncing) {
-                            LoadingIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = M3EColor.accent()
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("Sync now", style = M3EType.action())
-                        }
-                    }
-                }
-            }
+/**
+ * A section: a small label, then one container of rows.
+ *
+ * The label is outside the container so it belongs to the page rather than to the card, which is
+ * what lets the card be a single continuous plane while the page still has headings.
+ */
+@Composable
+private fun SettingsSection(
+    label: String,
+    rows: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            style = M3EType.groupLabel(),
+            color = M3EColor.accent(),
+            modifier = Modifier.padding(
+                start = 4.dp,
+                top = M3ESpacing.tightGap,
+                bottom = M3ESpacing.tightGap
+            )
+        )
+        Surface(
+            shape = M3EShape.group(),
+            color = M3EColor.card(),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(content = rows)
         }
     }
 }
 
 /**
+ * The hairline between two rows.
+ *
+ * Full width rather than inset past the icon: the icon column is the row's, not the page's, and a
+ * divider that starts halfway across reads as a different list. Low alpha, because a divider's job
+ * is to separate two things, not to become a third.
+ */
+@Composable
+private fun SettingsDivider() {
+    HorizontalDivider(
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    )
+}
+
+/** The chevron that says a row opens something. */
+@Composable
+private fun Chevron() {
+    Icon(
+        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+        contentDescription = null,
+        tint = M3EColor.textMuted(),
+        modifier = Modifier.size(20.dp)
+    )
+}
+
+/**
+ * One row: symbol, name, supporting line, and whatever the row does at the end of it.
+ *
+ * The trailing slot is the whole interaction model. A row with no trailing content and no `onClick`
+ * is a statement; a row with a chevron opens something; a row with a value is a choice already
+ * made. Nothing about the row changes shape depending on which it is, which is what makes the list
+ * scannable.
+ */
+@Composable
+private fun SettingsRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String? = null,
+    emphasise: Boolean = false,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .heightIn(min = M3ESpacing.rowMinHeight)
+            .padding(horizontal = M3ESpacing.cardGap, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            // The glyph carries the row's meaning before the words do, so it takes the text
+            // colour rather than the accent — the accent is reserved for the labels and for rows
+            // that are asking for something.
+            tint = if (emphasise) M3EColor.accent() else M3EColor.text(),
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.width(M3ESpacing.cardGap))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = M3EType.rowTitle(),
+                color = if (emphasise) M3EColor.accent() else M3EColor.text(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted(),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (onClick != null) {
+            Spacer(Modifier.width(M3ESpacing.tightGap))
+            if (trailing != null) trailing() else Chevron()
+        } else if (trailing != null) {
+            Spacer(Modifier.width(M3ESpacing.tightGap))
+            trailing()
+        }
+    }
+}
+
+/** A row whose whole control is a switch. */
+@Composable
+private fun SettingsSwitchRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String? = null,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onToggle: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            // The label is part of the target: tapping "Films" flips Films. A switch is the one
+            // control users aim at the row for, and asking them to hit 40dp when the row is 300 is
+            // a needless test.
+            .clickable(enabled = enabled) { onToggle(!checked) }
+            .heightIn(min = M3ESpacing.rowMinHeight)
+            .padding(horizontal = M3ESpacing.cardGap, vertical = 14.dp)
+            .alpha(if (enabled) 1f else 0.4f),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = M3EColor.text(),
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.width(M3ESpacing.cardGap))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = M3EType.rowTitle(),
+                color = M3EColor.text(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = M3EType.rowSupporting(),
+                    color = M3EColor.textMuted(),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        Spacer(Modifier.width(M3ESpacing.tightGap))
+        Switch(
+            checked = checked,
+            onCheckedChange = if (enabled) onToggle else null,
+            enabled = enabled
+        )
+    }
+}
+
+/** One option in a picker: a tick for the chosen one, a symbol for the rest. */
+@Composable
+private fun ChoiceRow(
+    label: String,
+    selected: Boolean,
+    icon: ImageVector? = null,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(M3EShape.chip())
+            .clickable { onClick() }
+            .heightIn(min = M3ESpacing.rowMinHeight)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // The slot is always reserved, so the labels line up whether or not an option has a symbol
+        // of its own.
+        Box(modifier = Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+            when {
+                selected -> Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = M3EColor.accent(),
+                    modifier = Modifier.size(20.dp)
+                )
+                icon != null -> Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = M3EColor.textMuted(),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+        Spacer(Modifier.width(M3ESpacing.inlineGap))
+        Text(
+            text = label,
+            style = M3EType.rowTitle(),
+            color = if (selected) M3EColor.accent() else M3EColor.text(),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/** One option in a [ChoiceDialog], named rather than positional so the call sites read as lists. */
+private data class Choice(
+    val value: Int,
+    val label: String,
+    val icon: ImageVector? = null
+)
+
+/**
+ * A picker for a short list: the same rows as the page, in a dialog.
+ *
+ * `custom` is for the region list, whose options carry a code rather than an index — the shared
+ * path is keyed by option value, and a region's value is a string.
+ */
+@Composable
+private fun ChoiceDialog(
+    title: String,
+    options: List<Choice>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    custom: (@Composable ColumnScope.() -> Unit)? = null
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (custom != null) {
+                    custom()
+                } else {
+                    options.forEach { option ->
+                        ChoiceRow(
+                            label = option.label,
+                            selected = selected == option.value,
+                            icon = option.icon
+                        ) { onSelect(option.value) }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        }
+    )
+}
+
+/**
  * Connection state as a symbol.
  *
- * The shipping screen wrote CONNECTED or STANDALONE in a pill. The colour and the cloud already say
- * it, and a word in a header is the one place a label is pure decoration — the screen reader still
- * gets it from the description.
+ * A dot with a cloud rather than a word: the colour and the glyph already say it, and a header is
+ * the one place a label is pure decoration — the screen reader still gets the sentence.
  */
 @Composable
 private fun ConnectionMark(connected: Boolean) {
     Surface(
         shape = CircleShape,
         color = M3EColor.card(),
-        modifier = Modifier.size(44.dp)
+        modifier = Modifier.size(40.dp)
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             Icon(
-                imageVector = if (connected) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                imageVector = if (connected) Icons.Outlined.CloudDone else Icons.Outlined.CloudOff,
                 contentDescription = if (connected) "Cloud connected" else "Standalone — no cloud configured",
-                tint = if (connected) M3EColor.positive() else M3EColor.warning(),
-                modifier = Modifier.size(22.dp)
+                tint = if (connected) M3EColor.positive() else M3EColor.textMuted(),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+/**
+ * "Films" and "TV" as two Material 3 Expressive toggle buttons.
+ *
+ * The pair used to be two full switch rows with a sentence each, which is three lines of type to
+ * say "these two kinds of release can notify you". A toggle carries the same state in a control you
+ * can hit, and the pair reads as one choice rather than two settings that happen to sit together.
+ */
+@Composable
+private fun ChannelToggles(
+    movies: Boolean,
+    tv: Boolean,
+    enabled: Boolean,
+    onMovies: (Boolean) -> Unit,
+    onTv: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = M3ESpacing.cardGap, vertical = M3ESpacing.tightGap),
+        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
+    ) {
+        ToggleButton(
+            checked = movies,
+            onCheckedChange = onMovies,
+            enabled = enabled,
+            modifier = Modifier.weight(1f),
+            icon = { Icon(Icons.Outlined.Movie, contentDescription = null, modifier = Modifier.size(16.dp)) },
+            content = { Text("Films", style = M3EType.action()) }
+        )
+        ToggleButton(
+            checked = tv,
+            onCheckedChange = onTv,
+            enabled = enabled,
+            modifier = Modifier.weight(1f),
+            icon = { Icon(Icons.Outlined.Tv, contentDescription = null, modifier = Modifier.size(16.dp)) },
+            content = { Text("TV", style = M3EType.action()) }
+        )
+    }
+}
+
+/**
+ * Auto / Dark / Light as one connected control.
+ *
+ * A segmented button rather than three rows or a dialog: the options are mutually exclusive and
+ * always visible, which is exactly what a segmented control means. It also gives the screen one
+ * piece of Material 3 Expressive's shape language — the row reads as a single object with a moving
+ * selection, not three independent buttons.
+ */
+@Composable
+private fun ThemeSegmented(selected: Int, onSelect: (Int) -> Unit) {
+    val options = listOf(
+        Triple(0, "Auto", Icons.Outlined.BrightnessAuto),
+        Triple(1, "Dark", Icons.Outlined.DarkMode),
+        Triple(2, "Light", Icons.Outlined.LightMode)
+    )
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        options.forEachIndexed { index, (mode, label, icon) ->
+            SegmentedButton(
+                selected = selected == mode,
+                onClick = { onSelect(mode) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                icon = {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
+                label = { Text(label, style = M3EType.action()) }
             )
         }
     }
@@ -922,8 +1188,7 @@ private fun ConnectionMark(connected: Boolean) {
  * The six palettes as a strip of swatches, with the one in use named under it.
  *
  * A palette is a thing you look at, so it is shown rather than listed: six circles at a size you
- * can actually judge, the chosen one ringed and checked, and its name underneath. The name moves
- * with the choice, which is the one piece of text this needs.
+ * can actually judge, the chosen one ringed and checked, and its name underneath.
  */
 @Composable
 private fun PaletteStrip(selected: Int, onSelect: (Int) -> Unit) {
@@ -939,8 +1204,7 @@ private fun PaletteStrip(selected: Int, onSelect: (Int) -> Unit) {
                     modifier = Modifier
                         .weight(1f)
                         .aspectRatio(1f)
-                        // Clipped before the click, so the ripple follows the shape. Unclipped it
-                        // was a sharp rectangle around a round swatch.
+                        // Clipped before the click, so the ripple follows the shape.
                         .clip(CircleShape)
                         .clickable { onSelect(index) }
                         .background(preset.accentColor, CircleShape)
@@ -957,10 +1221,9 @@ private fun PaletteStrip(selected: Int, onSelect: (Int) -> Unit) {
                 ) {
                     if (isSelected) {
                         Icon(
-                            imageVector = Icons.Default.Check,
+                            imageVector = Icons.Filled.Check,
                             contentDescription = "Selected",
-                            // Contrast against the swatch, not the page: the presets run from
-                            // near-white to near-black.
+                            // Contrast against the swatch, not the page.
                             tint = if (preset.accentColor.luminance() > 0.5f) Color.Black else Color.White,
                             modifier = Modifier.size(20.dp)
                         )
@@ -973,321 +1236,6 @@ private fun PaletteStrip(selected: Int, onSelect: (Int) -> Unit) {
             text = presets.getOrNull(selected)?.name ?: "Custom",
             style = M3EType.rowTitle(),
             color = M3EColor.text(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-/** Auto / Dark / Light as one control: they are one choice, not three actions. */
-@Composable
-private fun ThemeSelector(selected: Int, onSelect: (Int) -> Unit) {
-    val modes = listOf(
-        Triple(0, "Auto", Icons.Default.BrightnessAuto),
-        Triple(1, "Dark", Icons.Default.DarkMode),
-        Triple(2, "Light", Icons.Default.LightMode)
-    )
-    Surface(
-        shape = M3EShape.chip(),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(3.dp),
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            modes.forEach { (mode, label, icon) ->
-                val isSelected = selected == mode
-                Surface(
-                    onClick = { onSelect(mode) },
-                    shape = M3EShape.chip(),
-                    color = if (isSelected) M3EColor.accent() else Color.Transparent,
-                    contentColor = if (isSelected) {
-                        MaterialTheme.colorScheme.onPrimary
-                    } else {
-                        M3EColor.textMuted()
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = M3ESpacing.rowGap),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(text = label, style = M3EType.action())
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * One notification channel as a tile that lights up.
- *
- * A switch says "this is on"; a tile says it too, and says which channel it is at the same time —
- * and four of them side by side read as the set they are. Tinted with the accent when on, and
- * dimmed when the master switch is off, because then the channel is not in play whatever it says.
- */
-@Composable
-private fun ToggleTile(
-    icon: ImageVector,
-    label: String,
-    checked: Boolean,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    onToggle: (Boolean) -> Unit
-) {
-    val tint = if (checked) M3EColor.accent() else M3EColor.textMuted()
-    Surface(
-        onClick = { onToggle(!checked) },
-        shape = M3EShape.card(),
-        color = if (checked) {
-            M3EColor.accent().copy(alpha = 0.18f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        },
-        modifier = modifier
-            .height(84.dp)
-            .then(if (enabled) Modifier else Modifier.alpha(0.45f))
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(M3ESpacing.tightGap),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = label,
-                style = M3EType.rowSupporting(),
-                fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (checked) M3EColor.text() else M3EColor.textMuted(),
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-/** A row that is a symbol and a switch: the icon says what, the switch says whether. */
-@Composable
-private fun IconSwitchRow(
-    icon: ImageVector,
-    label: String,
-    checked: Boolean,
-    subtitle: String? = null,
-    onToggle: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = M3ESpacing.rowGap),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (checked) M3EColor.accent() else M3EColor.textMuted(),
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(Modifier.width(M3ESpacing.inlineGap))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = label, style = M3EType.rowTitle(), color = M3EColor.text())
-            if (subtitle != null) {
-                Text(text = subtitle, style = M3EType.rowSupporting(), color = M3EColor.textMuted())
-            }
-        }
-        Switch(checked = checked, onCheckedChange = onToggle)
-    }
-}
-
-/** A row that is a symbol, a name, and a value you tap to change. */
-@Composable
-private fun IconValueRow(
-    icon: ImageVector,
-    label: String,
-    value: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(M3EShape.chip())
-            .clickable { onClick() }
-            .padding(vertical = M3ESpacing.rowGap),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = M3EColor.textMuted(),
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(Modifier.width(M3ESpacing.inlineGap))
-        Text(
-            text = label,
-            style = M3EType.rowSupporting(),
-            color = M3EColor.textMuted(),
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = value,
-            style = M3EType.rowTitleStrong(),
-            color = M3EColor.accent()
-        )
-    }
-}
-
-/** A row that is a symbol, a name, a small state, and a chevron: it opens something. */
-@Composable
-private fun IconActionRow(
-    icon: ImageVector,
-    label: String,
-    detail: String?,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(M3EShape.chip())
-            .clickable { onClick() }
-            .padding(vertical = M3ESpacing.rowGap),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = M3EColor.accent(),
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(Modifier.width(M3ESpacing.inlineGap))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = label, style = M3EType.rowTitle(), color = M3EColor.text())
-            if (detail != null) {
-                Text(text = detail, style = M3EType.rowSupporting(), color = M3EColor.textMuted())
-            }
-        }
-        Icon(
-            imageVector = Icons.Default.ExpandMore,
-            contentDescription = null,
-            tint = M3EColor.textMuted(),
-            modifier = Modifier.size(20.dp)
-        )
-    }
-}
-
-/** One category of the sync preview: symbol, name, count, and a tap-to-expand body. */
-@Composable
-private fun ImpactSection(
-    icon: ImageVector,
-    title: String,
-    count: Int,
-    tint: Color,
-    summary: String,
-    names: List<String> = emptyList(),
-    initiallyExpanded: Boolean = false
-) {
-    var expanded by remember { mutableStateOf(initiallyExpanded && count > 0) }
-    val idle = M3EColor.textMuted()
-    val colour = if (count > 0) tint else idle
-
-    Surface(
-        shape = M3EShape.card(),
-        color = M3EColor.card(),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(M3EShape.chip())
-                    .clickable { expanded = !expanded },
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(icon, contentDescription = null, tint = colour, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(M3ESpacing.inlineGap))
-                Text(
-                    text = title,
-                    style = M3EType.rowTitleStrong(),
-                    color = M3EColor.text()
-                )
-                Spacer(Modifier.weight(1f))
-                // The count as a badge rather than a word: "3" reads faster than "3 conflicts", and
-                // the title already said what it is counting.
-                Text(
-                    text = count.toString(),
-                    style = M3EType.action(),
-                    fontWeight = FontWeight.Bold,
-                    color = colour,
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(colour.copy(alpha = 0.14f))
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                )
-                Spacer(Modifier.width(M3ESpacing.tightGap))
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = idle,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            if (expanded) {
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                Text(summary, style = M3EType.rowSupporting(), color = M3EColor.textMuted())
-                if (names.isNotEmpty()) {
-                    Spacer(Modifier.height(M3ESpacing.tightGap))
-                    names.take(8).forEach { name ->
-                        Text(
-                            text = "· $name",
-                            style = M3EType.rowSupporting(),
-                            color = M3EColor.textMuted(),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    if (names.size > 8) {
-                        Text(
-                            text = "+ ${names.size - 8} more",
-                            style = M3EType.rowSupporting(),
-                            color = M3EColor.accent()
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** One row in the region dialog: a tick for the chosen one, a globe for the rest. */
-@Composable
-private fun RegionOption(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(M3EShape.chip())
-            .clickable { onClick() }
-            .padding(vertical = M3ESpacing.rowGap),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = if (selected) Icons.Default.Check else Icons.Default.Public,
-            contentDescription = null,
-            tint = if (selected) M3EColor.accent() else M3EColor.textMuted(),
-            modifier = Modifier.size(18.dp)
-        )
-        Spacer(Modifier.width(M3ESpacing.inlineGap))
-        Text(
-            text = label,
-            style = M3EType.rowTitle(),
-            color = if (selected) M3EColor.accent() else M3EColor.text(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -1319,9 +1267,9 @@ private fun CredentialField(
                 IconButton(onClick = { revealed = !revealed }) {
                     Icon(
                         imageVector = if (revealed) {
-                            Icons.Default.VisibilityOff
+                            Icons.Outlined.VisibilityOff
                         } else {
-                            Icons.Default.Visibility
+                            Icons.Outlined.Visibility
                         },
                         contentDescription = if (revealed) "Hide $label" else "Show $label"
                     )
@@ -1339,9 +1287,8 @@ private fun CredentialField(
 /**
  * The M3 time picker, in a dialog.
  *
- * It was the platform `TimePickerDialog` — the one thing in this screen that was not Material at all,
- * in the screen that is otherwise the most deliberately M3E. The platform dialog is a 2014 widget: no
- * theme, no shape, no relation to anything around it.
+ * It was the platform `TimePickerDialog` — the one thing in this screen that was not Material at
+ * all. The platform dialog is a 2014 widget: no theme, no shape, no relation to anything around it.
  */
 @Composable
 private fun TimePickerPopup(
@@ -1353,27 +1300,54 @@ private fun TimePickerPopup(
     val state = rememberTimePickerState(
         initialHour = initialSeconds / 3600,
         initialMinute = (initialSeconds % 3600) / 60,
-        is24Hour = true
+        // 12-hour, so the clock carries its own AM/PM selector. That is how a time is read on a
+        // phone, and it is what the Mac's picker shows; 24-hour was the platform default leaking
+        // through rather than a decision.
+        is24Hour = false
     )
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = M3EShape.hero(), color = M3EColor.card()) {
-            Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
-                Text(title, style = M3EType.rowTitle(), fontWeight = FontWeight.SemiBold, color = M3EColor.text())
-                Spacer(Modifier.height(M3ESpacing.tightGap))
-                TimePicker(state = state)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDismiss) { Text("Cancel", style = M3EType.action()) }
-                    TextButton(
-                        onClick = {
-                            onConfirm(state.hour * 3600 + state.minute * 60)
-                            onDismiss()
-                        }
-                    ) { Text("Set", style = M3EType.action(), color = M3EColor.accent()) }
+    // The expressive dialog has two faces — the dial and the keypad — and the toggle that swaps
+    // them lives in the dialog's own header, next to the title.
+    var displayMode by remember { mutableStateOf(TimePickerDisplayMode.Picker) }
+
+    TimePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(state.hour * 3600 + state.minute * 60)
+                    onDismiss()
                 }
-            }
+            ) { Text("Set", style = M3EType.action()) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", style = M3EType.action()) }
+        },
+        title = {
+            Text(
+                text = title,
+                style = M3EType.rowTitle(),
+                fontWeight = FontWeight.SemiBold,
+                color = M3EColor.text()
+            )
+        },
+        modeToggleButton = {
+            TimePickerDialogDefaults.DisplayModeToggle(
+                // The toggle reports a tap, not a target mode; swapping here keeps the dialog the
+                // only thing that knows there are exactly two faces.
+                onDisplayModeChange = {
+                    displayMode = if (displayMode == TimePickerDisplayMode.Input) {
+                        TimePickerDisplayMode.Picker
+                    } else {
+                        TimePickerDisplayMode.Input
+                    }
+                },
+                displayMode = displayMode
+            )
+        }
+    ) {
+        when (displayMode) {
+            TimePickerDisplayMode.Input -> TimeInput(state = state)
+            else -> TimePicker(state = state)
         }
     }
 }
@@ -1385,6 +1359,8 @@ private val WEEKDAY_NAMES = listOf(
 
 private fun weekdayLabel(macWeekday: Int): String =
     WEEKDAY_NAMES.getOrElse(macWeekday - 1) { "Sunday" }
+
+
 
 private fun clockLabel(seconds: Int): String =
     String.format(Locale.US, "%02d:%02d", seconds / 3600, (seconds % 3600) / 60)

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The window theme before Compose draws. Without a splash theme the process shows the platform
+      window background for a frame or two — the blank flash that made cold starts look unstable.
+      The icon is the launcher's, so the splash is the same mark the user tapped.
+    -->
+    <style name="Theme.MediaTracker" parent="android:style/Theme.Material.NoActionBar" />
+
+    <style name="Theme.MediaTracker.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.MediaTracker</item>
+    </style>
+</resources>

@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.vara.mediatracker.ui.theme.LocalSemanticColors
 
 /**
@@ -171,6 +172,20 @@ object M3EType {
     @Composable
     fun rowSupporting(): TextStyle = MaterialTheme.typography.bodyMedium
 
+    /**
+     * The label above a grouped list: "Appearance", "Notifications".
+     *
+     * Sentence case rather than the mono eyebrow used on a screen header — a group label names a
+     * region of the page, and the accent colour is already doing the separating. It is deliberately
+     * the smallest thing on the screen: a section heading that competes with the rows it heads
+     * gets read before the choice it is supposed to introduce.
+     */
+    @Composable
+    fun groupLabel(): TextStyle = MaterialTheme.typography.labelMedium.copy(
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.2.sp
+    )
+
     /** A large number: a stat, a count, a runtime. */
     @Composable
     fun metric(): TextStyle = MaterialTheme.typography.headlineMedium
@@ -198,6 +213,16 @@ object M3EShape {
     /** A chip, pill or small badge. */
     @Composable
     fun chip() = MaterialTheme.shapes.small
+
+    /**
+     * A grouped list: several rows stacked inside one container.
+     *
+     * Smaller than [card] on purpose. A card is one object on a page; a group is a section of a
+     * longer page, and at the card radius the corners read as four separate cards that happen to
+     * touch. Medium is the scale's "container of rows" step.
+     */
+    @Composable
+    fun group() = MaterialTheme.shapes.medium
 
     /** A sheet or edge-attached surface — round on top. */
     @Composable
