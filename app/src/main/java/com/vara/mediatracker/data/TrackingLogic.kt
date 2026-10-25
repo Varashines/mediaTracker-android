@@ -3,6 +3,7 @@ package com.vara.mediatracker.data
 import com.vara.mediatracker.data.model.EpisodeEntity
 import com.vara.mediatracker.data.model.MediaIds
 import com.vara.mediatracker.data.model.MediaItemEntity
+import com.vara.mediatracker.data.model.TVSeasonEntity
 import com.vara.mediatracker.di.AppContainer
 import com.vara.mediatracker.ui.common.AppToast
 import com.vara.mediatracker.util.WireTime
@@ -35,6 +36,41 @@ import java.util.Locale
 object TrackingLogic {
 
     fun isoNow(): String = WireTime.now()
+
+    /** Local calendar date, the shape `airDate` is stored in (`yyyy-MM-dd`). */
+    private fun localToday(): String =
+        java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+    /**
+     * Whether an episode is available to watch: its air date has arrived, or we do not know it.
+     *
+     * Unknown counts as aired on purpose. A show whose episode metadata has not been enriched yet
+     * would otherwise ignore "mark season watched" completely, which is a worse failure than
+     * treating an unknown episode as available — and it is what the Mac does
+     * (`TVEpisode.isAvailable`).
+     */
+    private fun EpisodeEntity.hasAired(today: String): Boolean =
+        airDate?.take(10)?.let { it <= today } ?: true
+
+    /**
+     * Whether a show is finished.
+     *
+     * Two conditions, both of them lessons from the Mac: every episode that has aired must be
+     * watched, and the local table must hold at least as many episodes as the season rows declare.
+     * Without the second, a show enriched for only one season completed on its last known episode
+     * and pushed `Completed` to the cloud.
+     */
+    private fun isShowComplete(
+        episodes: List<EpisodeEntity>,
+        declared: List<TVSeasonEntity>,
+        today: String
+    ): Boolean {
+        val aired = episodes.filter { it.seasonNumber > 0 && it.hasAired(today) }
+        if (aired.isEmpty() || aired.any { !it.isWatched }) return false
+        return declared.all { season ->
+            episodes.count { it.seasonNumber == season.seasonNumber } >= season.episodeCount
+        }
+    }
 
     /**
      * Mark a single episode watched or unwatched with intelligent show state progression.
@@ -77,7 +113,11 @@ object TrackingLogic {
         val show = dao.getMediaById(episode.showId)
         if (show != null) {
             val allEpisodes = dao.getEpisodesListForShow(episode.showId)
-            val allWatched = allEpisodes.isNotEmpty() && allEpisodes.all { it.isWatched }
+            val allWatched = isShowComplete(
+                allEpisodes,
+                container.database.seasonDao().getDeclaredCountsForShow(episode.showId),
+                localToday()
+            )
 
             if (watched) {
                 if (show.state.equals("Wishlist", ignoreCase = true)) {
@@ -142,13 +182,26 @@ object TrackingLogic {
         val dao = container.mediaDao
         val syncManager = container.syncManager()
 
-        // 1. Bulk update episodes in Room
-        dao.setSeasonEpisodesWatched(showId, seasonNumber, watched, if (watched) now else null)
+        val today = localToday()
+
+        // Only what has aired. The season list includes announced episodes, and marking those
+        // watched wrote watch history for episodes nobody could have watched, then pushed them to
+        // the Mac, where the show completed early.
+        //
+        // Un-watching is deliberately not filtered: a row the old behaviour marked watched has to
+        // stay clearable even if it never aired.
+        val affected = if (watched) seasonEpisodes.filter { it.hasAired(today) } else seasonEpisodes
+
+        // 1. Update episodes in Room. Per row rather than a season-wide UPDATE, because the
+        //    un-aired ones must be left exactly as they are.
+        for (ep in affected) {
+            dao.setEpisodeWatched(ep.uniqueId, watched, if (watched) now else null)
+        }
         dao.updateLastInteractionDate(showId, now)
 
         // 2. Log each episode in watch history (same append-only log as the single-episode path).
         val historyDao = container.database.watchHistoryDao()
-        for (ep in seasonEpisodes) {
+        for (ep in affected) {
             if (watched) {
                 WatchHistoryRecorder.recordWatch(
                     dao = historyDao,
@@ -165,7 +218,7 @@ object TrackingLogic {
 
         // 3. Sync to Supabase
         val showTmdbId = MediaIds.tmdbIdOf(showId).toString()
-        for (ep in seasonEpisodes) {
+        for (ep in affected) {
             syncManager.pushEpisodeWatch(showTmdbId, ep.seasonNumber, ep.episodeNumber, watched)
         }
 
@@ -173,7 +226,7 @@ object TrackingLogic {
         val show = dao.getMediaById(showId)
         if (show != null) {
             val allEpisodes = dao.getEpisodesListForShow(showId)
-            val allWatched = allEpisodes.isNotEmpty() && allEpisodes.all { it.isWatched }
+            val allWatched = isShowComplete(allEpisodes, container.database.seasonDao().getDeclaredCountsForShow(showId), today)
 
             if (watched) {
                 if (allWatched) {

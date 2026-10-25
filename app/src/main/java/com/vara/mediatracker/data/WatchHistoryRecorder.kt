@@ -41,8 +41,11 @@ object WatchHistoryRecorder {
         // literal lookup sees two episodes where there is one and records the watch twice. Null
         // (a movie) compares equal to null, which is what keeps the movie path working.
         val wanted = MediaIds.canonicalEpisodeIdOrNull(episodeId)
+        // Scoped to *this* cycle. Matching any live event for the episode made a rewatch silent:
+        // in the second run the still-live event from the first was returned, so nothing new was
+        // written and the rewatch never reached the ledger the year review reads.
         dao.getLiveEvents(mediaId).firstOrNull {
-            MediaIds.canonicalEpisodeIdOrNull(it.episodeId) == wanted
+            it.cycleId == cycle.id && MediaIds.canonicalEpisodeIdOrNull(it.episodeId) == wanted
         }?.let { return it }
 
         val event = WatchEventEntity(
@@ -72,9 +75,12 @@ object WatchHistoryRecorder {
     suspend fun voidWatch(dao: WatchHistoryDao, mediaId: String, episodeId: String?, at: String) {
         // Canonical here too, or un-watching would silently do nothing to an event the Mac wrote.
         val wanted = MediaIds.canonicalEpisodeIdOrNull(episodeId)
-        val existing = dao.getLiveEvents(mediaId).firstOrNull {
-            MediaIds.canonicalEpisodeIdOrNull(it.episodeId) == wanted
-        } ?: return
+        // The newest live event, not the first: with a rewatch there can be one per cycle, and
+        // un-marking means undoing the most recent viewing rather than an old run's.
+        val existing = dao.getLiveEvents(mediaId)
+            .filter { MediaIds.canonicalEpisodeIdOrNull(it.episodeId) == wanted }
+            .maxByOrNull { it.watchedAt }
+            ?: return
         dao.upsertEvents(listOf(existing.copy(voidedAt = at, updatedAt = at)))
     }
 
