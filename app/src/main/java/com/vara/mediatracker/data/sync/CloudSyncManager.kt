@@ -35,6 +35,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 import android.util.Log
+import androidx.room.withTransaction
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.util.*
@@ -584,11 +585,26 @@ class CloudSyncManager(
             return Result.failure(IllegalStateException("Sync credentials not configured"))
         }
         val r = reconcile(since)
-        if (r.incomingMedia.isNotEmpty()) mediaDao.upsertMedia(r.incomingMedia)
-        if (r.incomingEpisodes.isNotEmpty()) mediaDao.upsertEpisodes(r.incomingEpisodes)
-        if (r.incomingCollections.isNotEmpty()) db.collectionDao().upsertCollections(r.incomingCollections)
-        if (r.incomingCollectionItems.isNotEmpty()) db.collectionDao().upsertCollectionItems(r.incomingCollectionItems)
-        if (r.incomingCycles.isNotEmpty()) db.watchHistoryDao().upsertCycles(r.incomingCycles)
+
+        // One transaction, and a guard against the pull undoing what happened during it.
+        //
+        // The payload is decided from a snapshot read before a network round-trip that can take
+        // minutes, and each upsert replace the whole row — so a tap during the pull was reverted
+        // by the page it raced with. Comparing the incoming row against the row on disk *now*
+        // and skipping anything edited since keeps the newer of the two.
+        db.withTransaction {
+            val localStamps = mediaDao.getMediaByIds(r.incomingMedia.map { it.id })
+                .associate { it.id to (it.lastInteractionDate ?: "") }
+            val applicable = r.incomingMedia.filter { incoming ->
+                val local = localStamps[incoming.id]
+                local == null || local <= (incoming.lastInteractionDate ?: "")
+            }
+            if (applicable.isNotEmpty()) mediaDao.upsertMedia(applicable)
+            if (r.incomingEpisodes.isNotEmpty()) mediaDao.upsertEpisodes(r.incomingEpisodes)
+            if (r.incomingCollections.isNotEmpty()) db.collectionDao().upsertCollections(r.incomingCollections)
+            if (r.incomingCollectionItems.isNotEmpty()) db.collectionDao().upsertCollectionItems(r.incomingCollectionItems)
+            if (r.incomingCycles.isNotEmpty()) db.watchHistoryDao().upsertCycles(r.incomingCycles)
+        }
         // A rewatch resets the projection up to the moment it started, exactly as it does on the
         // Mac. Comparing against the cycle's start rather than "a cycle I have not seen" makes it
         // idempotent and also repairs a device that already pulled the cycle before this rule
@@ -718,6 +734,11 @@ class CloudSyncManager(
                         updatedAt = remote.updated_at
                     )
                 )
+            } else if (localTime != null && (remoteTime == null || localTime > remoteTime)) {
+                // The other half of the rule, which was missing: a cycle *completed* here is the
+                // newer one, so it has to go up. Without this a show finished on the phone stayed
+                // open on the Mac forever, because only cycle *creation* was ever pushed.
+                outgoingCycles.add(local)
             }
         }
         for (remote in remoteCycles) {

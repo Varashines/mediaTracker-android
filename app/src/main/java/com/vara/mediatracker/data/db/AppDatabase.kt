@@ -41,6 +41,10 @@ interface MediaDao {
     suspend fun updateState(id: String, state: String, now: String)
 
     /** Bulk state change for Library multi-select: one statement instead of N. */
+    /** The rows behind [ids], for comparing an incoming page against what is on disk right now. */
+    @Query("SELECT * FROM media_items WHERE id IN (:ids)")
+    suspend fun getMediaByIds(ids: List<String>): List<MediaItemEntity>
+
     @Query("UPDATE media_items SET state = :state, lastStateChangeDate = :now, lastInteractionDate = :now WHERE id IN (:ids)")
     suspend fun updateStateForIds(ids: List<String>, state: String, now: String)
 
