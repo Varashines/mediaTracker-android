@@ -105,6 +105,13 @@ fun M3ERoughCalendar(
     core: LibraryCore,
     onOpen: (MediaItemEntity) -> Unit = {}
 ) {
+    // A cold start renders the empty state before Room answers — "0 titles", "Your library is up
+    // to date" — which reads as an empty library rather than a loading one.
+    if (!core.loaded) {
+        M3ESkeleton()
+        return
+    }
+
     // Reading the app clock is what recomposes this as it ticks, so `today` re-derives rather
     // than being fixed at first composition. Keyed to the minute: no need to rebuild the grid
     // sixty times a minute to notice a date change once.

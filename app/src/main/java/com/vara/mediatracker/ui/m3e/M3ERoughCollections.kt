@@ -75,6 +75,13 @@ internal fun M3ERoughCollections(
     /** False when embedded in the Hub, which supplies its own header. */
     showHeader: Boolean = true
 ) {
+    // A cold start renders the empty state before Room answers — "0 titles", "Your library is up
+    // to date" — which reads as an empty library rather than a loading one.
+    if (!core.loaded) {
+        M3ESkeleton()
+        return
+    }
+
     val library = core.items
     val scope = rememberCoroutineScope()
     // Bumped after every write, because the DAO's read is a one-shot rather than a Flow.

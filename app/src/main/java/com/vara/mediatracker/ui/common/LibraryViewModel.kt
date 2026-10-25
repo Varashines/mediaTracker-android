@@ -52,6 +52,11 @@ data class TVShowProgress(
  */
 @Immutable
 data class LibraryCore(
+    /**
+     * False for the placeholder value a `stateIn` starts with, true once Room has actually
+     * answered. Screens use it to tell "nothing here" from "not asked yet".
+     */
+    val loaded: Boolean = false,
     val items: List<MediaItemEntity> = emptyList(),
     val allEpisodes: List<EpisodeEntity> = emptyList(),
     val episodesByShow: Map<String, List<EpisodeEntity>> = emptyMap(),
@@ -79,6 +84,7 @@ data class LibraryCore(
  */
 @Immutable
 data class HomeData(
+    val loaded: Boolean = false,
     val showProgressMap: Map<String, TVShowProgress> = emptyMap(),
     val resumeItems: List<MediaItemEntity> = emptyList(),
     val comingSoonItems: List<MediaItemEntity> = emptyList(),
@@ -120,6 +126,7 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
             // only way none of those surfaces can disagree.
             val episodes = raw.episodes.filter { it.seasonNumber > 0 }
             LibraryCore(
+                loaded = true,
                 items = raw.items,
                 allEpisodes = episodes,
                 // Sorted once here so every consumer (Home rails, Hub, Calendar, Detail)
@@ -230,6 +237,7 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
         val spotlightItem = spotlightItems.firstOrNull()
 
         return HomeData(
+            loaded = true,
             showProgressMap = showProgressMap,
             resumeItems = resumeItems,
             comingSoonItems = comingSoonItems,

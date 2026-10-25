@@ -648,6 +648,13 @@ private fun HomeSection(
     onOpen: (MediaItemEntity) -> Unit,
     onSeeAll: (String, List<MediaItemEntity>, ListSubtitle) -> Unit
 ) {
+    // A cold start renders the empty state before Room answers — "0 titles", "Your library is up
+    // to date" — which reads as an empty library rather than a loading one.
+    if (!core.loaded) {
+        M3ESkeleton()
+        return
+    }
+
     // Rails come from the same derivations the shipping Home uses — HomeEligibility's eligibility
     // rules decide Continue watching, next-airing instants decide Coming soon — rather than this
     // sketch's own date comparisons. Which rail a title belongs in is decided there, not here.
@@ -775,6 +782,13 @@ private fun LibrarySection(
     onFinished: () -> Unit,
     onHistory: () -> Unit
 ) {
+    // A cold start renders the empty state before Room answers — "0 titles", "Your library is up
+    // to date" — which reads as an empty library rather than a loading one.
+    if (!core.loaded) {
+        M3ESkeleton()
+        return
+    }
+
     // Real filtering and sorting: LibraryQuery is the same pure routine the shipping Library uses,
     // including its sort orders, rather than a second set invented for this screen.
     // Held as the two plain values rather than as a LibraryFilters, so they can be saveable: the

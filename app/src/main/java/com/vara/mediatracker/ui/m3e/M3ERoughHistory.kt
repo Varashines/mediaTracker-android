@@ -69,6 +69,13 @@ internal fun M3ERoughHistory(
     core: LibraryCore,
     onOpen: (MediaItemEntity) -> Unit = {}
 ) {
+    // A cold start renders the empty state before Room answers — "0 titles", "Your library is up
+    // to date" — which reads as an empty library rather than a loading one.
+    if (!core.loaded) {
+        M3ESkeleton()
+        return
+    }
+
     val byId = remember(core) { core.items.associateBy { it.id } }
     val entries by produceState(emptyList<HistoryEntry>(), core.items) {
         value = withContext(Dispatchers.Default) {
