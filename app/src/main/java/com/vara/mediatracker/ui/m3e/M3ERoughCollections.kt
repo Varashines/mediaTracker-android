@@ -105,15 +105,28 @@ internal fun M3ERoughCollections(
 
     // Smart membership is evaluated from the rule set the Mac wrote; manual membership is the
     // stored rows. Both end up as titles, so a card, its count and its covers all agree.
-    fun membersOf(collection: CollectionEntity): List<MediaItemEntity> =
-        if (collection.isSmart) {
-            val rules = SmartRules.decode(collection.smartRules)
-            library.filter { SmartRules.matches(it, badgeLabels[it.id], rules) }
-        } else {
-            members
-                .filter { it.collectionId == collection.id && !it.isDeleted }
-                .mapNotNull { itemsById[it.mediaId] }
+    //
+    // Computed once for every collection, not per card. A smart collection runs its rules over the
+    // whole library, and this used to be called from inside items(), so the list did
+    // collections × titles of rule matching on every recomposition. Manual rows are grouped once
+    // for the same reason.
+    val membership: Map<String, List<MediaItemEntity>> = remember(live, library, badgeLabels, members, itemsById) {
+        val rowsByCollection = members
+            .filterNot { it.isDeleted }
+            .groupBy({ it.collectionId }, { it.mediaId })
+        live.associate { collection ->
+            val titles = if (collection.isSmart) {
+                val rules = SmartRules.decode(collection.smartRules)
+                library.filter { SmartRules.matches(it, badgeLabels[it.id], rules) }
+            } else {
+                rowsByCollection[collection.id].orEmpty().mapNotNull { itemsById[it] }
+            }
+            collection.id to titles
         }
+    }
+
+    fun membersOf(collection: CollectionEntity): List<MediaItemEntity> =
+        membership[collection.id].orEmpty()
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
