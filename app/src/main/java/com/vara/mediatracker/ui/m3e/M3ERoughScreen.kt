@@ -73,6 +73,7 @@ import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -351,7 +352,8 @@ fun M3ERoughScreen(
                     onOpen = { stack = stack + Overlay.Detail(it) },
                     onHub = { stack = stack + Overlay.Hub },
                     onFinished = { stack = stack + Overlay.Finished },
-                    onHistory = { stack = stack + Overlay.History }
+                    onHistory = { stack = stack + Overlay.History },
+                    onSearch = { stack = stack + Overlay.Search }
                 )
                 else -> M3ERoughSettings(
                     container = container,
@@ -800,7 +802,8 @@ private fun LibrarySection(
     onOpen: (MediaItemEntity) -> Unit,
     onHub: () -> Unit,
     onFinished: () -> Unit,
-    onHistory: () -> Unit
+    onHistory: () -> Unit,
+    onSearch: () -> Unit
 ) {
     // A cold start renders the empty state before Room answers — "0 titles", "Your library is up
     // to date" — which reads as an empty library rather than a loading one.
@@ -914,6 +917,28 @@ private fun LibrarySection(
                 Spacer(Modifier.height(M3ESpacing.cardGap))
             }
         }
+
+        // Two different kinds of nothing. An empty library needs a way in; an empty *filter* needs
+        // to say the filters are the reason, or it looks like the library vanished.
+        if (core.items.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                EmptyState(
+                    title = "Your library's a blank slate.",
+                    body = "Find something you love in Search and it'll settle in here — posters, air dates, all of it.",
+                    action = {
+                        Button(onClick = onSearch) { Text("Search for something") }
+                    }
+                )
+            }
+        } else if (library.isEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                EmptyState(
+                    title = "Nothing matches those filters.",
+                    body = "Loosen one of them and the shelf fills back up."
+                )
+            }
+        }
+
         items(library, key = { it.id }) { item ->
             if (listView) {
                 TitleRow(
@@ -962,14 +987,10 @@ private fun FinishedSection(library: List<MediaItemEntity>, onOpen: (MediaItemEn
         }
         if (finished.isEmpty()) {
             item {
-                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "Nothing finished yet.",
-                        style = M3EType.rowSupporting(),
-                        color = M3EColor.textMuted(),
-                        modifier = Modifier.padding(M3ESpacing.cardGap)
-                    )
-                }
+                EmptyState(
+                    title = "Nothing finished yet.",
+                    body = "The ones you see through will end up here."
+                )
             }
         }
         items(finished, key = { it.id }) { item ->

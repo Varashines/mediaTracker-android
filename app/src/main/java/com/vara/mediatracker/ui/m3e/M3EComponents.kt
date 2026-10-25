@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,7 +33,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -274,4 +277,52 @@ fun rememberTileOrigin(itemId: String): TileOrigin {
         modifier = Modifier.onGloballyPositioned { bounds = it.boundsInRoot() },
         record = { origin.record(itemId, bounds) }
     )
+}
+
+/**
+ * What a surface says when it has nothing to show.
+ *
+ * Every screen used to write its own version of this — a bare `Text` in some places, a card in
+ * others, an eyebrow string in another — so "empty" looked like six different things. One
+ * component and one voice: a short line saying what is missing, a second saying what to do about
+ * it, and optionally the control that does it.
+ *
+ * Centred and merged into one accessibility node, so a screen reader hears the sentence rather
+ * than three fragments of it.
+ */
+@Composable
+fun EmptyState(
+    title: String,
+    body: String? = null,
+    modifier: Modifier = Modifier,
+    /** The way out. Only the surfaces that have one offer it. */
+    action: (@Composable () -> Unit)? = null
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {}
+            .padding(horizontal = M3ESpacing.page, vertical = M3ESpacing.sectionGap),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = title,
+            style = M3EType.rowTitle(),
+            color = M3EColor.text(),
+            textAlign = TextAlign.Center
+        )
+        if (body != null) {
+            Spacer(Modifier.height(M3ESpacing.tightGap))
+            Text(
+                text = body,
+                style = M3EType.rowSupporting(),
+                color = M3EColor.textMuted(),
+                textAlign = TextAlign.Center
+            )
+        }
+        if (action != null) {
+            Spacer(Modifier.height(M3ESpacing.cardGap))
+            action()
+        }
+    }
 }

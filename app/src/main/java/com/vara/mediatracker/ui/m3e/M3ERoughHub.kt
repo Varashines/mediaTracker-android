@@ -236,14 +236,10 @@ private fun SmartTab(
     ) {
         if (groups.isEmpty() && brands.isEmpty() && genres.isEmpty() && languages.isEmpty()) {
             item {
-                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "Nothing to explore yet — enrich some titles first.",
-                        style = M3EType.rowSupporting(),
-                        color = M3EColor.textMuted(),
-                        modifier = Modifier.padding(M3ESpacing.cardGap)
-                    )
-                }
+                EmptyState(
+                    title = "Nothing here to explore yet.",
+                    body = "Add a few titles and this fills itself in."
+                )
             }
         }
         item { ForYouRow(library = library, container = container, onOpen = onOpen) }
