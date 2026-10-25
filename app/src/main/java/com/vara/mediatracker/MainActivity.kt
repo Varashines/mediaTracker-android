@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import com.vara.mediatracker.ui.common.AppToastHost
 import com.vara.mediatracker.ui.common.LibraryViewModel
 import com.vara.mediatracker.ui.m3e.M3ERoughScreen
+import com.vara.mediatracker.ui.m3e.M3ESpacing
 import com.vara.mediatracker.ui.theme.AppMotion as motion
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -113,21 +114,34 @@ class MainActivity : ComponentActivity() {
                 // Single app-wide clock so countdown labels stay live without each
                 // card owning its own ticker coroutine.
                 CompositionLocalProvider(LocalNowMillis provides rememberNowMillis()) {
-                    M3ERoughScreen(
-                        container = container,
-                        initialMediaId = pendingOpenMedia,
-                        onInitialMediaOpened = { pendingOpenMedia = null },
-                        initialShortcut = pendingShortcut,
-                        onInitialShortcutHandled = { pendingShortcut = null },
-                        onThemePresetChanged = { newPreset ->
-                            container.preferences.themePreset = newPreset
-                            currentThemePreset = newPreset
-                        },
-                        onThemeModeChanged = { newMode ->
-                            container.preferences.themeMode = newMode
-                            currentThemeMode = newMode
-                        }
-                    )
+                    Box(Modifier.fillMaxSize()) {
+                        M3ERoughScreen(
+                            container = container,
+                            initialMediaId = pendingOpenMedia,
+                            onInitialMediaOpened = { pendingOpenMedia = null },
+                            initialShortcut = pendingShortcut,
+                            onInitialShortcutHandled = { pendingShortcut = null },
+                            onThemePresetChanged = { newPreset ->
+                                container.preferences.themePreset = newPreset
+                                currentThemePreset = newPreset
+                            },
+                            onThemeModeChanged = { newMode ->
+                                container.preferences.themeMode = newMode
+                                currentThemeMode = newMode
+                            }
+                        )
+                        // The app's only feedback channel. `AppToast.show` has always worked and
+                        // its host was always built — it was just never composed, so every sync,
+                        // import and export failure, and every "Marked S2 E5 watched", went
+                        // nowhere. Composed here rather than in the screen so it survives
+                        // navigation and covers anything added later.
+                        AppToastHost(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
+                                .padding(top = M3ESpacing.tightGap)
+                        )
+                    }
                 }
             }
         }
