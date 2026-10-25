@@ -244,24 +244,6 @@ private fun SmartTab(
                 )
             }
         }
-        // The year, offered once rather than as a permanent tab: it is worth a look in January and
-        // noise in July, so it lives one tap in.
-        item {
-            M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onYearReview) {
-                Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
-                    Text(
-                        text = "${java.time.Year.now().value} in review",
-                        style = M3EType.rowTitleStrong(),
-                        color = M3EColor.text()
-                    )
-                    Text(
-                        text = "What you watched, and how much of it.",
-                        style = M3EType.rowSupporting(),
-                        color = M3EColor.textMuted()
-                    )
-                }
-            }
-        }
         item { ForYouRow(library = library, container = container, onOpen = onOpen) }
 
         if (groups.isNotEmpty()) {

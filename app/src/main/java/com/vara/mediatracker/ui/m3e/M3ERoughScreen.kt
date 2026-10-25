@@ -55,6 +55,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.GridView
@@ -157,6 +158,7 @@ import com.vara.mediatracker.ui.home.HomeEligibility
 import com.vara.mediatracker.ui.library.LibraryFilters
 import com.vara.mediatracker.ui.library.LibraryQuery
 import com.vara.mediatracker.ui.common.rememberHaptics
+import java.time.Year
 import com.vara.mediatracker.di.AppContainer
 
 /** Section indices, so the bar can name the three it shows and the three it hides. */
@@ -354,7 +356,8 @@ fun M3ERoughScreen(
                     onHub = { stack = stack + Overlay.Hub },
                     onFinished = { stack = stack + Overlay.Finished },
                     onHistory = { stack = stack + Overlay.History },
-                    onSearch = { stack = stack + Overlay.Search }
+                    onSearch = { stack = stack + Overlay.Search },
+                    onYearReview = { stack = stack + Overlay.YearReview }
                 )
                 else -> M3ERoughSettings(
                     container = container,
@@ -834,7 +837,8 @@ private fun LibrarySection(
     onHub: () -> Unit,
     onFinished: () -> Unit,
     onHistory: () -> Unit,
-    onSearch: () -> Unit
+    onSearch: () -> Unit,
+    onYearReview: () -> Unit
 ) {
     // A cold start renders the empty state before Room answers — "0 titles", "Your library is up
     // to date" — which reads as an empty library rather than a loading one.
@@ -932,6 +936,9 @@ private fun LibrarySection(
                     LibraryShortcut(Icons.Default.AutoAwesome, "Hub", onHub)
                     LibraryShortcut(Icons.Default.Check, "Finished", onFinished)
                     LibraryShortcut(Icons.Default.History, "History", onHistory)
+                    // A recap is the fourth "your stuff" view, so it sits with the other three
+                    // rather than being buried in the Hub's Smart tab where nobody found it.
+                    LibraryShortcut(Icons.Default.Insights, "${Year.now().value}", onYearReview)
                 }
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 ChipRow(
