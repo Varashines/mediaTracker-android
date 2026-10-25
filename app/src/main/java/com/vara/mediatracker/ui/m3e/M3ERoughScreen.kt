@@ -542,7 +542,10 @@ fun M3ERoughScreen(
             // No badge: a count of things that are coming was a number to look at, not a
             // thing to do. The calendar itself shows what is in it.
             calendarBadge = null,
-            settingsStale = run {
+            // Remembered rather than computed in the call: this read the preferences file on every
+            // recomposition of the shell, and keyed on `syncing` so a manual sync — the one moment
+            // the answer can change — re-evaluates it.
+            settingsStale = remember(syncing) {
                 val last = SyncScheduler.lastSyncTimestamp(context)
                 last == 0L || System.currentTimeMillis() - last > TimeUnit.HOURS.toMillis(24)
             },
@@ -1174,11 +1177,18 @@ private fun FadeIn(key: Any?, rise: Dp = 0.dp, content: @Composable () -> Unit) 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .alpha(progress)
-            // A rise, when one is asked for: search comes up from the pill that opened it rather
-            // than appearing over the sections. Not a morph — that needs a shared-element
-            // transition — but it reads as the same movement, which is what the eye is following.
-            .offset(y = rise * (1f - progress))
+            // Both the fade and the rise are set in the draw phase, not in composition. Reading
+            // `progress` for `.alpha`/`.offset` put it in composition, so every frame of the
+            // animation recomposed the whole section it was covering — the animation raced the
+            // work it was meant to hide. In `graphicsLayer` the read happens at draw time and the
+            // subtree is never re-invoked.
+            .graphicsLayer {
+                alpha = progress
+                // A rise, when one is asked for: search comes up from the pill that opened it
+                // rather than appearing over the sections. Not a morph — that needs a
+                // shared-element transition — but it reads as the same movement.
+                translationY = rise.toPx() * (1f - progress)
+            }
     ) { content() }
 }
 

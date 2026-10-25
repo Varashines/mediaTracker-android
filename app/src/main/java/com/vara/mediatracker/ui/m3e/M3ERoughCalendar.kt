@@ -37,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -113,10 +114,11 @@ fun M3ERoughCalendar(
     }
 
     // Reading the app clock is what recomposes this as it ticks, so `today` re-derives rather
-    // than being fixed at first composition. Keyed to the minute: no need to rebuild the grid
-    // sixty times a minute to notice a date change once.
+    // than being fixed at first composition. The clock itself is published at minute resolution
+    // (see `rememberNowMillis`), so a tick that does not cross a minute boundary invalidates
+    // nothing here — which is what stops the 42 day cells rebuilding twice a minute.
     val nowMillis = LocalNowMillis.current
-    val today = remember(nowMillis / 60_000) { LocalDate.now() }
+    val today = remember(nowMillis) { LocalDate.now() }
     var month by rememberSaveable { mutableStateOf(YearMonth.from(today).toString()) }
     var selected by rememberSaveable { mutableStateOf(today.toString()) }
     var listMode by rememberSaveable { mutableStateOf(false) }

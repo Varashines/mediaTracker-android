@@ -87,6 +87,7 @@ import androidx.compose.material3.TimePickerDisplayMode
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -204,7 +205,8 @@ fun M3ERoughSettings(
     val scope = rememberCoroutineScope()
 
     // Read through the shared clock, so the wording ages on its own — "just now" becomes "5 minutes
-    // ago" without the screen having to be reopened.
+    // ago" without the screen having to be reopened. The clock is published at minute resolution,
+    // so this recomposes once a minute rather than on every 30-second tick.
     val nowMillis = LocalNowMillis.current
     val lastSyncedLabel = remember(lastSyncedAt, nowMillis) {
         if (lastSyncedAt == 0L) {

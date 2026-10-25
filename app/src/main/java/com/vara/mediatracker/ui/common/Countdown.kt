@@ -51,7 +51,13 @@ fun rememberNowMillis(intervalMs: Long = 30_000L): Long {
             delay(intervalMs)
         }
     }
-    return millis.value
+    // Truncated to the minute before it is published.
+    //
+    // This is a CompositionLocal, so every tick that changes it invalidates every reader — and the
+    // calendar and settings were rebuilding themselves twice a minute for a value whose only use is
+    // "what minute is it". Quantising here rather than in each reader keeps the decision in one
+    // place, and makes the published value compare equal across a tick that changed nothing.
+    return millis.value / 60_000L * 60_000L
 }
 
 /**
