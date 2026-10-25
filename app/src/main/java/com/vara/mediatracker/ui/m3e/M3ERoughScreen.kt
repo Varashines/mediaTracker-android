@@ -421,7 +421,14 @@ fun M3ERoughScreen(
                     library = library,
                     container = container,
                     onOpen = { stack = stack + Overlay.Detail(it) },
-                    onBack = { stack = stack.dropLast(1) }
+                    onBack = { stack = stack.dropLast(1) },
+                    // Straight to the section that holds the key, with the overlay stack cleared:
+                    // leaving Search underneath would mean backing out of Settings lands on a
+                    // search that still cannot run.
+                    onOpenSettings = {
+                        stack = emptyList()
+                        section = SETTINGS
+                    }
                 )
                 else -> Unit
             }

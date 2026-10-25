@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
@@ -36,6 +37,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,17 +71,38 @@ import kotlinx.coroutines.launch
  *
  * The tile says which of the two it is. A result you own is a title; one you do not is an offer.
  */
+/**
+ * Why the results area is empty.
+ *
+ * The three ways a search can come back with nothing used to be one value — an empty list — so the
+ * screen could only ever say "Nothing found". A missing key and a failed request both looked like
+ * "your title does not exist", which is the worst possible answer: it is confidently wrong.
+ */
+private sealed interface SearchOutcome {
+    data object Idle : SearchOutcome
+    data object Searching : SearchOutcome
+    data object Results : SearchOutcome
+    data object NeedsKey : SearchOutcome
+    data object Failed : SearchOutcome
+    data class NoMatches(val query: String) : SearchOutcome
+}
+
 @Composable
-fun M3ERoughSearch(
+internal fun M3ERoughSearch(
     library: List<MediaItemEntity>,
     container: AppContainer,
     onOpen: (MediaItemEntity) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    /** Where "Search needs a key" sends you. */
+    onOpenSettings: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf("") }
     var remote by remember { mutableStateOf(emptyList<TMDBSearchItem>()) }
     var searching by remember { mutableStateOf(false) }
+    var outcome by remember { mutableStateOf<SearchOutcome>(SearchOutcome.Idle) }
+    // Bumped by "Try again"; it is a key of the search effect, so the request re-runs.
+    var retryToken by remember { mutableIntStateOf(0) }
     var adding by remember { mutableStateOf<String?>(null) }
     // Before a query there was nothing to look at but a prompt card, which is the dullest state a
     // search screen has. Trending gives it something worth tapping on the way to typing.
@@ -111,21 +134,40 @@ fun M3ERoughSearch(
 
     // Debounced: a search request per keystroke is a request per keystroke, and TMDB is rate
     // limited. Two characters is the floor — one letter matches almost everything.
-    LaunchedEffect(query) {
+    //
+    // The three ways a search can come back empty are kept apart. They used to collapse into one
+    // `.getOrNull().orEmpty()`, so a missing API key and a failed request both rendered as
+    // "Nothing found" — the app told the user their title did not exist when in fact it had never
+    // asked. `outcome` is what the empty branch reads.
+    LaunchedEffect(query, retryToken) {
         val term = query.trim()
         if (term.length < 2) {
             remote = emptyList()
             searching = false
+            outcome = SearchOutcome.Idle
+            return@LaunchedEffect
+        }
+        if (container.preferences.tmdbApiKey.isBlank()) {
+            remote = emptyList()
+            searching = false
+            outcome = SearchOutcome.NeedsKey
             return@LaunchedEffect
         }
         searching = true
+        outcome = SearchOutcome.Searching
         delay(350)
-        remote = runCatching {
-            container.tmdbClient().searchMulti(term).getOrNull()?.results
-        }.getOrNull()
+        val result = container.tmdbClient().searchMulti(term)
+        val items = result.getOrNull()?.results
             .orEmpty()
             .filter { it.media_type == "movie" || it.media_type == "tv" }
             .take(24)
+        remote = items
+        outcome = when {
+            // A failure first: an empty list from a failed call is not an empty result.
+            result.isFailure -> SearchOutcome.Failed
+            items.isEmpty() -> SearchOutcome.NoMatches(term)
+            else -> SearchOutcome.Results
+        }
         searching = false
     }
 
@@ -257,34 +299,62 @@ fun M3ERoughSearch(
                 }
             }
 
-            local.isEmpty() && remote.isEmpty() -> M3ETonalCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = M3ESpacing.page)
-            ) {
-                Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
-                    // Something that moves while the request is out. The words alone look like a
-                    // result that happens to say "Searching…".
-                    if (searching) {
-                        LoadingIndicator(
-                            modifier = Modifier.size(32.dp),
-                            color = M3EColor.accent()
-                        )
-                        Spacer(Modifier.height(M3ESpacing.tightGap))
-                    }
-                    Text(
-                        text = if (searching) "Searching…" else "Nothing found",
-                        style = M3EType.rowTitle(),
-                        color = M3EColor.text()
+            local.isEmpty() && remote.isEmpty() -> {
+                // Four different reasons to be here, four different things to say. Reporting all of
+                // them as "nothing found" told the user their title did not exist when the app may
+                // never have asked — see SearchOutcome.
+                when (val state = outcome) {
+                    is SearchOutcome.NeedsKey -> EmptyState(
+                        title = "Search needs a key.",
+                        body = "Add your TMDB key in Settings and results will come through.",
+                        action = {
+                            Button(onClick = onOpenSettings) { Text("Open Settings") }
+                        }
                     )
-                    Text(
-                        text = if (searching) {
-                            "Looking for “$query”."
-                        } else {
-                            "No title matches “$query”."
-                        },
-                        style = M3EType.rowSupporting(),
-                        color = M3EColor.textMuted()
+
+                    is SearchOutcome.Failed -> EmptyState(
+                        title = "Couldn't reach TMDB.",
+                        body = "Check your connection and try again.",
+                        action = {
+                            Button(onClick = { retryToken++ }) { Text("Try again") }
+                        }
+                    )
+
+                    is SearchOutcome.NoMatches -> EmptyState(
+                        title = "Nothing for “${state.query}”.",
+                        body = "Try a different spelling — or the original title."
+                    )
+
+                    is SearchOutcome.Searching -> M3ETonalCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = M3ESpacing.page)
+                    ) {
+                        Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
+                            // Something that moves while the request is out. The words alone look
+                            // like a result that happens to say "Searching…".
+                            LoadingIndicator(
+                                modifier = Modifier.size(32.dp),
+                                color = M3EColor.accent()
+                            )
+                            Spacer(Modifier.height(M3ESpacing.tightGap))
+                            Text(
+                                text = "Searching…",
+                                style = M3EType.rowTitle(),
+                                color = M3EColor.text()
+                            )
+                            Text(
+                                text = "Looking for “$query”.",
+                                style = M3EType.rowSupporting(),
+                                color = M3EColor.textMuted()
+                            )
+                        }
+                    }
+
+                    // Idle, or results that the library/local filters already covered.
+                    else -> EmptyState(
+                        title = "Nothing for “$query”.",
+                        body = "Try a different spelling — or the original title."
                     )
                 }
             }
