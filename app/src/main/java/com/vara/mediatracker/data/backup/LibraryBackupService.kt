@@ -10,6 +10,7 @@ import com.vara.mediatracker.data.model.MediaItemEntity
 import com.vara.mediatracker.data.model.WatchCycleEntity
 import com.vara.mediatracker.data.model.WatchEventEntity
 import com.vara.mediatracker.di.AppContainer
+import com.vara.mediatracker.util.WireTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -88,16 +89,34 @@ object LibraryBackupService {
             val backup = json.decodeFromString(LibraryBackup.serializer(), text)
             require(backup.app == "MediaTracker") { "That file is not a MediaTracker backup" }
 
+            val now = WireTime.now()
+
             // One transaction: a half-applied backup is a library that is neither the old one nor
             // the new one, and the user has no way to tell which rows landed.
             container.database.withTransaction {
-                container.mediaDao.upsertMedia(backup.media)
+                // Restoring is an edit made now, and it has to be recorded as one or the next sync
+                // quietly undoes it. The pull keeps a row only when the local edit is at least as
+                // new as the cloud's, and the restore carries the timestamps the file was written
+                // with — so without this every title the cloud had touched since the export came
+                // back and replaced what was just restored.
+                //
+                // The cost is that a restored title sorts as recently interacted-with. That is the
+                // honest reading: the user did just choose this state for it.
+                container.mediaDao.upsertMedia(
+                    backup.media.map { it.copy(lastInteractionDate = now) }
+                )
                 container.mediaDao.upsertEpisodes(backup.episodes)
                 container.database.collectionDao().upsertCollections(backup.collections)
                 container.database.collectionDao().upsertCollectionItems(backup.collectionItems)
                 container.database.watchHistoryDao().upsertCycles(backup.cycles)
                 container.database.watchHistoryDao().upsertEvents(backup.events)
             }
+
+            // And the watermark has to go with it. It records how far this device has read, and it
+            // is newer than the file — so leaving it meant the restored rows were behind it and
+            // were never pushed, while the pull still asked only for changes after it. Clearing it
+            // forces the next sync to compare everything once, in both directions.
+            container.preferences.syncWatermark = null
             ImportSummary(
                 media = backup.media.size,
                 episodes = backup.episodes.size,
