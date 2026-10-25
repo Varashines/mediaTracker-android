@@ -11,6 +11,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1207,7 +1211,15 @@ private fun PaletteStrip(selected: Int, onSelect: (Int) -> Unit) {
                         .aspectRatio(1f)
                         // Clipped before the click, so the ripple follows the shape.
                         .clip(CircleShape)
-                        .clickable { onSelect(index) }
+                        // A colour swatch with no name is unreachable: TalkBack announced six
+                        // anonymous boxes. Role plus selected state turns the row into a radio
+                        // group of palettes, and the label says which palette it is.
+                        .selectable(
+                            selected = isSelected,
+                            role = Role.RadioButton,
+                            onClick = { onSelect(index) }
+                        )
+                        .semantics { contentDescription = preset.name }
                         .background(preset.accentColor, CircleShape)
                         .border(
                             width = if (isSelected) 3.dp else 1.dp,

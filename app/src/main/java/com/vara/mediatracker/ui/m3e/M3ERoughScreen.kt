@@ -114,6 +114,9 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalDensity
 import com.vara.mediatracker.data.TrackingLogic
 import com.vara.mediatracker.data.sync.SyncScheduler
@@ -306,6 +309,14 @@ fun M3ERoughScreen(
             // Android, and instantly is what this does now.
             FadeIn(key = section) {
             holder.SaveableStateProvider(section) {
+                // While the detail sheet is up the section stays composed underneath — that is what
+                // gives the sheet something to slide over — but it is not what the user is looking
+                // at. Without this, TalkBack reads the grid behind the sheet and can activate it:
+                // the sheet is drawn over the section, not in place of it.
+                //
+                // `clearAndSetSemantics {}` drops the whole subtree from the accessibility tree and
+                // changes no layout, which is what this needs to be.
+                Box(if (detail != null) Modifier.clearAndSetSemantics {} else Modifier) {
                 when (section) {
                 0 -> HomeSection(
                     core = core,
@@ -350,6 +361,7 @@ fun M3ERoughScreen(
                     onThemePresetChanged = onThemePresetChanged,
                     onThemeModeChanged = onThemeModeChanged
                 )
+                }
                 }
             }
             }
@@ -611,6 +623,10 @@ private fun DetailSheet(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { height = with(density) { it.height.toDp() } }
+            // The sheet is a second window over a screen that still exists. Naming the pane is what
+            // lets a screen reader announce where focus went, now that the section underneath is
+            // hidden from the tree.
+            .semantics { paneTitle = "Details" }
     ) {
         Box(
             modifier = Modifier
