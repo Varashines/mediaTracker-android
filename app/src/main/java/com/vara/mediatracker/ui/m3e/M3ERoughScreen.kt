@@ -424,7 +424,8 @@ fun M3ERoughScreen(
                 )
                 Overlay.YearReview -> M3EYearReview(
                     container = container,
-                    library = library
+                    library = library,
+                    episodes = core.allEpisodes
                 )
                 Overlay.Search -> M3ERoughSearch(
                     library = library,
