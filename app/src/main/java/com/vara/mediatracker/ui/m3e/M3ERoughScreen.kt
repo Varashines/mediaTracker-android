@@ -1490,7 +1490,8 @@ private fun NavPill(
                 Text(
                     text = label,
                     style = M3EType.action(),
-                    color = M3EColor.accent(),
+                    // Text at 12sp on the page: the raw accent is a fill colour and fails AA here.
+                    color = M3EColor.accentText(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

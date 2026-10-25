@@ -723,7 +723,8 @@ fun M3ERoughDetail(
                             },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = M3EColor.accent().copy(alpha = 0.22f),
-                                selectedLabelColor = M3EColor.accent()
+                                // Text, not a fill: the raw accent fails AA at this size.
+                                selectedLabelColor = M3EColor.accentText()
                             )
                         )
                     }
@@ -1352,7 +1353,7 @@ private fun Title(
                 Text(
                     text = byline,
                     style = M3EType.rowSupporting(),
-                    color = M3EColor.accent(),
+                    color = M3EColor.accentText(),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )

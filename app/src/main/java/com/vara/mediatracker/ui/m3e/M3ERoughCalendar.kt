@@ -631,7 +631,7 @@ private fun MonthGrid(
                     Text(
                         text = "Show month",
                         style = M3EType.action(),
-                        color = M3EColor.accent()
+                        color = M3EColor.accentText()
                     )
                 }
             }

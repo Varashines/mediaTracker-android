@@ -833,7 +833,8 @@ private fun SettingsSection(
         Text(
             text = label,
             style = M3EType.groupLabel(),
-            color = M3EColor.accent(),
+            // Group labels are 10–11sp, the smallest text in the app: raw accent fails AA here.
+            color = M3EColor.accentText(),
             modifier = Modifier.padding(
                 start = 4.dp,
                 top = M3ESpacing.tightGap,

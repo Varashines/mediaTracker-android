@@ -78,7 +78,8 @@ fun M3EScreenHeader(
                 Text(
                     text = eyebrow.uppercase(),
                     style = AppTextStyles.MonoLabel,
-                    color = M3EColor.accent()
+                    // 10sp monospace: the raw accent is nowhere near AA at this size.
+                    color = M3EColor.accentText()
                 )
             }
             Text(

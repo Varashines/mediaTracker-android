@@ -6,6 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -261,9 +263,29 @@ object M3EColor {
     @Composable
     fun textMuted() = MaterialTheme.colorScheme.onSurfaceVariant
 
-    /** The app's accent, for eyebrows and small labels sitting on the page background. */
+    /** The app's accent, for fills, borders and icons — never for body text. */
     @Composable
     fun accent() = MaterialTheme.colorScheme.primary
+
+    /**
+     * The accent as *text*, which is a different colour from the accent as a fill.
+     *
+     * `primary` is the raw accent the palette chose, and several of those palettes are bright
+     * enough that the value fails WCAG AA as text: the blue accent on a light page measures about
+     * 3.3:1, where 4.5:1 is required below 18sp. Fills and borders are fine with it, because the
+     * contrast rule is about reading.
+     *
+     * Darkened here rather than in every palette: the palettes are the user's choice, and a
+     * hand-picked text variant per palette is one more thing to keep in step. On a dark page the
+     * accent already clears AA, so it is returned untouched.
+     */
+    @Composable
+    fun accentText(): Color {
+        val accent = MaterialTheme.colorScheme.primary
+        val onPage = MaterialTheme.colorScheme.background
+        // Luminance rather than a light/dark flag: the page colour is what the text sits on.
+        return if (onPage.luminance() > 0.5f) lerp(accent, Color.Black, 0.34f) else accent
+    }
 
     /** Attention without alarm. */
     @Composable
