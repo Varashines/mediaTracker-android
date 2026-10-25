@@ -370,14 +370,10 @@ fun M3ERoughCalendar(
             if (listMode) {
                 if (agenda.isEmpty()) {
                     item {
-                        M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                text = "Nothing lands this month.",
-                                style = M3EType.rowSupporting(),
-                                color = M3EColor.textMuted(),
-                                modifier = Modifier.padding(M3ESpacing.cardGap)
-                            )
-                        }
+                        EmptyState(
+                            title = "A quiet stretch.",
+                            body = "Nothing lands here. Try another week."
+                        )
                     }
                 } else {
                     agenda.forEach { (day, dayEvents) ->
@@ -427,14 +423,10 @@ fun M3ERoughCalendar(
                 }
                 if (releases.isEmpty()) {
                     item {
-                        M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                text = "Nothing lands on this day.",
-                                style = M3EType.rowSupporting(),
-                                color = M3EColor.textMuted(),
-                                modifier = Modifier.padding(M3ESpacing.cardGap)
-                            )
-                        }
+                        EmptyState(
+                            title = "Nothing lands on this day.",
+                            body = "Pick another day, or switch to the month."
+                        )
                     }
                 } else {
                     items(

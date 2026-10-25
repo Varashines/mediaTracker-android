@@ -154,14 +154,10 @@ internal fun M3ERoughHistory(
 
         if (entries.isEmpty()) {
             item {
-                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "Mark something watched and it appears here, newest first.",
-                        style = M3EType.rowSupporting(),
-                        color = M3EColor.textMuted(),
-                        modifier = Modifier.padding(M3ESpacing.cardGap)
-                    )
-                }
+                EmptyState(
+                    title = "Your history starts with one episode.",
+                    body = "Watch something and the timeline begins."
+                )
             }
         }
 

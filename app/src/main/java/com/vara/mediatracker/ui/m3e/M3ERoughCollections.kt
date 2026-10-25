@@ -147,16 +147,10 @@ internal fun M3ERoughCollections(
 
         if (live.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                M3ETonalCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
-                        Text("No collections yet", style = M3EType.rowTitle(), color = M3EColor.text())
-                        Text(
-                            text = "Collections you make on either device appear here.",
-                            style = M3EType.rowSupporting(),
-                            color = M3EColor.textMuted()
-                        )
-                    }
-                }
+                EmptyState(
+                    title = "No collections yet.",
+                    body = "Group things the way you already think about them — by mood, by era, by whatever."
+                )
             }
         }
 
