@@ -957,8 +957,9 @@ private fun LibrarySection(
             } else {
                 val hero = rememberTileOrigin(item.id)
                 M3EArtworkCard(title = item.title, onClick = { hero.record(); onOpen(item) }) {
-                    Poster(
-                        item,
+                    PosterTile(
+                        posterUrl = item.posterUrl,
+                        title = item.title,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(2f / 3f)
@@ -1076,8 +1077,9 @@ private fun GridList(list: SectionList, onOpen: (MediaItemEntity) -> Unit, onBac
         items(list.items, key = { it.id }) { item ->
             val hero = rememberTileOrigin(item.id)
             M3EArtworkCard(title = item.title, onClick = { hero.record(); onOpen(item) }) {
-                Poster(
-                    item,
+                PosterTile(
+                    posterUrl = item.posterUrl,
+                    title = item.title,
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(2f / 3f)
@@ -1277,8 +1279,9 @@ private fun TitleRow(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Poster(
-                item,
+            PosterTile(
+                posterUrl = item.posterUrl,
+                title = item.title,
                 modifier = Modifier
                     .width(44.dp)
                     .height(66.dp)
@@ -1315,8 +1318,9 @@ private fun PosterCard(item: MediaItemEntity, width: Dp, onClick: (() -> Unit)? 
         modifier = Modifier.width(width),
         onClick = if (onClick == null) null else { { hero.record(); onClick() } }
     ) {
-        Poster(
-            item,
+        PosterTile(
+            posterUrl = item.posterUrl,
+            title = item.title,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
@@ -1331,18 +1335,6 @@ private fun PosterCard(item: MediaItemEntity, width: Dp, onClick: (() -> Unit)? 
  * The tonal plate is painted underneath on purpose: while an image loads — or when a title has
  * none — the tile keeps the card tone instead of showing the page through as a black hole.
  */
-@Composable
-private fun Poster(item: MediaItemEntity, modifier: Modifier = Modifier) {
-    AsyncImage(
-        model = item.posterUrl,
-        contentDescription = item.title,
-        contentScale = ContentScale.Crop,
-        modifier = modifier
-            .clip(M3EShape.chip())
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-    )
-}
-
 /**
  * The floating capsule navigation: the headline M3E cue. The active item carries a contained
  * pill with a stroke; the rest are bare icons.

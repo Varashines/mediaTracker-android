@@ -3,6 +3,7 @@ package com.vara.mediatracker.ui.m3e
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Card
+import coil3.compose.AsyncImage
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -36,6 +38,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -325,4 +329,30 @@ fun EmptyState(
             action()
         }
     }
+}
+
+/**
+ * A poster, rendered the one way this app renders posters.
+ *
+ * Ten call sites had their own copy of this: `AsyncImage` with a chip clip and the card tone behind
+ * it, so a tile that has no artwork yet shows the plate rather than a hole. They differed only in
+ * size — which the caller passes — and in whether the image is decorative (inside a collage, where
+ * the surrounding row already names the title) or carries the title itself.
+ */
+@Composable
+fun PosterTile(
+    posterUrl: String?,
+    title: String?,
+    modifier: Modifier = Modifier,
+    /** True when a parent already names the thing, so the image must not repeat it. */
+    decorative: Boolean = false
+) {
+    AsyncImage(
+        model = posterUrl,
+        contentDescription = if (decorative) null else title,
+        contentScale = ContentScale.Crop,
+        modifier = modifier
+            .clip(M3EShape.chip())
+            .background(M3EColor.card())
+    )
 }

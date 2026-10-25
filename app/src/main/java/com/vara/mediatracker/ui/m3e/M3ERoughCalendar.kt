@@ -764,15 +764,12 @@ private fun ReleaseRow(
             modifier = Modifier.fillMaxWidth().padding(M3ESpacing.inlineGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AsyncImage(
-                model = item.posterUrl,
-                contentDescription = item.title,
-                contentScale = ContentScale.Crop,
+            PosterTile(
+                posterUrl = item.posterUrl,
+                title = item.title,
                 modifier = Modifier
                     .width(44.dp)
                     .height(66.dp)
-                    .clip(M3EShape.chip())
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             )
             Spacer(Modifier.width(M3ESpacing.inlineGap))
             Column(modifier = Modifier.weight(1f)) {
