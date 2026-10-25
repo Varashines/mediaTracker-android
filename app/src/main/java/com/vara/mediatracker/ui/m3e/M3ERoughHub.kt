@@ -103,6 +103,7 @@ internal fun M3ERoughHub(
     tab: Int = 0,
     onTabChange: (Int) -> Unit = {},
     onOpen: (MediaItemEntity) -> Unit = {},
+    onYearReview: () -> Unit = {},
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit = { _, _, _, _ -> }
 ) {
     // A cold start renders the empty state before Room answers — "0 titles", "Your library is up
@@ -148,7 +149,7 @@ internal fun M3ERoughHub(
             userScrollEnabled = false
         ) { page ->
             when (page) {
-                0 -> SmartTab(library, core.networkLogos, container, onOpen, onOpenList)
+                0 -> SmartTab(library, core.networkLogos, container, onOpen, onOpenList, onYearReview)
                 else -> M3ERoughCollections(
                     container = container,
                     core = core,
@@ -194,7 +195,8 @@ private fun SmartTab(
     networkLogos: Map<String, String>,
     container: AppContainer,
     onOpen: (MediaItemEntity) -> Unit,
-    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit,
+    onYearReview: () -> Unit
 ) {
     // Tints are read here because `M3EColor` is composable and `remember`'s lambda is not. The cards
     // no longer use them, but reading them keeps the remember keyed to the theme.
@@ -240,6 +242,24 @@ private fun SmartTab(
                     title = "Nothing here to explore yet.",
                     body = "Add a few titles and this fills itself in."
                 )
+            }
+        }
+        // The year, offered once rather than as a permanent tab: it is worth a look in January and
+        // noise in July, so it lives one tap in.
+        item {
+            M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onYearReview) {
+                Column(modifier = Modifier.padding(M3ESpacing.cardGap)) {
+                    Text(
+                        text = "${java.time.Year.now().value} in review",
+                        style = M3EType.rowTitleStrong(),
+                        color = M3EColor.text()
+                    )
+                    Text(
+                        text = "What you watched, and how much of it.",
+                        style = M3EType.rowSupporting(),
+                        color = M3EColor.textMuted()
+                    )
+                }
             }
         }
         item { ForYouRow(library = library, container = container, onOpen = onOpen) }

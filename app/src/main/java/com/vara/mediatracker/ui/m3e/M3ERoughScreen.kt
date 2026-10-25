@@ -186,6 +186,7 @@ private sealed interface Overlay {
     data object Finished : Overlay
     data object Search : Overlay
     data object History : Overlay
+    data object YearReview : Overlay
 }
 
 @Composable
@@ -406,7 +407,8 @@ fun M3ERoughScreen(
                     onOpen = { stack = stack + Overlay.Detail(it) },
                     onOpenList = { title, items, kind, layout ->
                         stack = stack + Overlay.Titles(title, items, kind, layout)
-                    }
+                    },
+                    onYearReview = { stack = stack + Overlay.YearReview }
                 )
                 Overlay.Finished -> FinishedSection(
                     library = library,
@@ -416,6 +418,10 @@ fun M3ERoughScreen(
                     container = container,
                     core = core,
                     onOpen = { stack = stack + Overlay.Detail(it) }
+                )
+                Overlay.YearReview -> M3EYearReview(
+                    container = container,
+                    library = library
                 )
                 Overlay.Search -> M3ERoughSearch(
                     library = library,
