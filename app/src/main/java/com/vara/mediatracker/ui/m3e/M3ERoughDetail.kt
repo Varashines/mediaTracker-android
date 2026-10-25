@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.SplitButtonLayout
@@ -1466,6 +1467,10 @@ private fun CompactTitleRow(
         if (episode != null) {
             Surface(
                 onClick = { if (!waiting) onMarkWatched() },
+                // The chip is deliberately small on a folded header, but its touch target is not:
+                // 4dp of vertical padding around a 16dp icon is a 26dp target, well under the 48dp
+                // every control here has to offer. This raises the target without the visual weight.
+                modifier = Modifier.minimumInteractiveComponentSize(),
                 enabled = !waiting,
                 shape = M3EShape.chip(),
                 color = M3EColor.accent().copy(alpha = if (waiting) 0.12f else 0.18f),

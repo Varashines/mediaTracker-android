@@ -73,6 +73,7 @@ import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -1460,6 +1461,9 @@ private fun NavPill(
 ) {
     Surface(
         onClick = onClick,
+        // 10dp of vertical padding plus the icon lands at ~44dp. One dp short of the minimum is
+        // still short, and this is the control used most often in the app.
+        modifier = Modifier.minimumInteractiveComponentSize(),
         shape = RoundedCornerShape(50),
         color = if (active) M3EColor.accent().copy(alpha = 0.16f) else M3EColor.card()
     ) {
