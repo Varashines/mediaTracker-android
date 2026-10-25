@@ -55,9 +55,9 @@ data class RemoteMedia(
     /**
      * The Mac's extracted poster palette.
      *
-     * Read-only on this device: Android never writes these, so they ride along on a pull and are
-     * left out of a push. Leaving them out is what keeps a push from clearing them — a nullable
-     * property at its default is not serialized, and the server only writes the columns it is sent.
+     * Read-only on this device: the Mac authors them, so they ride along on a pull and are not
+     * part of the push payload at all. Being absent is what keeps a push from clearing them — the
+     * server only writes the columns it is sent.
      */
     val theme_color_hex: String? = null,
     val theme_muted_color_hex: String? = null,
@@ -85,7 +85,6 @@ data class RemoteMediaPush(
     val type: String,
     val state: String,
     val taste: String,
-    val custom_poster_url: String?,
     val is_soft_deleted: Boolean,
     val last_interaction_date: String?,
     val last_state_change_date: String?,
@@ -299,7 +298,9 @@ class CloudSyncManager(
                 language = existing?.language,
                 studios = existing?.studios,
                 providers = existing?.providers,
-                customPosterUrl = rem.custom_poster_url,
+                // "" is how the Mac says "reset to the network artwork"; this device stores
+                // "no poster" as null, so the two are folded together before they reach the UI.
+                customPosterUrl = rem.custom_poster_url?.takeIf { it.isNotBlank() },
                 isSoftDeleted = rem.is_soft_deleted,
                 lastInteractionDate = rem.last_interaction_date,
                 lastStateChangeDate = rem.last_state_change_date,
@@ -458,9 +459,10 @@ class CloudSyncManager(
         val stamp = lastBatchPush[mediaId]
         if (stamp != null && System.currentTimeMillis() - stamp < 2_000L) return@runCatching
         val now = isoNow()
-        // The two fields this call does not decide are read off the row rather than left at their
-        // defaults: a push now carries every key, and a null custom poster would be an instruction
-        // to clear the one extracted elsewhere.
+        // The poster and the palette are the Mac's to author. Neither is in the push payload, so
+        // this device cannot clear them: a nullable property at its default would otherwise be
+        // serialized as an explicit null, which PostgREST writes as "clear this column" —
+        // exactly how a phone that had never received the poster erased it.
         val existing = mediaDao.getMediaById(mediaId)
         val payload = RemoteMediaPush(
             user_id = syncKey,
@@ -468,7 +470,6 @@ class CloudSyncManager(
             type = type,
             state = state,
             taste = Taste.normalize(taste),
-            custom_poster_url = existing?.customPosterUrl,
             is_soft_deleted = existing?.isSoftDeleted ?: false,
             // The row's own edit times, not `now`.
             //
@@ -762,9 +763,9 @@ class CloudSyncManager(
         val incomingEvents: List<WatchEventEntity>
     )
 
-    private suspend fun fetchRemoteWatchCycles(since: String? = null): List<RemoteWatchCycle> = fetchAllPages("user_watch_cycles", since, { it.cycle_id }, keyColumn = "cycle_id")
+    private suspend fun fetchRemoteWatchCycles(since: String? = null): List<RemoteWatchCycle> = fetchAllPages("user_watch_cycles", since, { it.cycle_id }, { it.user_id }, keyColumn = "cycle_id")
 
-    private suspend fun fetchRemoteWatchEvents(since: String? = null): List<RemoteWatchEvent> = fetchAllPages("user_watch_events", since, { it.event_id }, keyColumn = "event_id")
+    private suspend fun fetchRemoteWatchEvents(since: String? = null): List<RemoteWatchEvent> = fetchAllPages("user_watch_events", since, { it.event_id }, { it.user_id }, keyColumn = "event_id")
 
     private suspend fun pushWatchCycles(cycles: List<WatchCycleEntity>) {
         if (cycles.isEmpty()) return
@@ -967,15 +968,15 @@ class CloudSyncManager(
     }.getOrNull()
 
     private suspend fun fetchRemoteMedia(since: String? = null): List<RemoteMedia> =
-        fetchAllPages("user_media", since, { it.media_id }, keyColumn = "media_id")
+        fetchAllPages("user_media", since, { it.media_id }, { it.user_id }, keyColumn = "media_id")
 
-    private suspend fun fetchRemoteEpisodes(since: String? = null): List<RemoteEpisode> = fetchAllPages("user_episodes", since, { it.episode_id }, keyColumn = "episode_id")
+    private suspend fun fetchRemoteEpisodes(since: String? = null): List<RemoteEpisode> = fetchAllPages("user_episodes", since, { it.episode_id }, { it.user_id }, keyColumn = "episode_id")
 
-    private suspend fun fetchRemoteCollections(since: String? = null): List<RemoteCollection> = fetchAllPages("user_collections", since, { it.collection_id }, keyColumn = "collection_id")
+    private suspend fun fetchRemoteCollections(since: String? = null): List<RemoteCollection> = fetchAllPages("user_collections", since, { it.collection_id }, { it.user_id }, keyColumn = "collection_id")
 
     private suspend fun fetchRemoteCollectionItems(since: String? = null): List<RemoteCollectionItem> =
         fetchAllPages(
-            "user_collection_items", since, { "${it.collection_id}|${it.media_id}" },
+            "user_collection_items", since, { "${it.collection_id}|${it.media_id}" }, { it.user_id },
             keyColumn = "collection_id,media_id"
         )
 
@@ -1001,6 +1002,8 @@ class CloudSyncManager(
         endpoint: String,
         since: String? = null,
         keyOf: (T) -> String,
+        /** The tenant column, checked before a row is applied. */
+        userIdOf: (T) -> String,
         /**
          * The table's primary-key column(s), used to make the page order total.
          * `collection_id,media_id` for the two-column join table.
@@ -1046,6 +1049,7 @@ class CloudSyncManager(
             if (elements.isEmpty()) break
 
             var undecodable = 0
+            var foreignTenants = 0
             for (element in elements) {
                 val row = try {
                     wireJson.decodeFromJsonElement<T>(element)
@@ -1055,7 +1059,17 @@ class CloudSyncManager(
                     undecodable++
                     continue
                 }
+                // Second line of defence behind RLS. The Mac has had this since it stopped
+                // putting the tenant in the URL; a policy mistake should mean "rows discarded",
+                // never "another tenant's library imported".
+                if (userIdOf(row) != syncKey) {
+                    foreignTenants++
+                    continue
+                }
                 if (seen.add(keyOf(row))) out += row
+            }
+            if (foreignTenants > 0) {
+                Log.w("CloudSync", "$endpoint: discarded $foreignTenants row(s) belonging to another tenant")
             }
             if (undecodable > 0) {
                 // Visible and countable; the next pull meets the same rows again rather than
@@ -1151,7 +1165,6 @@ class CloudSyncManager(
                 type = item.type,
                 state = item.state,
                 taste = Taste.normalize(item.taste),
-                custom_poster_url = item.customPosterUrl,
                 // Must be sent: without it a soft-delete would be pushed as a live row and
                 // the delete would never propagate.
                 is_soft_deleted = item.isSoftDeleted,
@@ -1188,7 +1201,6 @@ class CloudSyncManager(
                 type = item.type,
                 state = item.state,
                 taste = Taste.normalize(item.taste),
-                custom_poster_url = item.customPosterUrl,
                 is_soft_deleted = true,
                 last_interaction_date = now,
                 last_state_change_date = now,
