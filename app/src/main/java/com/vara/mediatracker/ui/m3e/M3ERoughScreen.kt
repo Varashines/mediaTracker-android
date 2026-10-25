@@ -502,6 +502,24 @@ fun M3ERoughScreen(
                 .padding(bottom = 96.dp)
         )
 
+        // First run. Held as local state as well as the stored flag: the flag is what survives a
+        // restart, the state is what dismisses it now — reading the preference directly in
+        // composition would not recompose when it changes.
+        var showWelcome by remember { mutableStateOf(!container.preferences.hasSeenWelcome) }
+        if (showWelcome) {
+            WelcomeDialog(
+                onFindSomething = {
+                    container.preferences.hasSeenWelcome = true
+                    showWelcome = false
+                    stack = stack + Overlay.Search
+                },
+                onDismiss = {
+                    container.preferences.hasSeenWelcome = true
+                    showWelcome = false
+                }
+            )
+        }
+
         // While an overlay is open no section is current — Settings was being lit *alongside* Home,
         // which made it look like a child of whichever section you happened to be in.
         FloatingNav(

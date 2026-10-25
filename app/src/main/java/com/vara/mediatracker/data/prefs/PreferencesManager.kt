@@ -81,6 +81,17 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putString("sync_watermark", value).apply()
 
     /**
+     * Whether the first-run screen has been dismissed.
+     *
+     * Only the *dismissal* is stored. The screen is for someone who has just installed the app and
+     * has no idea what it does or how the two devices find each other, so it is shown until it is
+     * answered — not keyed to an empty library, which would bring it back when a library empties.
+     */
+    var hasSeenWelcome: Boolean
+        get() = prefs.getBoolean("has_seen_welcome", false)
+        set(value) = prefs.edit().putBoolean("has_seen_welcome", value).apply()
+
+    /**
      * ISO-3166 region the Discovery providers were last enriched for. When the device
      * region changes, providers are cleared and re-fetched so they stay region-correct.
      */
