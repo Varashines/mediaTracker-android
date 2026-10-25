@@ -356,8 +356,7 @@ fun M3ERoughScreen(
                     onHub = { stack = stack + Overlay.Hub },
                     onFinished = { stack = stack + Overlay.Finished },
                     onHistory = { stack = stack + Overlay.History },
-                    onSearch = { stack = stack + Overlay.Search },
-                    onYearReview = { stack = stack + Overlay.YearReview }
+                    onSearch = { stack = stack + Overlay.Search }
                 )
                 else -> M3ERoughSettings(
                     container = container,
@@ -420,7 +419,8 @@ fun M3ERoughScreen(
                 Overlay.History -> M3ERoughHistory(
                     container = container,
                     core = core,
-                    onOpen = { stack = stack + Overlay.Detail(it) }
+                    onOpen = { stack = stack + Overlay.Detail(it) },
+                    onYearReview = { stack = stack + Overlay.YearReview }
                 )
                 Overlay.YearReview -> M3EYearReview(
                     container = container,
@@ -837,8 +837,7 @@ private fun LibrarySection(
     onHub: () -> Unit,
     onFinished: () -> Unit,
     onHistory: () -> Unit,
-    onSearch: () -> Unit,
-    onYearReview: () -> Unit
+    onSearch: () -> Unit
 ) {
     // A cold start renders the empty state before Room answers — "0 titles", "Your library is up
     // to date" — which reads as an empty library rather than a loading one.
@@ -936,9 +935,6 @@ private fun LibrarySection(
                     LibraryShortcut(Icons.Default.AutoAwesome, "Hub", onHub)
                     LibraryShortcut(Icons.Default.Check, "Finished", onFinished)
                     LibraryShortcut(Icons.Default.History, "History", onHistory)
-                    // A recap is the fourth "your stuff" view, so it sits with the other three
-                    // rather than being buried in the Hub's Smart tab where nobody found it.
-                    LibraryShortcut(Icons.Default.Insights, "${Year.now().value}", onYearReview)
                 }
                 Spacer(Modifier.height(M3ESpacing.tightGap))
                 ChipRow(
