@@ -24,6 +24,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonArray
 import com.vara.mediatracker.data.api.TMDBClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -31,6 +33,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
+import android.util.Log
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.util.*
@@ -758,9 +762,9 @@ class CloudSyncManager(
         val incomingEvents: List<WatchEventEntity>
     )
 
-    private suspend fun fetchRemoteWatchCycles(since: String? = null): List<RemoteWatchCycle> = fetchAllPages("user_watch_cycles", since, { it.cycle_id }, { it.updated_at })
+    private suspend fun fetchRemoteWatchCycles(since: String? = null): List<RemoteWatchCycle> = fetchAllPages("user_watch_cycles", since, { it.cycle_id }, keyColumn = "cycle_id")
 
-    private suspend fun fetchRemoteWatchEvents(since: String? = null): List<RemoteWatchEvent> = fetchAllPages("user_watch_events", since, { it.event_id }, { it.updated_at })
+    private suspend fun fetchRemoteWatchEvents(since: String? = null): List<RemoteWatchEvent> = fetchAllPages("user_watch_events", since, { it.event_id }, keyColumn = "event_id")
 
     private suspend fun pushWatchCycles(cycles: List<WatchCycleEntity>) {
         if (cycles.isEmpty()) return
@@ -963,14 +967,17 @@ class CloudSyncManager(
     }.getOrNull()
 
     private suspend fun fetchRemoteMedia(since: String? = null): List<RemoteMedia> =
-        fetchAllPages("user_media", since, { it.media_id }, { it.updated_at })
+        fetchAllPages("user_media", since, { it.media_id }, keyColumn = "media_id")
 
-    private suspend fun fetchRemoteEpisodes(since: String? = null): List<RemoteEpisode> = fetchAllPages("user_episodes", since, { it.episode_id }, { it.updated_at })
+    private suspend fun fetchRemoteEpisodes(since: String? = null): List<RemoteEpisode> = fetchAllPages("user_episodes", since, { it.episode_id }, keyColumn = "episode_id")
 
-    private suspend fun fetchRemoteCollections(since: String? = null): List<RemoteCollection> = fetchAllPages("user_collections", since, { it.collection_id }, { it.updated_at })
+    private suspend fun fetchRemoteCollections(since: String? = null): List<RemoteCollection> = fetchAllPages("user_collections", since, { it.collection_id }, keyColumn = "collection_id")
 
     private suspend fun fetchRemoteCollectionItems(since: String? = null): List<RemoteCollectionItem> =
-        fetchAllPages("user_collection_items", since, { "${it.collection_id}|${it.media_id}" }, { it.updated_at })
+        fetchAllPages(
+            "user_collection_items", since, { "${it.collection_id}|${it.media_id}" },
+            keyColumn = "collection_id,media_id"
+        )
 
     /** GETs every page of a PostgREST table — it caps an unpaginated response at 1000 rows. */
     /**
@@ -981,52 +988,88 @@ class CloudSyncManager(
      * than it looks — a full pull is ~8 MB, and the background sync runs every 30 minutes
      * (~11 GB/month against Supabase's 5 GB free egress quota).
      */
+    /**
+     * Row-by-row decoding for pages that arrive as text, matching the client's own JSON
+     * configuration so a row that decodes here decodes the same way through ContentNegotiation.
+     */
+    private val wireJson = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+    }
+
     private suspend inline fun <reified T> fetchAllPages(
         endpoint: String,
         since: String? = null,
         keyOf: (T) -> String,
-        stampOf: (T) -> String?
+        /**
+         * The table's primary-key column(s), used to make the page order total.
+         * `collection_id,media_id` for the two-column join table.
+         */
+        keyColumn: String
     ): List<T> {
         val out = mutableListOf<T>()
         val seen = HashSet<String>()
-        var cursor = since
         val pageSize = 1000
+        var offset = 0
 
-        // Keyset, not offset.
+        // Deterministic offset paging.
         //
-        // Offset paging over `order=updated_at.asc` has no tiebreaker, and a batch push gives many
-        // rows the same stamp — so a page boundary could return one row twice and skip another.
-        // Since the watermark is the newest stamp seen, a skipped row was then passed over for
-        // good. Here the filter is inclusive (`gte`) and rows are de-duplicated by key, then the
-        // cursor advances to the newest stamp on the page.
+        // This used to be a keyset cursor on `updated_at` alone: `gte` the newest stamp seen, and
+        // stop when that stamp stopped moving. A batch push gives more than a page of rows the
+        // same stamp, so the cursor could never get past that block — the next request returned
+        // the same page, `fresh` was zero, and every row at that stamp or newer stayed invisible
+        // for good. The watermark then equalled that stamp, so later pulls started inside it.
+        //
+        // Ordering by (updated_at, primary key) makes the order total, which is what offset paging
+        // needs to be safe. `seen` still guards the case where a row moves between pages.
         while (true) {
             val response: HttpResponse = client.get("$supabaseUrl/rest/v1/$endpoint") {
                 parameter("user_id", "eq.$syncKey")
                 parameter("select", "*")
-                parameter("order", "updated_at.asc")
-                if (!cursor.isNullOrBlank()) parameter("updated_at", "gte.$cursor")
+                parameter("order", "updated_at.asc,$keyColumn.asc")
+                // Inclusive on purpose: a row written in the same instant as the watermark must
+                // not be skipped. `seen` de-duplicates the overlap.
+                if (!since.isNullOrBlank()) parameter("updated_at", "gte.$since")
                 header("apikey", anonKey)
                 header("Authorization", "Bearer $anonKey")
                 header("x-sync-key", syncKey)
-                header("Range", "0-${pageSize - 1}")
+                header("Range", "$offset-${offset + pageSize - 1}")
             }
-            val page: List<T> = response.body()
-            if (page.isEmpty()) break
 
-            var fresh = 0
-            for (row in page) {
-                if (seen.add(keyOf(row))) {
-                    out += row
-                    fresh++
+            // Decode row by row. `response.body<List<T>>()` threw on the first malformed row, which
+            // failed the whole sync and left the watermark where it was — so the same poison page
+            // came back on every run and nothing newer ever arrived. One unreadable row is not a
+            // reason to lose the rest of the table.
+            val text = response.bodyAsText()
+            if (text.isBlank()) break
+            val elements = runCatching { Json.parseToJsonElement(text).jsonArray }.getOrNull() ?: break
+            if (elements.isEmpty()) break
+
+            var undecodable = 0
+            for (element in elements) {
+                val row = try {
+                    wireJson.decodeFromJsonElement<T>(element)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Exception) {
+                    undecodable++
+                    continue
                 }
+                if (seen.add(keyOf(row))) out += row
+            }
+            if (undecodable > 0) {
+                // Visible and countable; the next pull meets the same rows again rather than
+                // silently skipping them for good.
+                Log.w(
+                    "CloudSync",
+                    "$endpoint: skipped $undecodable of ${elements.size} undecodable row(s) at offset $offset"
+                )
             }
 
-            val newest = page.mapNotNull { stampOf(it) }.maxOrNull()
-            if (page.size < pageSize) break
-            // No progress means every remaining row shares the cursor's stamp; stop rather than
-            // request the same page forever.
-            if (newest == null || newest == cursor || fresh == 0) break
-            cursor = newest
+            // Advance by what the server returned, not what decoded, so an unreadable page cannot
+            // stall pagination.
+            offset += elements.size
+            if (elements.size < pageSize) break
         }
         return out
     }
