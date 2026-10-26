@@ -116,7 +116,10 @@ class MediaDaoTest {
     fun updateTaste_updatesOnlyTaste() = runTest {
         dao.upsertMedia(media("movie_1", state = "Watching", taste = "None"))
 
-        dao.updateTaste("movie_1", "Liked")
+        // `now` is part of the signature because a taste change moves the sync clock, and the
+        // test predates that — which is exactly what happens to an instrumented suite nobody
+        // compiles.
+        dao.updateTaste("movie_1", "Liked", "2026-07-04T10:00:00Z")
 
         val stored = dao.getMediaById("movie_1")
         assertEquals("Liked", stored?.taste)
