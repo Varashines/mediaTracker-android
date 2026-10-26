@@ -67,7 +67,18 @@ object Notify {
         contentIntent: PendingIntent? = null,
         actions: List<Action> = emptyList()
     ) {
-        if (!canPost(context)) return
+        // Written out rather than delegated to canPost(): lint's MissingPermission check only
+        // recognises a permission test in the function that makes the call, and `notify` is the
+        // call. Same condition, same meaning — and the duplication is the price of an analyser
+        // that cannot follow a helper.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
 
         val builder = NotificationCompat.Builder(context, channel)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
