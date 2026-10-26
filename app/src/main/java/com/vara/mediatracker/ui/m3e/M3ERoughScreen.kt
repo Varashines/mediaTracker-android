@@ -188,7 +188,6 @@ private sealed interface Overlay {
     data object Finished : Overlay
     data object Search : Overlay
     data object History : Overlay
-    data object YearReview : Overlay
 }
 
 @Composable
@@ -409,8 +408,7 @@ fun M3ERoughScreen(
                     onOpen = { stack = stack + Overlay.Detail(it) },
                     onOpenList = { title, items, kind, layout ->
                         stack = stack + Overlay.Titles(title, items, kind, layout)
-                    },
-                    onYearReview = { stack = stack + Overlay.YearReview }
+                    }
                 )
                 Overlay.Finished -> FinishedSection(
                     library = library,
@@ -419,13 +417,7 @@ fun M3ERoughScreen(
                 Overlay.History -> M3ERoughHistory(
                     container = container,
                     core = core,
-                    onOpen = { stack = stack + Overlay.Detail(it) },
-                    onYearReview = { stack = stack + Overlay.YearReview }
-                )
-                Overlay.YearReview -> M3EYearReview(
-                    container = container,
-                    library = library,
-                    episodes = core.allEpisodes
+                    onOpen = { stack = stack + Overlay.Detail(it) }
                 )
                 Overlay.Search -> M3ERoughSearch(
                     library = library,
@@ -1008,19 +1000,10 @@ private fun FinishedSection(library: List<MediaItemEntity>, onOpen: (MediaItemEn
         library.filter { it.state.equals("Completed", true) }
             .sortedByDescending { it.lastStateChangeDate ?: it.lastInteractionDate ?: "" }
     }
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .padding(horizontal = M3ESpacing.page),
-        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+    ScreenScaffold(
+        title = "Finished",
+        eyebrow = "${finished.size} watched"
     ) {
-        item {
-            Column {
-                Spacer(Modifier.height(M3ESpacing.pageVertical))
-                M3EScreenHeader(eyebrow = "${finished.size} watched", title = "Finished")
-            }
-        }
         if (finished.isEmpty()) {
             item {
                 EmptyState(
@@ -1032,7 +1015,6 @@ private fun FinishedSection(library: List<MediaItemEntity>, onOpen: (MediaItemEn
         items(finished, key = { it.id }) { item ->
             TitleRow(item, trailing = Icons.Default.Check, onClick = { onOpen(item) })
         }
-        item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
 

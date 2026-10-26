@@ -68,9 +68,7 @@ import kotlinx.coroutines.withContext
 internal fun M3ERoughHistory(
     container: AppContainer,
     core: LibraryCore,
-    onOpen: (MediaItemEntity) -> Unit = {},
-    /** The year this ledger adds up to; offered here because this is the ledger. */
-    onYearReview: () -> Unit = {}
+    onOpen: (MediaItemEntity) -> Unit = {}
 ) {
     // A cold start renders the empty state before Room answers — "0 titles", "Your library is up
     // to date" — which reads as an empty library rather than a loading one.
@@ -138,55 +136,11 @@ internal fun M3ERoughHistory(
     // every copy of the show in the list.
     var expanded by remember { mutableStateOf(setOf<String>()) }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(M3EColor.page())
-            .statusBarsPadding()
-            .padding(horizontal = M3ESpacing.page),
+    ScreenScaffold(
+        title = "Watch history",
+        eyebrow = if (entries.isEmpty()) "Nothing watched yet" else "${entries.size} entries",
         verticalArrangement = Arrangement.spacedBy(M3ESpacing.tightGap)
     ) {
-        item {
-            Spacer(Modifier.height(M3ESpacing.pageVertical))
-            M3EScreenHeader(
-                eyebrow = if (entries.isEmpty()) "Nothing watched yet" else "${entries.size} entries",
-                title = "Watch history"
-            )
-            Spacer(Modifier.height(M3ESpacing.cardGap))
-        }
-
-        // The summary of the thing on this screen, so it belongs here rather than in the Library's
-        // shortcut row — where a fourth pill squeezed the year into a vertical column.
-        item {
-            M3ETonalCard(modifier = Modifier.fillMaxWidth(), onClick = onYearReview) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(M3ESpacing.cardGap),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "${java.time.Year.now().value} in review",
-                            style = M3EType.rowTitleStrong(),
-                            color = M3EColor.text()
-                        )
-                        Text(
-                            text = "What you watched, and how much of it.",
-                            style = M3EType.rowSupporting(),
-                            color = M3EColor.textMuted()
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = M3EColor.textMuted()
-                    )
-                }
-            }
-            Spacer(Modifier.height(M3ESpacing.cardGap))
-        }
-
         if (entries.isEmpty()) {
             item {
                 EmptyState(
@@ -238,7 +192,6 @@ internal fun M3ERoughHistory(
             }
         }
 
-        item { Spacer(Modifier.height(LocalNavClearance.current)) }
     }
 }
 

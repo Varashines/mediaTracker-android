@@ -103,7 +103,6 @@ internal fun M3ERoughHub(
     tab: Int = 0,
     onTabChange: (Int) -> Unit = {},
     onOpen: (MediaItemEntity) -> Unit = {},
-    onYearReview: () -> Unit = {},
     onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit = { _, _, _, _ -> }
 ) {
     // A cold start renders the empty state before Room answers — "0 titles", "Your library is up
@@ -149,7 +148,7 @@ internal fun M3ERoughHub(
             userScrollEnabled = false
         ) { page ->
             when (page) {
-                0 -> SmartTab(library, core.networkLogos, container, onOpen, onOpenList, onYearReview)
+                0 -> SmartTab(library, core.networkLogos, container, onOpen, onOpenList)
                 else -> M3ERoughCollections(
                     container = container,
                     core = core,
@@ -195,8 +194,7 @@ private fun SmartTab(
     networkLogos: Map<String, String>,
     container: AppContainer,
     onOpen: (MediaItemEntity) -> Unit,
-    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit,
-    onYearReview: () -> Unit
+    onOpenList: (String, List<MediaItemEntity>, ListSubtitle, ListLayout) -> Unit
 ) {
     // Tints are read here because `M3EColor` is composable and `remember`'s lambda is not. The cards
     // no longer use them, but reading them keeps the remember keyed to the theme.

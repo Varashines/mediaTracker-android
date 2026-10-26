@@ -4,11 +4,15 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -355,4 +359,41 @@ fun PosterTile(
             .clip(M3EShape.chip())
             .background(M3EColor.card())
     )
+}
+
+/**
+ * The frame every list screen shares.
+ *
+ * Nine screens were each opening with the same four moves — status-bar inset, page margin, header,
+ * and the clearance the floating nav needs at the bottom — and each closing with the same spacer.
+ * Written by hand, that is four chances per screen to get the margin or the clearance slightly
+ * wrong, which is exactly what had happened.
+ *
+ * Only the middle is a screen's own business, so that is the only thing it supplies.
+ */
+@Composable
+fun ScreenScaffold(
+    title: String,
+    eyebrow: String? = null,
+    modifier: Modifier = Modifier,
+    trailing: @Composable (() -> Unit)? = null,
+    verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(M3ESpacing.cardGap),
+    content: LazyListScope.() -> Unit
+) {
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(M3EColor.page())
+            .statusBarsPadding()
+            .padding(horizontal = M3ESpacing.page),
+        verticalArrangement = verticalArrangement
+    ) {
+        item {
+            Spacer(Modifier.height(M3ESpacing.pageVertical))
+            M3EScreenHeader(title = title, eyebrow = eyebrow, trailing = trailing)
+            Spacer(Modifier.height(M3ESpacing.cardGap))
+        }
+        content()
+        item { Spacer(Modifier.height(LocalNavClearance.current)) }
+    }
 }
