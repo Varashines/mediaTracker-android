@@ -40,17 +40,16 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-
 
       # /dev/kvm exists on the runner but the job user is not in the `kvm` group, so the emulator
-      # reports "This user doesn't have permissions to use KVM", disables hardware acceleration and
-      # falls back to QEMU's software CPU — where a boot that normally takes a minute never finishes.
-      # It looks like "no devices" much later, which is why this runs first.
+      # prints "This user doesn't have permissions to use KVM", disables hardware acceleration and
+      # falls back to QEMU's software CPU — where a boot that takes a minute never finishes. It
+      # surfaces much later as "no devices", so it is dealt with before anything is started.
+      #
+      # The mode is set on the node directly rather than through a udev rule: udevadm is not
+      # available on this runner image and `udevadm control` exits 1, which fails the step.
       - name: Enable KVM
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
+          sudo chmod 666 /dev/kvm
           test -r /dev/kvm && test -w /dev/kvm && echo "KVM is readable and writable."
-
       - name: Instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
