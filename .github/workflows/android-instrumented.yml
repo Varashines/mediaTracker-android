@@ -39,19 +39,17 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml') }}
           restore-keys: gradle-${{ runner.os }}-
 
-      # The emulator silently degrades to QEMU's software CPU (TCG) when /dev/kvm is missing,
-      # which turns a two-minute boot into one that never finishes — and the failure then looks
-      # like "no devices" rather than "no acceleration". This says which one it is, in seconds.
-      - name: Check KVM availability
+      # /dev/kvm exists on the runner but the job user is not in the `kvm` group, so the emulator
+      # reports "This user doesn't have permissions to use KVM", disables hardware acceleration and
+      # falls back to QEMU's software CPU — where a boot that normally takes a minute never finishes.
+      # It looks like "no devices" much later, which is why this runs first.
+      - name: Enable KVM
         run: |
-          echo "cpu virtualisation flags: $(grep -cE '(vmx|svm)' /proc/cpuinfo)"
-          if [ -e /dev/kvm ]; then
-            ls -l /dev/kvm
-            echo "KVM present."
-          else
-            echo "::error::/dev/kvm is missing — the emulator will fall back to TCG and never finish booting."
-            exit 1
-          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -r /dev/kvm && test -w /dev/kvm && echo "KVM is readable and writable."
 
       - name: Instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
