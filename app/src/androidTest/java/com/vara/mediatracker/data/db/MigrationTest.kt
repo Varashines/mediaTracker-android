@@ -31,7 +31,12 @@ class MigrationTest {
     private fun deleteDb() = context.deleteDatabase(dbName)
 
     @After
-    fun tearDown() = deleteDb()
+    fun tearDown() {
+        // Not `= deleteDb()`: deleteDatabase returns Boolean, so the expression body made this
+        // return non-void, and JUnit refuses to instantiate a class whose @After method does.
+        // The whole class errored out before any of its tests ran.
+        deleteDb()
+    }
 
     /** Builds a database at the pre-v3 schema and seeds it with representative rows. */
     private fun createV2Database(): SupportSQLiteDatabase {
