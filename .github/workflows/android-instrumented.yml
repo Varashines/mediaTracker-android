@@ -1,0 +1,51 @@
+name: Android Instrumented
+
+# Its own workflow on purpose. connectedAndroidTest needs an emulator, an emulator needs to boot,
+# and a boot is the one step in this project with no reliable duration — so it runs nightly and on
+# demand rather than gating every push. `android-ci.yml` still compiles these sources on every push,
+# which is what catches an API change breaking them; this is what proves they pass.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: instrumented-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  instrumented:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: ./gradlew :app:connectedDebugAndroidTest

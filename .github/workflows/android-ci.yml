@@ -59,10 +59,8 @@ jobs:
       - name: Assemble debug
         run: ./gradlew :app:assembleDebug
 
-      - name: Instrumented tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          arch: x86_64
-          script: ./gradlew :app:connectedDebugAndroidTest
-          disable-animations: true
+      # The instrumented *sources* are compiled here but not run: compiling takes seconds and
+      # catches the rot that a suite which never executes accumulates. Running them needs an
+      # emulator, which lives in android-instrumented.yml so a boot can never block a push.
+      - name: Compile instrumented tests
+        run: ./gradlew :app:compileDebugAndroidTestKotlin
