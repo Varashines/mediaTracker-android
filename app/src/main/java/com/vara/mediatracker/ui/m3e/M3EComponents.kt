@@ -7,6 +7,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -395,5 +399,52 @@ fun ScreenScaffold(
         }
         content()
         item { Spacer(Modifier.height(LocalNavClearance.current)) }
+    }
+}
+
+/**
+ * The grid twin of [ScreenScaffold].
+ *
+ * Library and Collections are two-column grids rather than lists, so they cannot use the list
+ * scaffold without lying about what they are — but they were repeating the same four moves around
+ * the grid. The header, the inset, the margin and the nav clearance are stated once here too.
+ *
+ * `columns` is free because the two screens genuinely differ: the library is three posters across,
+ * collections two, and that is a design decision rather than a constant.
+ */
+@Composable
+fun GridScaffold(
+    title: String,
+    eyebrow: String? = null,
+    columns: Int = 2,
+    modifier: Modifier = Modifier,
+    /** False when the grid is embedded somewhere that supplies its own heading, as the Hub does. */
+    header: Boolean = true,
+    trailing: @Composable (() -> Unit)? = null,
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(M3ESpacing.cardGap),
+    verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(M3ESpacing.cardGap),
+    content: LazyGridScope.() -> Unit
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(columns),
+        modifier = modifier
+            .fillMaxSize()
+            .background(M3EColor.page())
+            .statusBarsPadding()
+            .padding(horizontal = M3ESpacing.page),
+        horizontalArrangement = horizontalArrangement,
+        verticalArrangement = verticalArrangement
+    ) {
+        if (header) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Spacer(Modifier.height(M3ESpacing.pageVertical))
+                M3EScreenHeader(title = title, eyebrow = eyebrow, trailing = trailing)
+                Spacer(Modifier.height(M3ESpacing.cardGap))
+            }
+        }
+        content()
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(LocalNavClearance.current))
+        }
     }
 }

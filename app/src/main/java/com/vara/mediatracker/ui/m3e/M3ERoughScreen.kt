@@ -859,14 +859,14 @@ private fun LibrarySection(
         LibraryQuery.apply(core.items, "", filters, badgeLabels)
     }
 
-    LazyVerticalGrid(
-        columns = if (listView) GridCells.Fixed(1) else GridCells.Fixed(3),
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .padding(horizontal = M3ESpacing.page),
-        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap),
-        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+    // The frame is the scaffold's; the block at the top is not a header but a control panel — the
+    // view toggle, the way into the other three views, and both filters — so it keeps its own slot
+    // rather than being squeezed into a title's trailing area.
+    GridScaffold(
+        title = "Library",
+        columns = if (listView) 1 else 3,
+        header = false,
+        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.inlineGap)
     ) {
         // A lazy item's content is not a container: several children are drawn at the same
         // offset. Anything with more than one visible child has to bring its own Column.
@@ -987,9 +987,6 @@ private fun LibrarySection(
                     )
                 }
             }
-        }
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            Spacer(Modifier.height(LocalNavClearance.current))
         }
     }
 }

@@ -128,22 +128,12 @@ internal fun M3ERoughCollections(
     fun membersOf(collection: CollectionEntity): List<MediaItemEntity> =
         membership[collection.id].orEmpty()
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        modifier = Modifier
-            .fillMaxSize()
-            .let { if (showHeader) it.statusBarsPadding() else it }
-            .padding(horizontal = M3ESpacing.page),
-        horizontalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap),
-        verticalArrangement = Arrangement.spacedBy(M3ESpacing.cardGap)
+    GridScaffold(
+        title = "Collections",
+        eyebrow = "${live.size} collections",
+        columns = 2,
+        header = showHeader
     ) {
-        if (showHeader) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Spacer(Modifier.height(M3ESpacing.pageVertical))
-                M3EScreenHeader(eyebrow = "${live.size} collections", title = "Collections")
-                Spacer(Modifier.height(M3ESpacing.cardGap))
-            }
-        }
 
         if (live.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
